@@ -30,7 +30,6 @@
       systems = [
         "x86_64-linux"
         "aarch64-linux"
-        "x86_64-darwin"
         "aarch64-darwin"
       ];
 
@@ -46,11 +45,18 @@
               fileset = pkgs.lib.fileset.difference ./. (pkgs.lib.fileset.unions [
                 ./flake.nix
                 ./flake.lock
+                ./nix
               ]);
             };
           });
 
           default = config.packages.timekpr;
+        };
+
+        checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          timekpr = pkgs.testers.nixosTest (import ./nix/tests/timekpr.nix {
+            inherit (config.packages) timekpr;
+          });
         };
 
         treefmt = {

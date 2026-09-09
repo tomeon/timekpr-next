@@ -11,6 +11,7 @@ from datetime import datetime
 # timekpr imports
 from timekpr.common.log import log
 from timekpr.common.constants import constants as cons
+from timekpr.common.utils.misc import getDBUSUserName
 
 
 class timekprNotificationManager(dbus.service.Object):
@@ -28,7 +29,7 @@ class timekprNotificationManager(dbus.service.Object):
 
         # last notification
         self._userName = pUserName
-        self._userNameDBUS = self._userName.replace(".", "").replace("-", "")
+        self._userNameDBUS = getDBUSUserName(self._userName)
         self._lastNotified = datetime.now().replace(microsecond=0)
         self._notificationLvl = -1
         self._prevNotificationLvl = -1

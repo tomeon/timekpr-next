@@ -821,7 +821,7 @@ class timekprUserConfig(object):
         section = self._userName
         self._timekprUserConfigParser.add_section(section)
         self._timekprUserConfigParser.set(section, "# this defines which hours are allowed (remove or add hours to limit access), configure limits for start/end minutes for hour in brackets,")
-        self._timekprUserConfigParser.set(section, "#   optionally enter ! in front of hour to mark it non-accountable, example: !22[00-15]")
+        self._timekprUserConfigParser.set(section, "#   optionally enter ! in front of hour to mark it non-accountable, for example !22[00-15]")
         # set up param
         param = "ALLOWED_HOURS"
         # set hours for all days
@@ -853,7 +853,7 @@ class timekprUserConfig(object):
         self._timekprUserConfigParser.set(section, "%s" % (param), str(self._timekprUserConfig[param]) if pReuseValues else str(cons.TK_HIDE_TRAY_ICON))
         # set up param
         param = "LOCKOUT_TYPE"
-        self._timekprUserConfigParser.set(section, "# this defines user restriction / lockout mode: lock - lock screen, suspend - put computer to sleep, suspendwake - put computer to sleep and wake it up,")
+        self._timekprUserConfigParser.set(section, "# this defines user restriction / lockout mode, one of lock - lock screen, suspend - put computer to sleep, suspendwake - put computer to sleep and wake it up,")
         self._timekprUserConfigParser.set(section, "#   terminate - terminate sessions, kill - kill sessions, shutdown - shutdown the computer")
         self._timekprUserConfigParser.set(section, "%s" % (param), self._timekprUserConfig[param] if pReuseValues else cons.TK_CTRL_RES_T)
         # set up param
@@ -887,7 +887,7 @@ class timekprUserConfig(object):
         self._timekprUserConfigParser.set(section, "# how much PlayTime is allowed per allowed days (number of values must match the number of values for option PLAYTIME_ALLOWED_WEEKDAYS)")
         self._timekprUserConfigParser.set(section, "%s" % (param), self._timekprUserConfig[param] if pReuseValues else cons.TK_PLAYTIME_LIMITS_PER_WEEKDAYS)
         # set up param
-        self._timekprUserConfigParser.set(section, "# this defines which activities / processes are monitored, pattern: PLAYTIME_ACTIVITY_NNN = PROCESS_MASK[DESCRIPTION],")
+        self._timekprUserConfigParser.set(section, "# this defines which activities / processes are monitored, in the form PLAYTIME_ACTIVITY_NNN with a value of PROCESS_MASK[DESCRIPTION],")
         self._timekprUserConfigParser.set(section, "#   where NNN is number left padded with 0 (keys must be unique and ordered), optionally it's possible to add user")
         self._timekprUserConfigParser.set(section, "#   friendly description in [] brackets. Process mask supports regexp, except symbols [], please be careful entering it!")
         self._timekprUserConfigParser.set(section, "##PLAYTIME_ACTIVITIES## Do NOT remove or alter this line!")
@@ -1344,7 +1344,7 @@ class timekprUserControl(object):
         # add new user section
         section = self._userName
         self._timekprUserControlParser.add_section(section)
-        self._timekprUserControlParser.set(section, "#### NOTE: all number values are stored in seconds")
+        self._timekprUserControlParser.set(section, "#### NOTE - all number values are stored in seconds")
         # set up param
         param = "TIME_SPENT_BALANCE"
         self._timekprUserControlParser.set(section, "# total time balance spent for this day")
@@ -1723,7 +1723,7 @@ class timekprClientConfig(object):
         section = "CONFIG"
         self._timekprClientConfigParser.add_section(section)
         self._timekprClientConfigParser.set(section, "# client application configuration file")
-        self._timekprClientConfigParser.set(section, "# NOTE: this file is not intended to be edited manually, however, if it is, please restart application")
+        self._timekprClientConfigParser.set(section, "# NOTE - this file is not intended to be edited manually, however, if it is, please restart application")
         self._timekprClientConfigParser.set(section, "")
         # set up param
         param = "LOG_LEVEL"

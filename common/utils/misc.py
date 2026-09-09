@@ -14,6 +14,7 @@ from datetime import datetime
 import os
 import pwd
 import inspect
+import re
 import stat
 try:
     import psutil
@@ -31,6 +32,12 @@ from timekpr.common.log import log
 def whoami():
     """Return callers name from the call stack, the 0 is this function, prev is the one needd"""
     return inspect.stack()[1][3]
+
+
+def getDBUSUserName(pUserName):
+    """Get user name suitable for use in a DBUS object path (only [A-Za-z0-9_] are allowed there)"""
+    # domain users (user@domain) and machine accounts (user$) contain characters which are not allowed in object paths
+    return re.sub(r"[^A-Za-z0-9_]", "", pUserName)
 
 
 def getNormalizedUserNames(pUID=None, pUser=None):

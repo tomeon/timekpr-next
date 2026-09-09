@@ -34,7 +34,25 @@
         "aarch64-darwin"
       ];
 
-      perSystem = {config, ...}: {
+      perSystem = {
+        config,
+        pkgs,
+        ...
+      }: {
+        packages = {
+          timekpr = pkgs.timekpr.overrideAttrs (_: {
+            src = pkgs.lib.fileset.toSource {
+              root = ./.;
+              fileset = pkgs.lib.fileset.difference ./. (pkgs.lib.fileset.unions [
+                ./flake.nix
+                ./flake.lock
+              ]);
+            };
+          });
+
+          default = config.packages.timekpr;
+        };
+
         treefmt = {
           projectRootFile = "flake.nix";
           programs.alejandra.enable = true;

@@ -59,6 +59,18 @@
           });
         };
 
+        # The same test on a systemd-nspawn container instead of a QEMU VM.
+        # Not a flake check because it needs the Nix daemon configured with
+        # auto-allocate-uids, the uid-range system feature, and the
+        # auto-allocate-uids and cgroups experimental features, and a
+        # cgroup v2 host.  Build it with `nix build .#tests.timekpr-container`.
+        legacyPackages = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+          tests.timekpr-container = pkgs.testers.nixosTest (import ./nix/tests/timekpr.nix {
+            inherit (config.packages) timekpr;
+            backend = "container";
+          });
+        };
+
         treefmt = {
           projectRootFile = "flake.nix";
           programs.alejandra.enable = true;

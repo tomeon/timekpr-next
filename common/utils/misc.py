@@ -14,8 +14,8 @@ from datetime import datetime
 import os
 import pwd
 import inspect
-import re
 import stat
+from gi.repository import Gio
 try:
     import psutil
     _PSUTIL = True
@@ -35,9 +35,10 @@ def whoami():
 
 
 def getDBUSUserName(pUserName):
-    """Get user name suitable for use in a DBUS object path (only [A-Za-z0-9_] are allowed there)"""
-    # domain users (user@domain) and machine accounts (user$) contain characters which are not allowed in object paths
-    return re.sub(r"[^A-Za-z0-9_]", "", pUserName)
+    """Get user name suitable for use as a DBUS object path element (only [A-Za-z0-9_] are allowed there)"""
+    # domain users (user@domain) and machine accounts (user$) contain characters which are not allowed in object paths,
+    #   GLib escapes those losslessly (e.g. "bob@idm" becomes "bob_40idm"), so different user names never clash
+    return Gio.dbus_escape_object_path(pUserName)
 
 
 def getNormalizedUserNames(pUID=None, pUser=None):

@@ -193,10 +193,22 @@ present" test, and no marker key is needed.  Consequences:
   or "default".
 - Existing installations already have an auto-created file for every
   user.  After upgrade those count as explicit user policies with
-  default values and would shadow any group policy.  The README must
-  say so and point at `--deletepolicy`.  An automatic migration that
-  deletes files whose values equal the defaults is possible but
-  heuristic; it is listed under open questions.
+  default values and would shadow any group policy.  Migration is
+  handled in two parts:
+  - `timekpra --migrate [--dry-run]` deletes every user policy file
+    whose limit keys all equal the built-in defaults, and reports each
+    deletion.  Such a file restricts nothing, so deleting it can only
+    leave the user unchanged or bring them under a group policy; it can
+    never loosen anything.  The comparison is on values, not bytes, so
+    it also catches files that `_saveConfigFile` rewrote back to
+    defaults.  Counters files are left alone.
+  - At startup the daemon logs one warning per user policy file that
+    restricts nothing, naming `--migrate` and `--deletepolicy`.
+  Refusing to start on unmigrated files was considered and rejected: a
+  screen-time daemon that does not start enforces nothing, which is the
+  least restrictive possible outcome of a configuration problem.
+  Declaring existing setups deprecated is compatible with both parts
+  and is a documentation decision.
 - The README sentence "user list is retrieved from your system and
   initial configuration is applied"
   ([README.md:184-190](../../README.md#L184-L190)) changes.
@@ -220,10 +232,16 @@ asks "which groups with a policy file is this user in", evaluated when
 the user's `timekprUser` is created and whenever the set of group
 files or their mtimes changes.
 
-A group-to-members listing is still wanted by the admin UI and by the
-"today" fan-out below.  It is best effort: the union of `gr_mem`,
-users whose primary GID is the group, and `getgrouplist` over every
-user known to the admin list.  The UI should label it as such.
+A group-to-members listing is wanted only by the admin UI, for
+display.  It is best effort: the union of `gr_mem`, users whose primary
+GID is the group, and `getgrouplist` over every user known to the admin
+list.  The UI should label it as such.  Nothing on the server depends
+on it.
+
+Groups carry policy only.  Accounting is per user without exception:
+`setTimeLeft` and `setPlayTimeLeft` refuse a `@group` target, the
+"Info & today" tab has no group form, and there is no group counters
+file.
 
 ### D4. Effective policy
 
@@ -249,21 +267,27 @@ The resolver lives in `common/utils/config.py`, so that
 the admin getters, and the client all see one effective policy through
 the existing getters and nothing in the accounting loop changes.
 
-Merge table.  Only keys that survive D6 and D7 appear.
+Merge table.  Only keys that survive D6 and D7 appear.  "More
+restrictive" means: for the same behaviour by the user, at least as
+much time is charged and at least as many things are forbidden.
 
-| Key | Most restrictive merge |
-| --- | --- |
-| `ALLOWED_WEEKDAYS` | intersection |
-| `ALLOWED_HOURS_n` | per hour: present only if present in all; start = max, end = min, dropped if empty; the unaccounted flag `!` (time not counted, so a relaxation) is kept only if all inputs set it |
-| `LIMITS_PER_WEEKDAYS` | minimum per day |
-| `LIMIT_PER_WEEK`, `LIMIT_PER_MONTH` | minimum |
-| `TRACK_INACTIVE` | logical OR (counting idle time is more restrictive) |
-| `PLAYTIME_ENABLED` | logical OR |
-| `PLAYTIME_LIMIT_OVERRIDE_ENABLED` | logical AND (override mode counts less time, so it is a relaxation) |
-| `PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED` | logical AND |
-| `PLAYTIME_ALLOWED_WEEKDAYS` | intersection |
-| `PLAYTIME_LIMITS_PER_WEEKDAYS` | minimum per day |
-| `PLAYTIME_ACTIVITIES` | union of process masks |
+| Key | Most restrictive merge | Why |
+| --- | --- | --- |
+| `ALLOWED_WEEKDAYS` | intersection | fewer days |
+| `ALLOWED_HOURS_n` | per hour: present only if present in all; start = max, end = min, dropped if empty; the unaccounted flag `!` is kept only if all inputs set it | an unaccounted hour is free time, so it is a relaxation |
+| `LIMITS_PER_WEEKDAYS` | minimum per day | |
+| `LIMIT_PER_WEEK`, `LIMIT_PER_MONTH` | minimum | |
+| `TRACK_INACTIVE` | logical OR | with it on, a session that is logged in but not the active one on the seat (locked screen, switched to another user, idle hint set) still burns time; with it off, only the active, unlocked, non-idle session counts ([logind/user.py:150-224](../../server/interface/dbus/logind/user.py#L150-L224)) |
+| `PLAYTIME_ENABLED` | logical OR | PlayTime is an *extra* limit on the listed processes inside the ordinary limits; when it is off the listed processes are just ordinary screen time ([README.md:304-330](../../README.md#L304-L330)).  Enabling it adds a constraint.  The one case where "enabled" is a relaxation is override mode, and that is handled by the next row |
+| `PLAYTIME_LIMIT_OVERRIDE_ENABLED` | logical AND | in override mode the ordinary daily, weekly and monthly limits are charged only while a listed process runs and everything else is free time ([README.md:339-345](../../README.md#L339-L345), [userdata.py:856-866](../../server/user/userdata.py#L856-L866)); it is the least restrictive PlayTime setting, so `False` wins |
+| `PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED` | logical AND | `False` forbids the listed processes during `!` hours |
+| `PLAYTIME_ALLOWED_WEEKDAYS` | intersection | |
+| `PLAYTIME_LIMITS_PER_WEEKDAYS` | minimum per day | |
+| `PLAYTIME_ACTIVITIES` | union of process masks | the list is the set of processes *subject to* the PlayTime limit (or, in override mode, the set that is charged), so a longer list restricts more; union is the additive merge |
+
+A ranking exists for `HIDE_TRAY_ICON` as well (`True` withholds
+information from the user), so it could be merged with OR if it is
+ever admitted to group policy; D7 keeps it user-only.
 
 Every remaining key has a well-defined most-restrictive value, so two
 groups that are incomparable in the precedence graph never need a
@@ -291,12 +315,34 @@ page; no graph drawing is needed.
 
 ### D6. The only enforcement action is logging out
 
-The lockout types `lock`, `suspend`, `suspendwake` and `shutdown` are
-dropped from the policy model.  `terminate` (logind `TerminateSession`)
-is the behaviour.  Whether `kill` (logind `KillSession` with SIGTERM,
-[manager.py:325-328](../../server/interface/dbus/logind/manager.py#L325-L328))
-survives as a harsher variant of logout is the one judgment call left
-open below; this proposal drops it too and keeps a single behaviour.
+The lockout types `lock`, `suspend`, `suspendwake`, `kill` and
+`shutdown` are dropped from the policy model.  `terminate` (logind
+`TerminateSession`) is the behaviour.  Killing processes, suspending
+or powering off the machine are decisions for the service manager and
+the login manager, not for timekpr.
+
+Two further places kill processes today and fall under the same rule:
+
+- **PlayTime enforcement.**  When a user's PlayTime is used up, the
+  daemon terminates and then kills the matching processes
+  ([daemon.py:272-274](../../server/interface/dbus/daemon.py#L272-L274),
+  [playtime.py:431-442](../../server/user/playtime.py#L431-L442)).
+  That is the whole enforcement mechanism of PlayTime; there is no
+  logout variant.  The options are to leave PlayTime as it is and
+  accept the exception, to make PlayTime exhaustion log the user out
+  like any other limit, or to drop PlayTime.  This proposal keeps the
+  PlayTime keys in the policy model so the merge is complete, and
+  leaves the enforcement choice as an open question.
+- **Leftover process cleanup.**  After terminating sessions the daemon
+  schedules `killLeftoverUserProcesses`, which walks the process table
+  with psutil and terminates the user's processes that were reparented
+  to init ([manager.py:350-356](../../server/interface/dbus/logind/manager.py#L350-L356),
+  [misc.py:169-238](../../common/utils/misc.py#L169-L238)).  logind
+  does the same job when `KillUserProcesses=yes` is set in
+  `logind.conf`, which is exactly "belongs with the login manager".
+  Proposed: remove the cleanup and document the logind setting.  The
+  NixOS test should then set `services.logind.killUserProcesses` so
+  the "user has gone" assertion still holds.
 
 Two ways to do it, in order of cost:
 
@@ -327,7 +373,39 @@ without a user policy.  The GUI does not show it on a group page.
 `WAKEUP_HOUR_INTERVAL` goes with D6.  Every other key in the user file
 is a limit and is listed in the merge table.
 
-### D8. File layout
+### D8. Global settings and the default policy
+
+Server-wide settings in `timekpr.conf` today: log level, poll and save
+intervals, termination and warning times, tracked and excluded session
+types, excluded users, the PlayTime master switch and the enhanced
+activity monitor, and a default for `TRACK_INACTIVE`
+([resource/server/timekpr.conf](../../resource/server/timekpr.conf)).
+Those all stay global; none of them is a per-user limit.
+
+Two things change with D2:
+
+- `TIMEKPR_TRACK_INACTIVE` is today copied into each user file at
+  creation ([config.py:203-204](../../common/utils/config.py#L203-L204)).
+  With no auto-creation it has to become the value the resolver uses
+  when no policy sets the key.  The same is true of every other
+  built-in default.
+- That makes "the defaults" a real policy level rather than a
+  constant.  Proposed: a pseudo-group `@all` whose policy file, if
+  present, applies to every tracked user without any NSS lookup.  It
+  composes with D5 (`OVERRIDES = all` in a group that relaxes it) and
+  with D4 (it merges most-restrictively with other groups unless
+  overridden).  It replaces the need for a `[DEFAULTS]` section in
+  `timekpr.conf` and a second file format.
+
+`PLAYTIME_ACTIVITIES` is a candidate for a global seed list (the
+games installed on the machine are the same for everyone).  With `@all`
+that falls out for free: put the list in the `@all` policy and it
+unions into every group merge.  It does not reach a user with their
+own policy file, by D4 rule 1; if that is wanted, the user policy can
+declare `OVERRIDES`-style additivity later, and this proposal does not
+go there.
+
+### D9. File layout
 
 - User policy: `<config dir>/timekpr.<user>.conf`, unchanged.
 - Group policy: `<config dir>/groups/timekpr.<group>.conf`, sections
@@ -446,12 +524,10 @@ About three person-days.
     membership change in NSS is picked up at the next fingerprint
     check by re-running `getUserGroups` (cheap, one NSS call per user
     per poll; or cache with a short TTL).
-  - `setTimeLeft` and `setPlayTimeLeft` on `@group` fan out to the
-    best-effort member list, restricted to members that have a
-    counters file (the others have no "today" yet).  Results are
-    collected; the first failure's message is returned prefixed with
-    the member name, and the remaining members are still processed.
-  - New getter `getGroupList` returning `[[group, member-count]]`.
+  - `setTimeLeft` and `setPlayTimeLeft` return an error for a `@group`
+    target (D3).
+  - New getter `getGroupList` returning `[[group, member-count]]`, the
+    count being best effort.
   - `getUserList` includes provenance.
 
 ### D-Bus interface
@@ -485,8 +561,7 @@ This is the largest single piece.
 - The selector lists users and groups; group rows are `@kids (n
   members, best effort)`.  Users show their provenance.
 - Selecting a group loads its file into the same form and disables the
-  "Info & today" tab (per-user counters only), except the add and
-  subtract time buttons, which fan out per D3.
+  "Info & today" tab entirely (accounting is per user, D3).
 - Selecting a user with no user policy shows the effective policy
   read-only with a "Create user policy from this" button; the four
   apply paths ([admingui.py:1909-2248](../../client/gui/admingui.py#L1909-L2248))
@@ -533,8 +608,9 @@ Extend `nix/tests/timekpr.nix` and `nix/tests/timekpr.py`:
 - Second group `teens` with time, `--setoverrides @teens kids`, alice
   added to `teens`: alice survives.  Then remove the override: alice
   terminated (most-restrictive merge).
-- `--settimeleft @kids + 300` after both have counters files: both
-  survive.
+- `--settimeleft @kids + 300` is refused; `--settimeleft alice + 300`
+  works as today.
+- An `@all` policy with no time and no other files: both terminated.
 
 Each VM iteration is about ten minutes without KVM.
 
@@ -573,21 +649,16 @@ an extension, and nobody has asked for it.
 
 ## Open questions
 
-1. **`kill` as a second logout variant.**  It is a logout, only
-   harsher.  This proposal drops it for a single behaviour; keeping it
-   costs nothing technically.
-2. **Migration of auto-created user files.**  After upgrade every
-   existing user has a file that now counts as an explicit policy.
-   Options: document `--deletepolicy` only; or a one-time startup pass
-   that deletes user files whose values equal the defaults and logs
-   each deletion.  The second is convenient but destroys a file the
-   admin may have created deliberately with default values.
+1. **PlayTime enforcement kills processes** (D6).  Keep the exception,
+   turn PlayTime exhaustion into a logout, or drop PlayTime.  The
+   policy model and merge table are the same in all three cases; only
+   `daemon.py:272-274` and `playtime.py` change.
+2. **Leftover process cleanup** (D6).  Proposed removal in favour of
+   logind's `KillUserProcesses`.
 3. **Setting a user-specific key on a group.**  Reject (proposed) or
    silently ignore.
-4. **Fan-out of "today" adjustments to groups.**  Proposed above as
-   best effort over members with a counters file.  The alternative is
-   to refuse `@group` for `setTimeLeft` and keep "today" strictly per
-   user.
+4. **`HIDE_TRAY_ICON` in group policy.**  User-only per D7; an OR merge
+   is available if that changes.
 5. **Group membership refresh cadence.**  One `getgrouplist` call per
    logged-in user per 3-second poll is cheap locally but goes to the
    identity daemon for domain users.  A short TTL (30 seconds, the same

@@ -55,6 +55,14 @@
             # fails on one that does not mention it.  Only the pkexec policy
             # does; the polkit actions for the D-Bus interface do not.
             postPatch = builtins.replaceStrings ["**/*.policy"] ["**/*.pkexec.policy"] old.postPatch;
+            # timekprw, the web front end, needs these on top of nixpkgs'
+            # dependency list.
+            propagatedBuildInputs =
+              old.propagatedBuildInputs
+              ++ (with pkgs.python3Packages; [
+                fastapi
+                uvicorn
+              ]);
           });
 
           default = config.packages.timekpr;

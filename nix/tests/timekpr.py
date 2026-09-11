@@ -7,7 +7,9 @@
 # Those three names are therefore undefined as far as linters can tell.
 # ruff: noqa: F821
 
+import json
 import shlex
+from urllib.parse import quote
 
 ALICE = CONFIG["alice"]
 ALICE_PASSWORD = CONFIG["alicePassword"]
@@ -18,16 +20,22 @@ CAROL = CONFIG["carol"]
 DAVE = CONFIG["dave"]
 ERIN = CONFIG["erin"]
 TIMEKPR_PACKAGE = CONFIG["timekprPackage"]
+TIMEKPRW_TOKEN = CONFIG["timekprwToken"]
+TIMEKPRW_PORT = CONFIG["timekprwPort"]
+TIMEKPRW_URL = f"http://127.0.0.1:{TIMEKPRW_PORT}"
+API = f"{TIMEKPRW_URL}/api/v1"
 BASH = "/run/current-system/sw/bin/bash"
 
 # How long each SSH login keeps its session open.  timekpr polls every
 # 3 seconds and terminates an over-limit session after a 15 second
 # countdown, so this leaves plenty of margin either way.
 HOLD = 45
-# Per-weekday limits (Mon..Sun) in seconds: no screen time at all.
-NO_TIME = "0;0;0;0;0;0;0"
+# ISO weekdays, Monday to Sunday.
+ALL_DAYS = list(range(1, 8))
+# Per-weekday limits in seconds: no screen time at all.
+NO_TIME = {day: 0 for day in ALL_DAYS}
 # Extra time granted for today, in seconds.
-EXTRA_TIME = "300"
+EXTRA_TIME = 300
 # Per-weekday limits a privileged user sets, distinguishable from NO_TIME.
 SOME_TIME = "60;60;60;60;60;60;60"
 TIMEKPR_LOG = "/var/log/timekpr.log"
@@ -90,6 +98,59 @@ def weekday_limits(user):
     raise AssertionError(f"no LIMITS_PER_WEEKDAYS in the configuration of {user}")
 
 
+def api(method, path, body=None, token=TIMEKPRW_TOKEN):
+    """Call the web API; return the HTTP status and the decoded body."""
+    cmd = ["curl", "-sS", "-w", "\n%{http_code}", "-X", method]
+    if token is not None:
+        cmd += ["-H", f"Authorization: Bearer {token}"]
+    if body is not None:
+        cmd += ["-H", "Content-Type: application/json", "--data", json.dumps(body)]
+    out = machine.succeed(" ".join(map(shlex.quote, cmd + [API + path])))
+    body, status = out.rsplit("\n", 1)
+    return int(status), json.loads(body)
+
+
+def expect(method, path, body=None, status=200, token=TIMEKPRW_TOKEN):
+    got, data = api(method, path, body, token)
+    assert got == status, f"{method} {path}: expected HTTP {status}, got {got}: {data}"
+    return data
+
+
+def user_path(user, suffix):
+    return f"/users/{quote(user, safe='')}{suffix}"
+
+
+class Timekpra:
+    """Administer timekpr through the CLI."""
+
+    name = "timekpra"
+
+    def knows(self, user):
+        return user in timekpra("--userlist")
+
+    def forbid(self, user):
+        timekpra("--settimelimits", user, ";".join(map(str, NO_TIME.values())))
+
+    def grant(self, user, seconds):
+        timekpra("--settimeleft", user, "+", str(seconds))
+
+
+class Timekprw:
+    """Administer timekpr through the web API."""
+
+    name = "timekprw"
+
+    def knows(self, user):
+        return user in [entry["username"] for entry in expect("GET", "/users")]
+
+    def forbid(self, user):
+        expect("PATCH", user_path(user, "/config"), {"limits_per_day": NO_TIME})
+
+    def grant(self, user, seconds):
+        body = {"operation": "add", "seconds": seconds}
+        expect("POST", user_path(user, "/time-left"), body)
+
+
 def ssh_login(user, password):
     """Log in over SSH with a password, keep the session open for HOLD
     seconds, and return the command's (status, output)."""
@@ -138,21 +199,21 @@ def expect_login_terminated(user, password):
     wait_until_logged_out(user)
 
 
-def exercise(user, password):
+def exercise(user, password, admin):
     with subtest(f"{user}: an unrestricted login survives"):
         expect_login_survives(user, password)
 
-    with subtest(f"{user}: timekpr knows the user"):
-        assert user in timekpra("--userlist")
+    with subtest(f"{user}: {admin.name} knows the user"):
+        assert admin.knows(user)
 
-    with subtest(f"{user}: forbid all screen time"):
-        timekpra("--settimelimits", user, NO_TIME)
+    with subtest(f"{user}: forbid all screen time via {admin.name}"):
+        admin.forbid(user)
 
     with subtest(f"{user}: a restricted login is terminated"):
         expect_login_terminated(user, password)
 
-    with subtest(f"{user}: grant {EXTRA_TIME} seconds of extra time"):
-        timekpra("--settimeleft", user, "+", EXTRA_TIME)
+    with subtest(f"{user}: grant {EXTRA_TIME} seconds of extra time via {admin.name}"):
+        admin.grant(user, EXTRA_TIME)
 
     with subtest(f"{user}: an exempted login survives"):
         expect_login_survives(user, password)
@@ -197,7 +258,7 @@ def exercise_authorization():
         wait_for_log(f"polkit: NOT AUTHORIZED {POLKIT_USER_CONFIGURE}", f"user={ALICE}")
 
     with subtest(f"{CAROL}: an unprivileged user may not grant themselves time"):
-        assert DENIED in timekpra_as(CAROL, "--settimeleft", CAROL, "+", EXTRA_TIME)
+        assert DENIED in timekpra_as(CAROL, "--settimeleft", CAROL, "+", str(EXTRA_TIME))
         wait_for_log(f"polkit: NOT AUTHORIZED {POLKIT_USER_TIME_LEFT}", f"user={CAROL}")
 
     with subtest(f"{CAROL}: an unprivileged user may not list users"):
@@ -240,27 +301,107 @@ def exercise_authorization():
         wait_for_log(f"polkit: AUTHORIZED {POLKIT_READ}", "method=getUserList")
 
     with subtest(f"{ERIN}: a rule may allow one action for one user only"):
-        assert DENIED not in timekpra_as(ERIN, "--settimeleft", ALICE, "+", EXTRA_TIME)
+        assert DENIED not in timekpra_as(ERIN, "--settimeleft", ALICE, "+", str(EXTRA_TIME))
         wait_for_log(f"polkit: AUTHORIZED {POLKIT_USER_TIME_LEFT}", f"user={ALICE}")
-        assert DENIED in timekpra_as(ERIN, "--settimeleft", CAROL, "+", EXTRA_TIME)
+        assert DENIED in timekpra_as(ERIN, "--settimeleft", CAROL, "+", str(EXTRA_TIME))
         assert DENIED in timekpra_as(ERIN, "--settimelimits", ALICE, NO_TIME)
         assert DENIED in timekpra_as(ERIN, "--userinfo", ALICE)
         assert weekday_limits(ALICE) == SOME_TIME
 
 
+def check_web_api():
+    """The API against timekpra's view of the same configuration (alice
+    has just been exercised through timekpra)."""
+    config_path = user_path(ALICE, "/config")
+
+    with subtest("timekprw: health, authentication, and the UI"):
+        assert expect("GET", "/health", token=None)["daemon"] == "ok"
+        expect("GET", "/users", status=401, token=None)
+        expect("GET", "/users", status=401, token="wrong")
+        assert "<title>timekpr</title>" in machine.succeed(f"curl -fsS {TIMEKPRW_URL}/")
+
+    with subtest("timekprw: reports what timekpra set"):
+        config = expect("GET", config_path)
+        assert config["limits_per_day"] == {str(day): 0 for day in ALL_DAYS}, config
+        status = expect("GET", user_path(ALICE, "/status"))
+        assert not status["session_active"], status
+        assert "LIMITS_PER_WEEKDAYS: 0;0;0;0;0;0;0" in timekpra("--userinfo", ALICE)
+
+    with subtest("timekprw: settings round-trip through timekpra"):
+        hours = [
+            {"hour": 7},
+            {"hour": 11, "start_minute": 0, "end_minute": 30},
+            {"hour": 14, "unaccounted": True},
+        ]
+        config = expect("PUT", user_path(ALICE, "/config/allowed-hours/3"), hours)
+        assert [entry["hour"] for entry in config["allowed_hours"]["3"]] == [7, 11, 14]
+        patch = {
+            "allowed_days": [4, 2],
+            "limits_per_day": {"4": 3600},
+            "lockout": {"type": "suspendwake", "wake_from": 7, "wake_to": 18},
+            "playtime": {
+                "enabled": True,
+                "activities": [{"process": "firefox", "description": "Firefox"}],
+            },
+        }
+        config = expect("PATCH", config_path, patch)
+        assert config["allowed_days"] == [2, 4], config
+        assert config["limits_per_day"] == {"2": 0, "4": 3600}, config
+        assert config["lockout"] == patch["lockout"], config
+        assert config["playtime"]["activities"] == patch["playtime"]["activities"]
+        info = timekpra("--userinfo", ALICE)
+        for line in (
+            "ALLOWED_HOURS_3: 7;11[0-30];!14",
+            "ALLOWED_WEEKDAYS: 2;4",
+            "LIMITS_PER_WEEKDAYS: 0;3600",
+            "LOCKOUT_TYPE: suspendwake",
+            "WAKEUP_HOUR_INTERVAL: 7;18",
+            "PLAYTIME_ENABLED: True",
+            "PLAYTIME_ACTIVITIES: firefox[Firefox]",
+        ):
+            assert line in info, f"{line!r} not in timekpra --userinfo:\n{info}"
+        # restore the defaults, keeping the "no time" limits
+        restore = {
+            "allowed_days": ALL_DAYS,
+            "limits_per_day": NO_TIME,
+            "lockout": {"type": "terminate"},
+            "playtime": {"enabled": False, "activities": []},
+        }
+        expect("PATCH", config_path, restore)
+        all_hours = [{"hour": hour} for hour in range(24)]
+        expect("PUT", user_path(ALICE, "/config/allowed-hours/all"), all_hours)
+
+    with subtest("timekprw: rejects bad requests as problem details"):
+        expect("GET", "/users/nobody/config", status=404)
+        problem = expect("PATCH", config_path, {"limits_per_day": {"8": 1}}, status=400)
+        assert problem["errors"][0]["field"].startswith("limits_per_day"), problem
+        body = {"operation": "give", "seconds": 1}
+        expect("POST", user_path(ALICE, "/time-left"), body, status=400)
+
+    with subtest("timekprw: daemon settings"):
+        config = expect("GET", "/config")
+        assert "tty" in config["session_types_tracked"], config
+        patched = expect("PATCH", "/config", {"log_level": config["log_level"]})
+        assert patched == config, (patched, config)
+
+
 def main():
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("timekpr.service")
+    machine.wait_for_unit("timekprw.service")
     machine.wait_for_open_port(22)
+    machine.wait_for_open_port(TIMEKPRW_PORT)
 
     with subtest("timekpr runs this flake's package"):
-        assert TIMEKPR_PACKAGE in machine.succeed(
-            "systemctl show -p ExecStart --value timekpr.service"
-        )
+        for unit in ("timekpr.service", "timekprw.service"):
+            assert TIMEKPR_PACKAGE in machine.succeed(
+                f"systemctl show -p ExecStart --value {unit}"
+            )
 
     exercise_help()
-    exercise(ALICE, ALICE_PASSWORD)
+    exercise(ALICE, ALICE_PASSWORD, Timekpra())
     exercise_authorization()
+    check_web_api()
 
     with subtest("kanidm: server, provisioning, and UNIX daemon are up"):
         machine.wait_for_unit("kanidm.service")
@@ -281,7 +422,7 @@ def main():
         )
         machine.wait_until_succeeds(f"getent passwd {shlex.quote(BOB)}")
 
-    exercise(BOB, BOB_PASSWORD)
+    exercise(BOB, BOB_PASSWORD, Timekprw())
 
 
 machine.start()
@@ -292,4 +433,5 @@ except Exception:
     # available for diagnosing the failure.
     machine.execute("systemctl stop timekpr.service")
     print(machine.execute(f"cat {TIMEKPR_LOG}")[1])
+    print(machine.execute("journalctl -u timekprw.service")[1])
     raise

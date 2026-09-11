@@ -2,6 +2,7 @@
 bin/timekpra usr/bin/
 bin/timekprc usr/bin/
 bin/timekprd usr/bin/
+bin/timekprw usr/bin/
 
 # config files
 resource/server/dbus/timekpr.conf etc/dbus-1/system.d/
@@ -11,6 +12,7 @@ resource/server/polkit/com.timekpr.server.policy usr/share/polkit-1/actions/
 resource/server/polkit/50-timekpr.rules usr/share/polkit-1/rules.d/
 resource/server/polkit/timekpr.pkla var/lib/polkit-1/localauthority/10-vendor.d/
 resource/server/systemd/timekpr.service lib/systemd/system/
+resource/server/systemd/timekprw.service lib/systemd/system/
 resource/server/timekpr.conf etc/timekpr/
 
 # sample runtime files
@@ -97,6 +99,17 @@ server/timekprd.py usr/lib/python3/dist-packages/timekpr/server/
 server/user/playtime.py usr/lib/python3/dist-packages/timekpr/server/user/
 server/user/__init__.py usr/lib/python3/dist-packages/timekpr/server/user/
 server/user/userdata.py usr/lib/python3/dist-packages/timekpr/server/user/
+
+# web application (timekprw)
+web/__init__.py usr/lib/python3/dist-packages/timekpr/web/
+web/app.py usr/lib/python3/dist-packages/timekpr/web/
+web/bridge.py usr/lib/python3/dist-packages/timekpr/web/
+web/models.py usr/lib/python3/dist-packages/timekpr/web/
+web/timekprw.py usr/lib/python3/dist-packages/timekpr/web/
+web/static/index.html usr/share/timekpr/web/
+web/static/app.js usr/share/timekpr/web/
+web/static/style.css usr/share/timekpr/web/
+docs/web-api.md usr/share/doc/timekpr-next/
 
 # translations (only the ones that are ready will be included)
 resource/locale/be/LC_MESSAGES/timekpr.mo usr/share/locale/be/LC_MESSAGES/

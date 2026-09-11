@@ -6,6 +6,9 @@
 # For each user the test (timekpr.py) logs in over SSH (through PAM) and
 # checks that timekpr terminates the session when the user has no screen
 # time left, and leaves it alone once the user has been granted extra time.
+# The settings are made through timekpra for one user and through the web
+# API served by timekprw for the other, and the API is checked against
+# what timekpra reports.
 #
 # `backend` selects how the machine is run: "vm" for a QEMU virtual
 # machine (`nodes`), "container" for a systemd-nspawn container
@@ -32,10 +35,12 @@
   carol = "carol";
   dave = "dave";
   erin = "erin";
+  timekprwToken = "timekprw-test-token";
+  timekprwPort = 8463;
 
   # Values the test script needs; see the top of timekpr.py.
   testConfig = {
-    inherit alice alicePassword bobPassword idmAdminPassword carol dave erin;
+    inherit alice alicePassword bobPassword idmAdminPassword carol dave erin timekprwToken timekprwPort;
     bob = "${bob}@${idmDomain}";
     timekprPackage = "${timekpr}";
   };
@@ -125,6 +130,15 @@
       });
     '';
 
+    # The web front end; its unit comes with the package.  The bearer
+    # token is handed over as a systemd credential.
+    systemd.services.timekprw = {
+      wantedBy = ["multi-user.target"];
+      serviceConfig.LoadCredential = [
+        "token:${pkgs.writeText "timekprw-token" timekprwToken}"
+      ];
+    };
+
     users.users = {
       ${alice} = {
         isNormalUser = true;
@@ -180,6 +194,7 @@
 
     environment.systemPackages = [
       answerPassword
+      pkgs.curl
       pkgs.sshpass
     ];
   };

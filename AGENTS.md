@@ -30,6 +30,46 @@ Upstream code lives in `bin/`, `client/`, `common/`, `server/`,
 - The devshell (`nix develop`, `menu`) provides `act`, the treefmt
   wrapper, git, python3, and the helper scripts as commands.
 
+## Web front end (`timekprw`)
+
+`web/` holds the web application, packaged as `timekpr.web` like the
+other top-level directories: `models.py` (Pydantic models),
+`bridge.py` (translation onto `timekprAdminConnector`, the D-Bus client
+`timekpra` uses), `app.py` (FastAPI routes), `timekprw.py` (entry
+point) and `static/` (the UI).  `bin/timekprw` is a launcher like the
+other three and `resource/server/systemd/timekprw.service` its unit.
+`docs/web-api.md` is the API reference and is installed with the
+package.
+
+- Every installed file is listed in `debian/install`; the nixpkgs
+  derivation reads that file, installs `usr/share`, `usr/bin`, `etc`,
+  `lib` and `var` entries itself and leaves Python modules to
+  `setup.py`.  A new Python module still needs a line there for the
+  Debian package.  Static files go to `usr/share/timekpr/web/`.
+- The flake's `src` only contains git-tracked files, so `git add` new
+  files before `nix build` or they are missing from the package.
+- The launchers in `bin/` are shebang lines running the module, so the
+  launcher's own path arrives as the first argument; `timekprw.py`
+  drops it, as `adminprocessor.py` does for `timekpra`.
+- `timekprAdminConnector.initTimekprConnection` retries through
+  `GLib.timeout_add_seconds` unless `pTryOnce` is set; `timekprw` has
+  no GLib main loop, so it always passes `pTryOnce=True` and
+  reconnects on demand.
+- `LIMITS_PER_WEEKDAYS` is positional against `ALLOWED_WEEKDAYS`
+  (`server/user/userdata.py`), so the API's `limits_per_day` map is
+  translated on both sides and the limits are re-sent whenever the
+  allowed days change.
+- The web dependencies (FastAPI, uvicorn) are added to nixpkgs'
+  derivation in `flake.nix` via `propagatedBuildInputs` and to
+  `debian/control` as `Recommends`.
+- The NixOS test drives one user through `timekpra` and the other
+  through the API (`curl` on the machine), and checks the API's view
+  against `timekpra --userinfo`.  For quick iteration without a VM,
+  build a Python environment with the dependencies from the pinned
+  nixpkgs and run the app against a fake connector with FastAPI's
+  `TestClient`; `Bridge(connector)` takes any object with the
+  connector's method names.
+
 ## Conventions
 
 - Run `nix fmt` after every change to Nix, shell, or Python files and

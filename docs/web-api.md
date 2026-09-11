@@ -1,13 +1,39 @@
-# timekpr web API design
+# timekpr web API
 
-Status: proposal, first draft.
+`timekprw` is a thin HTTP front end for the timekpr daemon.  Every
+endpoint translates directly into one or more calls on the daemon's
+D-Bus interfaces (`com.timekpr.server.user.admin` and
+`com.timekpr.server.admin`, see `server/interface/dbus/daemon.py`),
+made through the same `timekprAdminConnector` that `timekpra` and the
+GTK administration tool use.  The backend keeps no state of its own;
+the daemon's configuration files remain the source of truth.
 
-The web application is a thin HTTP front end for the timekpr daemon.
-Every endpoint translates directly into one or more calls on the
-daemon's D-Bus interfaces (`com.timekpr.server.user.admin` and
-`com.timekpr.server.admin`, see
-`server/interface/dbus/daemon.py`).  The backend keeps no state of its
-own; the daemon's configuration files remain the source of truth.
+The implementation lives in `web/`: `models.py` (the JSON shapes),
+`bridge.py` (translation to and from the daemon), `app.py` (FastAPI
+routes) and `timekprw.py` (the executable).  The web UI in
+`web/static/` is served by the same process.  An OpenAPI document is
+available at `/api/v1/openapi.json` and an interactive one at
+`/api/v1/docs`.
+
+## Running
+
+`timekprw` listens on `127.0.0.1:8463` by default and is started by the
+`timekprw.service` unit as an unprivileged dynamic user in the
+`timekpr` group, which is what the daemon's D-Bus policy requires for
+the administration interfaces.  Options (`--host`, `--port`,
+`--token-file`, `--static-dir`, `--root-path`, `--no-auth`) can also be
+given as environment variables `TIMEKPRW_<OPTION>`, for example through
+`/etc/timekpr/timekprw.env`, which the unit reads if it exists.
+
+Every endpoint except `/health` requires a bearer token
+(`Authorization: Bearer <token>`).  The token is read from, in order:
+the file named by `--token-file`, the systemd credential `token` (a
+drop-in with `LoadCredential=token:/path/to/file`), or
+`/etc/timekpr/timekprw.token`.  Without a token file the service
+refuses to start unless `--no-auth` is given, which is only appropriate
+behind a reverse proxy that authenticates, or on loopback.  TLS is
+left to a reverse proxy; `--root-path` is the prefix such a proxy
+strips.
 
 ## Conventions
 
@@ -27,17 +53,17 @@ own; the daemon's configuration files remain the source of truth.
 - Errors use RFC 9457 `application/problem+json`
   (<https://www.rfc-editor.org/rfc/rfc9457>):
   `{"type", "title", "status", "detail", "errors": [{"field", "message"}]}`.
-  The daemon reports failures as `(-1, message)`; the backend maps
-  those to `400` when the message is a validation error and to `404`
-  when the user has no configuration.  `502` means the daemon could
-  not be reached over D-Bus.  `401`/`403` are authentication and
-  authorisation failures on the web layer.
-- Authentication is required on every endpoint.  The backend process
-  itself must run as root or as a member of the `timekpr` group,
-  because that is who the daemon's D-Bus policy admits to the admin
-  interfaces (`server/interface/dbus/daemon.py`, comment above
-  `setAllowedDays`).  The login mechanism (session cookie plus CSRF
-  token, or bearer token) is a separate decision and not covered here.
+  `errors` and `applied` are omitted when empty.  A user-scoped request
+  for a user the daemon has no configuration for is `404`; a value the
+  daemon refuses is `400` with its message as `detail`; `503` means
+  the daemon (or the system bus) is not reachable and `502` that the
+  daemon's D-Bus policy refused `timekprw`.  `401` is a missing or
+  wrong token.
+- Authentication is a bearer token on every endpoint except
+  `/health`, see "Running" above.  The backend process itself must
+  run as root or as a member of the `timekpr` group, because that is
+  who the daemon's D-Bus policy admits to the admin interfaces
+  (`server/interface/dbus/daemon.py`, comment above `setAllowedDays`).
 - `PATCH` on a config resource is applied as a sequence of D-Bus
   setters, one per field, in a fixed order.  The backend validates
   the whole body first.  If a setter still fails part-way, the
@@ -61,7 +87,6 @@ Fields of `/api/v1/config` (names follow `TIMEKPR_*` keys returned by the daemon
 | `log_level` | int (1-3) | `setTimekprLogLevel` |
 | `poll_time` | seconds | `setTimekprPollTime` |
 | `save_time` | seconds | `setTimekprSaveTime` |
-| `track_inactive` | bool | `setTimekprTrackInactive` |
 | `termination_time` | seconds | `setTimekprTerminationTime` |
 | `final_warning_time` | seconds | `setTimekprFinalWarningTime` |
 | `final_notification_time` | seconds | `setTimekprFinalNotificationTime` |
@@ -75,7 +100,7 @@ Fields of `/api/v1/config` (names follow `TIMEKPR_*` keys returned by the daemon
 
 | Method | Path | `timekpra` | Purpose |
 | --- | --- | --- | --- |
-| `GET` | `/api/v1/users` | `--userlist` | Users that have a timekpr configuration. Returns `[{"username", "full_name", "session_active"}]`. Query `?include=status` adds each user's `status` object (one extra D-Bus call per user). |
+| `GET` | `/api/v1/users` | `--userlist` | Users that have a timekpr configuration. Returns `[{"username", "full_name"}]`. Query `?include=status` adds each user's `status` object (one extra D-Bus call per user). |
 | `GET` | `/api/v1/users/{username}` | `--userinfo` + `--userinfort` | Full view: `{"username", "config": {...}, "status": {...}}` (`getUserInformation(name, "F")`). |
 | `GET` | `/api/v1/users/{username}/config` | `--userinfo` | Saved configuration only (`"S"`). |
 | `PATCH` | `/api/v1/users/{username}/config` | all `--set*` except time left | Partial update, see field table below. |
@@ -101,18 +126,18 @@ subset of:
 | Field | Type | D-Bus setter | Notes |
 | --- | --- | --- | --- |
 | `allowed_days` | list of weekdays, e.g. `[1,2,3,4,5]` | `setAllowedDays` | |
-| `limits_per_day` | object weekday → seconds, `{"1": 7200, ..., "7": 10800}` | `setTimeLimitForDays` | The daemon always wants all seven values; the backend merges missing days from the current config. Values are clamped to 86400 by the daemon. |
+| `limits_per_day` | object weekday → seconds, `{"1": 7200, ..., "7": 10800}` | `setTimeLimitForDays` | The daemon stores limits positionally against `allowed_days` (`server/user/userdata.py`), so `GET` lists only allowed days, keys for other days are ignored, missing days keep their current value, and a change of `allowed_days` re-sends the limits aligned with the new days. Values are clamped to 86400 by the daemon. |
 | `allowed_hours` | object weekday → list of hour entries (below) | `setAllowedHours`, once per day given | Same shape as the `PUT` sub-resource; `PATCH` is for editing several days in one request. |
 | `limit_per_week` | seconds | `setTimeLimitForWeek` | |
 | `limit_per_month` | seconds | `setTimeLimitForMonth` | |
 | `track_inactive` | bool | `setTrackInactive` | |
 | `hide_tray_icon` | bool | `setHideTrayIcon` | |
-| `lockout` | `{"type": "lock"｜"suspend"｜"suspendwake"｜"terminate"｜"kill"｜"shutdown", "wake_from": hour, "wake_to": hour}` | `setLockoutType` | `wake_from`/`wake_to` only with `suspendwake`; the CLI form `suspendwake;7;18`. |
+| `lockout` | `{"type": "lock"｜"suspend"｜"suspendwake"｜"terminate"｜"kill"｜"shutdown", "wake_from": hour, "wake_to": hour}` | `setLockoutType` | `wake_from`/`wake_to` are required with `suspendwake`, rejected with other types, and `null` in responses for other types; the CLI form is `suspendwake;7;18`. |
 | `playtime.enabled` | bool | `setPlayTimeEnabled` | |
 | `playtime.limit_override` | bool | `setPlayTimeLimitOverride` | |
 | `playtime.allow_unaccounted_intervals` | bool | `setPlayTimeUnaccountedIntervalsEnabled` | |
 | `playtime.allowed_days` | list of weekdays | `setPlayTimeAllowedDays` | |
-| `playtime.limits_per_day` | object weekday → seconds | `setPlayTimeLimitsForDays` | Merged like `limits_per_day`. |
+| `playtime.limits_per_day` | object weekday → seconds | `setPlayTimeLimitsForDays` | Positional against `playtime.allowed_days`, handled like `limits_per_day`. |
 | `playtime.activities` | list of `{"process", "description"}` | `setPlayTimeActivities` | CLI form `csgo_linux[CS: GO]`; `description` may be empty. |
 
 An hour entry is
@@ -141,7 +166,7 @@ Example `GET /api/v1/users/alice/config`:
   "limit_per_month": 200000,
   "track_inactive": false,
   "hide_tray_icon": false,
-  "lockout": {"type": "terminate"},
+  "lockout": {"type": "terminate", "wake_from": null, "wake_to": null},
   "playtime": {
     "enabled": false,
     "limit_override": false,
@@ -201,7 +226,19 @@ endpoints: "forbid login" is
 `PATCH .../config {"limits_per_day": {"1": 0, ..., "7": 0}}`, and an
 exemption is `POST .../time-left {"operation": "add", "seconds": 300}`.
 
+### Web UI
+
+`timekprw` serves a small single-page UI from `web/static/` at `/`
+(plain HTML, CSS and JavaScript; no build step).  It lists users with
+their time left, edits a user's limits, allowed hours, lockout and
+PlayTime settings (sending only the changed fields as one `PATCH`),
+adds or removes time for today, and edits the daemon settings.  The
+token is entered once per browser tab.
+
 ### Later additions
+
+- `timekpra` talking to this API instead of D-Bus, selected by a
+  `--server URL` option, for remote administration from the CLI.
 
 - `GET /api/v1/users/{username}/status/stream`: server-sent events
   with the `status` object every poll interval, so the UI can show a

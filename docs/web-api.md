@@ -17,23 +17,57 @@ available at `/api/v1/openapi.json` and an interactive one at
 
 ## Running
 
-`timekprw` listens on `127.0.0.1:8463` by default and is started by the
-`timekprw.service` unit as an unprivileged dynamic user in the
-`timekpr` group, which is what the daemon's D-Bus policy requires for
-the administration interfaces.  Options (`--host`, `--port`,
+`timekprw.service` runs `timekprw` as an unprivileged dynamic user in
+the `timekpr` group, which is what the daemon's D-Bus policy requires
+for the administration interfaces.  Options (`--listen`,
 `--token-file`, `--static-dir`, `--root-path`, `--no-auth`) can also be
 given as environment variables `TIMEKPRW_<OPTION>`, for example through
 `/etc/timekpr/timekprw.env`, which the unit reads if it exists.
 
-Every endpoint except `/health` requires a bearer token
-(`Authorization: Bearer <token>`).  The token is read from, in order:
-the file named by `--token-file`, the systemd credential `token` (a
-drop-in with `LoadCredential=token:/path/to/file`), or
-`/etc/timekpr/timekprw.token`.  Without a token file the service
-refuses to start unless `--no-auth` is given, which is only appropriate
-behind a reverse proxy that authenticates, or on loopback.  TLS is
-left to a reverse proxy; `--root-path` is the prefix such a proxy
-strips.
+### Listening
+
+`--listen SPEC` (repeatable) accepts `HOST:PORT`, `[IPV6]:PORT`,
+`unix:PATH` and `fd:N`.  Every form ends up as a bound socket handed to
+the web server: `timekprw` binds TCP and UNIX sockets itself (a UNIX
+socket gets mode `0660` and, when possible, group `timekpr`), inherits
+an `fd:N` socket somebody else bound, and takes sockets passed by
+systemd socket activation (`LISTEN_FDS`, see `sd_listen_fds(3)`)
+without any option.  The default `127.0.0.1:8463` applies only when
+nothing else is given or passed.
+
+The package's `timekprw.socket` unit listens on
+`/run/timekprw/timekprw.sock` (mode `0660`, group `timekpr`); a
+drop-in adding `ListenStream=127.0.0.1:8463` serves TCP through it as
+well.  Because the unit carries the same name as the service, systemd
+passes its sockets whenever the service starts, so the default TCP
+listener is then not bound.
+
+### Authentication
+
+A connection over a UNIX domain socket is trusted: being allowed to
+open the socket (root, or the `timekpr` group, the same rule as the
+daemon's D-Bus policy) is the access control.  On TCP every endpoint
+except `/health` requires a bearer token (`Authorization: Bearer
+<token>`), read from, in order: the file named by `--token-file`, the
+systemd credential `token` (a drop-in with
+`LoadCredential=token:/path/to/file`), or `/etc/timekpr/timekprw.token`.
+With a TCP listener and no token file the service refuses to start
+unless `--no-auth` is given, which is only appropriate behind a
+reverse proxy that authenticates, or on loopback.  TLS is left to a
+reverse proxy; `--root-path` is the prefix such a proxy strips.
+
+### `timekpra` over HTTP
+
+`timekpra --server URL [--token-file FILE] <command>` (or the
+environment variables `TIMEKPRA_SERVER` and `TIMEKPRA_TOKEN_FILE`) runs
+any `timekpra` command against `timekprw` instead of the daemon's D-Bus
+interface.  `URL` is `http://HOST:PORT[/PREFIX]`, `https://...` or
+`unix:///run/timekprw/timekprw.sock`.  Over TCP the token is read from
+`--token-file`, falling back to `/etc/timekpr/timekprw.token` when that
+exists.  Output is identical to the D-Bus path: the client
+(`client/interface/http/administration.py`) converts the API's JSON
+back into the daemon's shapes with `common/utils/webapi.py`, the same
+module `timekprw` uses in the other direction.
 
 ## Conventions
 
@@ -240,8 +274,8 @@ token is entered once per browser tab.
 
 ### Later additions
 
-- `timekpra` talking to this API instead of D-Bus, selected by a
-  `--server URL` option, for remote administration from the CLI.
+- The GTK administration tool talking to this API (it still uses
+  D-Bus only).
 
 - `GET /api/v1/users/{username}/status/stream`: server-sent events
   with the `status` object every poll interval, so the UI can show a

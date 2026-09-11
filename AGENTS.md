@@ -36,10 +36,15 @@ Upstream code lives in `bin/`, `client/`, `common/`, `server/`,
 other top-level directories: `models.py` (Pydantic models),
 `bridge.py` (translation onto `timekprAdminConnector`, the D-Bus client
 `timekpra` uses), `app.py` (FastAPI routes), `timekprw.py` (entry
-point) and `static/` (the UI).  `bin/timekprw` is a launcher like the
-other three and `resource/server/systemd/timekprw.service` its unit.
-`docs/web-api.md` is the API reference and is installed with the
-package.
+point, listeners, socket activation) and `static/` (the UI).
+`common/utils/webapi.py` holds the daemon/JSON conversions in both
+directions, shared with `client/interface/http/administration.py`, the
+HTTP connector `timekpra --server URL` uses in place of the D-Bus one
+(same method names and `(result, message[, payload])` results; its
+scalar setters are generated from the field tables).  `bin/timekprw`
+is a launcher like the other three; `resource/server/systemd/` has its
+`timekprw.service` and `timekprw.socket`.  `docs/web-api.md` is the
+API reference and is installed with the package.
 
 - Every installed file is listed in `debian/install`; the nixpkgs
   derivation reads that file, installs `usr/share`, `usr/bin`, `etc`,
@@ -62,17 +67,29 @@ package.
 - The web dependencies (FastAPI, uvicorn) are added to nixpkgs'
   derivation in `flake.nix` via `propagatedBuildInputs` and to
   `debian/control` as `Recommends`.
+- Listening is "bound socket in, web server on top": `--listen`
+  accepts `HOST:PORT`, `unix:PATH` and `fd:N`, and sockets passed by
+  systemd socket activation are picked up from `LISTEN_FDS`.  UNIX
+  socket connections need no token (uvicorn reports them with port
+  `None`); TCP does.  `timekprw.service` deliberately has no
+  `After=timekpr.service` (that unit orders itself after
+  `multi-user.target`, which made a cycle) and no `RuntimeDirectory`
+  (it would delete the socket unit's socket on stop).
 - The NixOS module makes `/etc/timekpr` a read-only store path, so
   the daemon cannot save daemon-wide settings there (it writes
   `timekpr.conf` and `timekpr.conf.prev` in place); the test expects
   a `500` from `PATCH /api/v1/config` for that reason.
-- The NixOS test drives one user through `timekpra` and the other
-  through the API (`curl` on the machine), and checks the API's view
-  against `timekpra --userinfo`.  For quick iteration without a VM,
-  build a Python environment with the dependencies from the pinned
-  nixpkgs and run the app against a fake connector with FastAPI's
-  `TestClient`; `Bridge(connector)` takes any object with the
-  connector's method names.
+- The NixOS test runs `timekprw` socket activated (the package's
+  socket unit plus a TCP `listenStreams` drop-in), drives one user
+  through `timekpra` over D-Bus and the other through `timekpra
+  --server unix://...`, compares `--userlist`/`--userinfo` output of
+  all three transports, and checks the API directly with `curl`.  For
+  quick iteration without a VM, build a Python environment with the
+  dependencies from the pinned nixpkgs and run the app against a fake
+  connector with FastAPI's `TestClient`; `Bridge(connector)` takes any
+  object with the connector's method names.  `LISTEN_PID` cannot be
+  set from a `preexec_fn`; wrap the child in `sh -c 'LISTEN_PID=$$
+  ... exec ...'` to simulate activation.
 
 ## Conventions
 

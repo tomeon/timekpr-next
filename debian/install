@@ -13,6 +13,7 @@ resource/server/polkit/50-timekpr.rules usr/share/polkit-1/rules.d/
 resource/server/polkit/timekpr.pkla var/lib/polkit-1/localauthority/10-vendor.d/
 resource/server/systemd/timekpr.service lib/systemd/system/
 resource/server/systemd/timekprw.service lib/systemd/system/
+resource/server/systemd/timekprw.socket lib/systemd/system/
 resource/server/timekpr.conf etc/timekpr/
 
 # sample runtime files
@@ -60,6 +61,7 @@ common/utils/config.py usr/lib/python3/dist-packages/timekpr/common/utils/
 common/utils/__init__.py usr/lib/python3/dist-packages/timekpr/common/utils/
 common/utils/misc.py usr/lib/python3/dist-packages/timekpr/common/utils/
 common/utils/notifications.py usr/lib/python3/dist-packages/timekpr/common/utils/
+common/utils/webapi.py usr/lib/python3/dist-packages/timekpr/common/utils/
 
 # python client
 client/admin/adminprocessor.py usr/lib/python3/dist-packages/timekpr/client/admin/
@@ -71,6 +73,8 @@ client/interface/dbus/administration.py usr/lib/python3/dist-packages/timekpr/cl
 client/interface/dbus/daemon.py usr/lib/python3/dist-packages/timekpr/client/interface/dbus/
 client/interface/dbus/__init__.py usr/lib/python3/dist-packages/timekpr/client/interface/dbus/
 client/interface/dbus/notifications.py usr/lib/python3/dist-packages/timekpr/client/interface/dbus/
+client/interface/http/administration.py usr/lib/python3/dist-packages/timekpr/client/interface/http/
+client/interface/http/__init__.py usr/lib/python3/dist-packages/timekpr/client/interface/http/
 client/interface/__init__.py usr/lib/python3/dist-packages/timekpr/client/interface/
 client/interface/speech/espeak.py usr/lib/python3/dist-packages/timekpr/client/interface/speech/
 client/interface/speech/__init__.py usr/lib/python3/dist-packages/timekpr/client/interface/speech/

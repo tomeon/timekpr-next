@@ -1,0 +1,15 @@
+[Unit]
+Description=Timekpr-nExT web front end socket
+Documentation=file:/usr/share/doc/timekpr-next/web-api.md
+
+[Socket]
+# Connections over this socket need no bearer token: being allowed to
+# open it (root or the timekpr group, like the daemon's D-Bus policy) is
+# the access control.  Add ListenStream=127.0.0.1:8463 in a drop-in to
+# serve TCP (with the token) through socket activation as well.
+ListenStream=/run/timekprw/timekprw.sock
+SocketMode=0660
+SocketGroup=timekpr
+
+[Install]
+WantedBy=sockets.target

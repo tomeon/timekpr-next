@@ -8,7 +8,7 @@ RFC 9457 problem details.
 import secrets
 from typing import Annotated, Optional
 
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -36,7 +36,11 @@ def create_app(bridge, static_dir=None, token=None):
     app = FastAPI(title="timekpr web API", version=cons.TK_VERSION, openapi_url=PREFIX + "/openapi.json", docs_url=PREFIX + "/docs", redoc_url=None)
     bearer = HTTPBearer(auto_error=False, description="The token from timekprw's token file")
 
-    def authenticate(credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer)]):
+    def authenticate(request: Request, credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer)]):
+        # a connection over a UNIX domain socket (uvicorn reports it with no
+        # port) is trusted: the socket's file permissions are its access control
+        if (request.scope.get("server") or (None, None))[1] is None:
+            return
         if token is not None and (credentials is None or not secrets.compare_digest(credentials.credentials.encode(), token.encode())):
             raise HTTPException(401, "a valid bearer token is required", headers={"WWW-Authenticate": "Bearer"})
 

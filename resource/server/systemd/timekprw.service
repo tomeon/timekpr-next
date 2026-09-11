@@ -12,10 +12,11 @@ Type=simple
 # the daemon's D-Bus policy requires for the administration interfaces.
 DynamicUser=yes
 SupplementaryGroups=timekpr
-# Options: TIMEKPRW_HOST, TIMEKPRW_PORT, TIMEKPRW_TOKEN_FILE, ... (see timekprw --help).
-# The bearer token is read from the systemd credential "token" when one
-# is loaded (LoadCredential=token:/path/to/token in a drop-in), otherwise
-# from /etc/timekpr/timekprw.token.
+# Options: TIMEKPRW_LISTEN, TIMEKPRW_TOKEN_FILE, ... (see timekprw --help).
+# With timekprw.socket active its sockets are used instead of the default
+# TCP listener.  The bearer token is read from the systemd credential
+# "token" when one is loaded (LoadCredential=token:/path/to/token in a
+# drop-in), otherwise from /etc/timekpr/timekprw.token.
 EnvironmentFile=-/etc/timekpr/timekprw.env
 ExecStart=/usr/bin/timekprw
 StandardOutput=journal

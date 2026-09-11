@@ -6,9 +6,10 @@
 # For each user the test (timekpr.py) logs in over SSH (through PAM) and
 # checks that timekpr terminates the session when the user has no screen
 # time left, and leaves it alone once the user has been granted extra time.
-# The settings are made through timekpra for one user and through the web
-# API served by timekprw for the other, and the API is checked against
-# what timekpra reports.
+# The settings are made through timekpra talking D-Bus for one user and
+# through timekpra talking to the web front end (timekprw, socket
+# activated, over its UNIX socket) for the other; the web API is also
+# checked directly against what timekpra reports.
 #
 # `backend` selects how the machine is run: "vm" for a QEMU virtual
 # machine (`nodes`), "container" for a systemd-nspawn container
@@ -36,11 +37,15 @@
   dave = "dave";
   erin = "erin";
   timekprwToken = "timekprw-test-token";
+  timekprwTokenFile = pkgs.writeText "timekprw-token" timekprwToken;
   timekprwPort = 8463;
+  # the UNIX socket of the package's timekprw.socket unit
+  timekprwSocket = "/run/timekprw/timekprw.sock";
 
   # Values the test script needs; see the top of timekpr.py.
   testConfig = {
-    inherit alice alicePassword bobPassword idmAdminPassword carol dave erin timekprwToken timekprwPort;
+    inherit alice alicePassword bobPassword idmAdminPassword carol dave erin timekprwToken timekprwPort timekprwSocket;
+    timekprwTokenFile = "${timekprwTokenFile}";
     bob = "${bob}@${idmDomain}";
     timekprPackage = "${timekpr}";
   };
@@ -130,14 +135,17 @@
       });
     '';
 
-    # The web front end; its unit comes with the package.  The bearer
-    # token is handed over as a systemd credential.
-    systemd.services.timekprw = {
-      wantedBy = ["multi-user.target"];
-      serviceConfig.LoadCredential = [
-        "token:${pkgs.writeText "timekprw-token" timekprwToken}"
-      ];
+    # The web front end, socket activated.  The package's timekprw.socket
+    # provides the UNIX socket; a TCP listener is added to it here.  The
+    # bearer token (needed on TCP only) is handed over as a systemd
+    # credential.
+    systemd.sockets.timekprw = {
+      wantedBy = ["sockets.target"];
+      listenStreams = ["127.0.0.1:${toString timekprwPort}"];
     };
+    systemd.services.timekprw.serviceConfig.LoadCredential = [
+      "token:${timekprwTokenFile}"
+    ];
 
     users.users = {
       ${alice} = {

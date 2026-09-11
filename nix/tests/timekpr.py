@@ -21,8 +21,11 @@ DAVE = CONFIG["dave"]
 ERIN = CONFIG["erin"]
 TIMEKPR_PACKAGE = CONFIG["timekprPackage"]
 TIMEKPRW_TOKEN = CONFIG["timekprwToken"]
+TIMEKPRW_TOKEN_FILE = CONFIG["timekprwTokenFile"]
 TIMEKPRW_PORT = CONFIG["timekprwPort"]
+TIMEKPRW_SOCKET = CONFIG["timekprwSocket"]
 TIMEKPRW_URL = f"http://127.0.0.1:{TIMEKPRW_PORT}"
+TIMEKPRW_UNIX_URL = f"unix://{TIMEKPRW_SOCKET}"
 API = f"{TIMEKPRW_URL}/api/v1"
 BASH = "/run/current-system/sw/bin/bash"
 
@@ -65,8 +68,16 @@ POLKIT_USER_CONFIGURE = "com.timekpr.server.user.admin.configure"
 POLKIT_USER_TIME_LEFT = "com.timekpr.server.user.admin.time-left"
 
 
-def timekpra(*args):
-    return machine.succeed("timekpra " + " ".join(map(shlex.quote, args)))
+def timekpra(*args, server=None, token_file=None):
+    """Run timekpra, against timekprw at `server` instead of D-Bus if given."""
+    options = []
+    if server is not None:
+        options += ["--server", server]
+    if token_file is not None:
+        options += ["--token-file", token_file]
+    return machine.succeed(
+        "timekpra " + " ".join(map(shlex.quote, options + list(args)))
+    )
 
 
 def timekpra_as(user, *args):
@@ -98,9 +109,12 @@ def weekday_limits(user):
     raise AssertionError(f"no LIMITS_PER_WEEKDAYS in the configuration of {user}")
 
 
-def api(method, path, body=None, token=TIMEKPRW_TOKEN):
-    """Call the web API; return the HTTP status and the decoded body."""
+def api(method, path, body=None, token=TIMEKPRW_TOKEN, unix=False):
+    """Call the web API (over TCP, or the UNIX socket if `unix`); return
+    the HTTP status and the decoded body."""
     cmd = ["curl", "-sS", "-w", "\n%{http_code}", "-X", method]
+    if unix:
+        cmd += ["--unix-socket", TIMEKPRW_SOCKET]
     if token is not None:
         cmd += ["-H", f"Authorization: Bearer {token}"]
     if body is not None:
@@ -110,8 +124,8 @@ def api(method, path, body=None, token=TIMEKPRW_TOKEN):
     return int(status), json.loads(body)
 
 
-def expect(method, path, body=None, status=200, token=TIMEKPRW_TOKEN):
-    got, data = api(method, path, body, token)
+def expect(method, path, body=None, status=200, token=TIMEKPRW_TOKEN, unix=False):
+    got, data = api(method, path, body, token, unix)
     assert got == status, f"{method} {path}: expected HTTP {status}, got {got}: {data}"
     return data
 
@@ -121,34 +135,40 @@ def user_path(user, suffix):
 
 
 class Timekpra:
-    """Administer timekpr through the CLI."""
+    """Administer timekpr through the CLI, talking D-Bus or, given a
+    server URL, HTTP to timekprw."""
 
-    name = "timekpra"
+    def __init__(self, server=None, token_file=None):
+        self.server = server
+        self.token_file = token_file
+        self.name = "timekpra" if server is None else f"timekpra --server {server}"
 
-    def knows(self, user):
-        return user in timekpra("--userlist")
-
-    def forbid(self, user):
-        timekpra("--settimelimits", user, ";".join(map(str, NO_TIME.values())))
-
-    def grant(self, user, seconds):
-        timekpra("--settimeleft", user, "+", str(seconds))
-
-
-class Timekprw:
-    """Administer timekpr through the web API."""
-
-    name = "timekprw"
+    def run(self, *args):
+        return timekpra(*args, server=self.server, token_file=self.token_file)
 
     def knows(self, user):
-        return user in [entry["username"] for entry in expect("GET", "/users")]
+        return user in self.run("--userlist")
 
     def forbid(self, user):
-        expect("PATCH", user_path(user, "/config"), {"limits_per_day": NO_TIME})
+        self.run("--settimelimits", user, ";".join(map(str, NO_TIME.values())))
 
     def grant(self, user, seconds):
-        body = {"operation": "add", "seconds": seconds}
-        expect("POST", user_path(user, "/time-left"), body)
+        self.run("--settimeleft", user, "+", str(seconds))
+
+
+DBUS = Timekpra()
+UNIX = Timekpra(server=TIMEKPRW_UNIX_URL)
+HTTP = Timekpra(server=TIMEKPRW_URL, token_file=TIMEKPRW_TOKEN_FILE)
+
+
+def config_lines(userinfo):
+    """The configuration lines of `timekpra --userinfo` output, without
+    the counters (which move with the clock)."""
+    return [
+        line
+        for line in userinfo.splitlines()
+        if not line.startswith(("TIME_", "PLAYTIME_LEFT", "PLAYTIME_SPENT", "ACTUAL_"))
+    ]
 
 
 def ssh_login(user, password):
@@ -310,15 +330,61 @@ def exercise_authorization():
 
 
 def check_web_api():
-    """The API against timekpra's view of the same configuration (alice
-    has just been exercised through timekpra)."""
+    """The API and timekpra --server against timekpra's D-Bus view of the
+    same configuration (alice has just been exercised over D-Bus)."""
     config_path = user_path(ALICE, "/config")
 
-    with subtest("timekprw: health, authentication, and the UI"):
+    with subtest("timekprw: socket activation, health, authentication, and the UI"):
+        machine.wait_for_unit("timekprw.socket")
         assert expect("GET", "/health", token=None)["daemon"] == "ok"
+        machine.wait_for_unit("timekprw.service")
         expect("GET", "/users", status=401, token=None)
         expect("GET", "/users", status=401, token="wrong")
+        # the UNIX socket's permissions are its access control: no token
+        expect("GET", "/users", token=None, unix=True)
         assert "<title>timekpr</title>" in machine.succeed(f"curl -fsS {TIMEKPRW_URL}/")
+
+    with subtest("timekpra --server: the same answers as over D-Bus"):
+        for remote in (UNIX, HTTP):
+            assert remote.run("--userlist") == DBUS.run("--userlist"), remote.name
+            for command in ("--userinfo", "--userinfort"):
+                expected = config_lines(DBUS.run(command, ALICE))
+                got = config_lines(remote.run(command, ALICE))
+                assert got == expected, (
+                    f"{remote.name} {command}:\n{got}\n!=\n{expected}"
+                )
+        bad = machine.succeed(
+            f"timekpra --server {TIMEKPRW_UNIX_URL} --userinfo nobody"
+        )
+        assert "no configuration for user nobody" in bad, bad
+
+    with subtest("timekpra --server: settings arrive at the daemon"):
+        UNIX.run("--setallowedhours", ALICE, "3", "7;11[0-30];!14")
+        UNIX.run("--setalloweddays", ALICE, "2;4")
+        UNIX.run("--settimelimits", ALICE, "0;3600")
+        HTTP.run("--setlockouttype", ALICE, "suspendwake;7;18")
+        HTTP.run("--setplaytimeenabled", ALICE, "true")
+        HTTP.run("--setplaytimeactivities", ALICE, "firefox[Firefox]")
+        info = DBUS.run("--userinfo", ALICE)
+        for line in (
+            "ALLOWED_HOURS_3: 7;11[0-30];!14",
+            "ALLOWED_WEEKDAYS: 2;4",
+            "LIMITS_PER_WEEKDAYS: 0;3600",
+            "LOCKOUT_TYPE: suspendwake",
+            "WAKEUP_HOUR_INTERVAL: 7;18",
+            "PLAYTIME_ENABLED: True",
+            "PLAYTIME_ACTIVITIES: firefox[Firefox]",
+        ):
+            assert line in info, f"{line!r} not in timekpra --userinfo:\n{info}"
+        # back to the defaults (keeping "no time"), through D-Bus
+        DBUS.run("--setalloweddays", ALICE, ";".join(map(str, ALL_DAYS)))
+        DBUS.run("--settimelimits", ALICE, ";".join(map(str, NO_TIME.values())))
+        DBUS.run("--setlockouttype", ALICE, "terminate")
+        DBUS.run("--setplaytimeenabled", ALICE, "false")
+        DBUS.run("--setallowedhours", ALICE, "ALL", ";".join(map(str, range(24))))
+        assert config_lines(UNIX.run("--userinfo", ALICE)) == config_lines(
+            DBUS.run("--userinfo", ALICE)
+        )
 
     with subtest("timekprw: reports what timekpra set"):
         config = expect("GET", config_path)
@@ -392,7 +458,7 @@ def check_web_api():
 def main():
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("timekpr.service")
-    machine.wait_for_unit("timekprw.service")
+    machine.wait_for_unit("timekprw.socket")
     machine.wait_for_open_port(22)
     machine.wait_for_open_port(TIMEKPRW_PORT)
 
@@ -403,7 +469,7 @@ def main():
             )
 
     exercise_help()
-    exercise(ALICE, ALICE_PASSWORD, Timekpra())
+    exercise(ALICE, ALICE_PASSWORD, DBUS)
     exercise_authorization()
     check_web_api()
 
@@ -426,7 +492,7 @@ def main():
         )
         machine.wait_until_succeeds(f"getent passwd {shlex.quote(BOB)}")
 
-    exercise(BOB, BOB_PASSWORD, Timekprw())
+    exercise(BOB, BOB_PASSWORD, UNIX)
 
 
 machine.start()

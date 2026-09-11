@@ -78,6 +78,9 @@
 
         devshells.default = {
           packages = [config.treefmt.build.wrapper];
+          commands = [
+            {package = pkgs.act;}
+          ];
         };
       };
     };

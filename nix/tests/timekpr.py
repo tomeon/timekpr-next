@@ -34,8 +34,6 @@ TIMEKPR_LOG = "/var/log/timekpr.log"
 # What timekpra prints when the daemon refuses a command.  timekpra
 # always exits 0, so this text is the only signal.
 DENIED = "access denied"
-# What the daemon says when a per-user method is called by someone else.
-NOT_OWN_USER = "or the superuser may call this method"
 TIMEKPR_BUS = "com.timekpr.server /com/timekpr/server"
 LIMITS_INTERFACE = "com.timekpr.server.user.limits"
 SESSION_ATTRIBUTES_INTERFACE = "com.timekpr.server.user.sessionattributes"
@@ -164,21 +162,25 @@ def exercise_authorization():
         assert DENIED in out and ALICE not in out, out
 
     with subtest(f"{CAROL}: the per-user interfaces refuse other users"):
-        status, out = call_as(CAROL, LIMITS_INTERFACE, "requestTimeLeft", "s", ALICE)
-        assert status != 0 and NOT_OWN_USER in out, out
-        status, out = call_as(CAROL, LIMITS_INTERFACE, "requestTimeLimits", "s", ALICE)
-        assert status != 0 and NOT_OWN_USER in out, out
-        status, out = call_as(
-            CAROL,
-            SESSION_ATTRIBUTES_INTERFACE,
-            "processUserSessionAttributes",
-            "ssss",
-            ALICE,
-            "scrs",
-            "",
-            "true",
-        )
-        assert status != 0 and NOT_OWN_USER in out, out
+        # busctl reports the AccessDenied error only on stderr, which the
+        # driver does not capture, so check its status and the daemon's log.
+        calls = [
+            (LIMITS_INTERFACE, "requestTimeLeft", "s", ALICE),
+            (LIMITS_INTERFACE, "requestTimeLimits", "s", ALICE),
+            (
+                SESSION_ATTRIBUTES_INTERFACE,
+                "processUserSessionAttributes",
+                "ssss",
+                ALICE,
+                "scrs",
+                "",
+                "true",
+            ),
+        ]
+        for call in calls:
+            status, out = call_as(CAROL, *call)
+            assert status != 0, f"{call[1]} was not refused: {out!r}"
+        wait_for_log("ACCESS DENIED", f'about user "{ALICE}"')
 
     with subtest(f"{ALICE}: the per-user interfaces accept the user themselves"):
         # alice is not logged in, so the daemon answers "not found";

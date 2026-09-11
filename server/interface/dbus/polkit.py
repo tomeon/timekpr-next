@@ -98,17 +98,26 @@ class timekprPolkitAuthority(object):
             pAuthorized()
             return
 
-        def _replyHandler(pIsAuthorized, pIsChallenge, pResultDetails):
-            if pIsAuthorized:
+        def _deny(pReason):
+            log.log(cons.TK_LOG_LEVEL_INFO, "polkit: NOT AUTHORIZED %s for %s (%s)%s" % (pActionId, pSender, self._formatDetails(pDetails), pReason))
+            pDenied(accessDenied(msg.getTranslation("TK_MSG_DBUS_NOT_AUTHORIZED") % (pActionId)))
+
+        def _replyHandler(pResult):
+            # the caller must get an answer whatever happens here
+            try:
+                # AuthorizationResult is one struct: (is_authorized, is_challenge, details)
+                isAuthorized, isChallenge, _resultDetails = pResult
+            except Exception as unexpectedException:
+                _deny(", unexpected reply from polkit: %s" % (str(unexpectedException)))
+                return
+            if isAuthorized:
                 log.log(cons.TK_LOG_LEVEL_INFO, "polkit: AUTHORIZED %s for %s (%s)" % (pActionId, pSender, self._formatDetails(pDetails)))
                 pAuthorized()
             else:
-                log.log(cons.TK_LOG_LEVEL_INFO, "polkit: NOT AUTHORIZED %s for %s (%s)%s" % (pActionId, pSender, self._formatDetails(pDetails), ", authentication was required" if pIsChallenge else ""))
-                pDenied(accessDenied(msg.getTranslation("TK_MSG_DBUS_NOT_AUTHORIZED") % (pActionId)))
+                _deny(", authentication was required" if isChallenge else "")
 
         def _errorHandler(pException):
-            log.log(cons.TK_LOG_LEVEL_INFO, "polkit: ERROR checking %s for %s (%s): %s" % (pActionId, pSender, self._formatDetails(pDetails), str(pException)))
-            pDenied(accessDenied(msg.getTranslation("TK_MSG_DBUS_NOT_AUTHORIZED") % (pActionId)))
+            _deny(", error asking polkit: %s" % (str(pException)))
 
         # org.freedesktop.PolicyKit1.Authority.CheckAuthorization(Subject subject, String action_id, Dict<String,String> details, CheckAuthorizationFlags flags, String cancellation_id) -> AuthorizationResult
         subject = dbus.Struct(("system-bus-name", dbus.Dictionary({"name": pSender}, signature="sv")), signature="sa{sv}")

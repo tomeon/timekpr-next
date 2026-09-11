@@ -12,7 +12,7 @@ set -euo pipefail
 ensure_nix_on_path
 
 args=(-L)
-if [ ! -e /dev/kvm ]; then
+if [[ ! -e /dev/kvm ]]; then
   log "no /dev/kvm: advertising the kvm feature so NixOS tests run under emulation"
   args+=(--option extra-system-features kvm)
 fi

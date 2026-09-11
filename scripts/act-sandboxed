@@ -29,16 +29,24 @@ fi
 cache=$(cache_dir act)
 
 # --- Docker daemon -----------------------------------------------------------
-if [ -z "${DOCKER_HOST:-}" ] && [ ! -S /var/run/docker.sock ]; then
-  command -v dockerd >/dev/null || die "no Docker daemon reachable and dockerd is not installed"
-  [ "$(id -u)" = 0 ] || die "no Docker daemon reachable; start one (or run as root to have this script start dockerd)"
+if [[ -z ${DOCKER_HOST:-} && ! -S /var/run/docker.sock ]]; then
+  if ! command -v dockerd >/dev/null; then
+    die "no Docker daemon reachable and dockerd is not installed"
+  fi
+  if [[ $(id -u) != 0 ]]; then
+    die "no Docker daemon reachable; start one (or run as root to have this script start dockerd)"
+  fi
   log "starting dockerd (log: $cache/dockerd.log)"
   setsid nohup dockerd >"$cache/dockerd.log" 2>&1 </dev/null &
-  for _ in $(seq 1 60); do
-    [ -S /var/run/docker.sock ] && break
+  for _ in {1..60}; do
+    if [[ -S /var/run/docker.sock ]]; then
+      break
+    fi
     sleep 1
   done
-  [ -S /var/run/docker.sock ] || die "dockerd did not come up; see $cache/dockerd.log"
+  if [[ ! -S /var/run/docker.sock ]]; then
+    die "dockerd did not come up; see $cache/dockerd.log"
+  fi
 fi
 
 # --- binary cache with the flake inputs -------------------------------------
@@ -53,7 +61,7 @@ def walk(node):
 print("\n".join(sorted(set(walk(json.load(sys.stdin))))))'
 )
 key=$cache/cache-key.sec
-if [ ! -e "$key" ]; then
+if [[ ! -e $key ]]; then
   (umask 077 && nix key generate-secret --key-name timekpr-next-act >"$key")
 fi
 public_key=$(nix key convert-secret-to-public <"$key")
@@ -66,7 +74,7 @@ container_opts=(-v "$cache/inputs:/inputcache:ro" -v "$cache/nix.conf:/act-nix.c
 act_args=(--env NIX_USER_CONF_FILES=/act-nix.conf)
 
 proxy=${HTTPS_PROXY:-${https_proxy:-}}
-if [ -n "$proxy" ]; then
+if [[ -n $proxy ]]; then
   act_args+=(--env "HTTPS_PROXY=$proxy" --env "https_proxy=$proxy")
   case $proxy in
   *://127.* | *://localhost* | *://\[::1\]*)
@@ -78,7 +86,7 @@ if [ -n "$proxy" ]; then
 fi
 
 ca=${SSL_CERT_FILE:-${CURL_CA_BUNDLE:-${NIX_SSL_CERT_FILE:-}}}
-if [ -n "$ca" ]; then
+if [[ -n $ca ]]; then
   container_opts+=(-v "$ca:/act-ca.crt:ro")
   for var in SSL_CERT_FILE CURL_CA_BUNDLE NIX_SSL_CERT_FILE NODE_EXTRA_CA_CERTS; do
     act_args+=(--env "$var=/act-ca.crt")

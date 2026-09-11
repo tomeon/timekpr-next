@@ -18,7 +18,9 @@ ensure_nix_on_path() {
     PATH="$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH"
     export PATH
   fi
-  command -v nix >/dev/null || die "nix not found on PATH"
+  if ! command -v nix >/dev/null; then
+    die "nix not found on PATH"
+  fi
 }
 
 repo_root() {

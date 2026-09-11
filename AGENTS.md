@@ -62,6 +62,10 @@ package.
 - The web dependencies (FastAPI, uvicorn) are added to nixpkgs'
   derivation in `flake.nix` via `propagatedBuildInputs` and to
   `debian/control` as `Recommends`.
+- The NixOS module makes `/etc/timekpr` a read-only store path, so
+  the daemon cannot save daemon-wide settings there (it writes
+  `timekpr.conf` and `timekpr.conf.prev` in place); the test expects
+  a `500` from `PATCH /api/v1/config` for that reason.
 - The NixOS test drives one user through `timekpra` and the other
   through the API (`curl` on the machine), and checks the API's view
   against `timekpra --userinfo`.  For quick iteration without a VM,

@@ -17,6 +17,14 @@ from timekpr.web import models
 
 # the daemon reports "not connected" and "call failed" through these codes
 _RESULT_NOT_READY = -2
+# the daemon's replies when it hit an exception rather than invalid input
+_DAEMON_FAILURES = (
+    "TK_MSG_CONFIG_LOADER_UNEXPECTED_ERROR",
+    "TK_MSG_CONFIG_LOADER_USER_UNEXPECTED_ERROR",
+    "TK_MSG_CONFIG_LOADER_USERLIST_UNEXPECTED_ERROR",
+    "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR",
+    "TK_MSG_CONFIG_LOADER_SAVECONTROL_UNEXPECTED_ERROR",
+)
 
 # API field -> daemon key / setter for scalar daemon-wide settings
 SERVER_FIELDS = {
@@ -204,6 +212,10 @@ class Bridge(object):
         if code != 0 and message == msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED"):
             # the daemon's D-Bus policy refused us: timekprw is not root or in the timekpr group
             raise DaemonError(502, message)
+        if code != 0 and message in [msg.getTranslation(key) for key in _DAEMON_FAILURES]:
+            # the daemon could not apply a valid request (its log has the reason,
+            # a read-only /etc/timekpr for example)
+            raise DaemonError(500, message)
         if code != 0:
             raise DaemonError(400, message)
         return result[2] if len(result) > 2 else None

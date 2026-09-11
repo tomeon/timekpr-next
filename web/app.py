@@ -23,7 +23,7 @@ PREFIX = "/api/v1"
 Username = Annotated[str, Path(min_length=1)]
 Day = Annotated[str, Path(pattern="^([1-7]|all)$", description="ISO weekday or \"all\"")]
 
-_TITLES = {400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 502: "Bad Gateway", 503: "Service Unavailable"}
+_TITLES = {400: "Bad Request", 401: "Unauthorized", 404: "Not Found", 500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable"}
 
 
 def problem(status, detail=None, errors=(), applied=(), headers=None):

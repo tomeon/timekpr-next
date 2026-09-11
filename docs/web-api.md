@@ -55,10 +55,13 @@ strips.
   `{"type", "title", "status", "detail", "errors": [{"field", "message"}]}`.
   `errors` and `applied` are omitted when empty.  A user-scoped request
   for a user the daemon has no configuration for is `404`; a value the
-  daemon refuses is `400` with its message as `detail`; `503` means
-  the daemon (or the system bus) is not reachable and `502` that the
-  daemon's D-Bus policy refused `timekprw`.  `401` is a missing or
-  wrong token.
+  daemon refuses is `400` with its message as `detail`; `500` means
+  the daemon accepted the request but failed to apply it (its log,
+  `/var/log/timekpr.log`, has the reason; on NixOS `/etc/timekpr` is
+  a read-only store path, so the daemon-wide settings cannot be
+  changed there); `503` means the daemon (or the system bus) is not
+  reachable and `502` that the daemon's D-Bus policy refused
+  `timekprw`.  `401` is a missing or wrong token.
 - Authentication is a bearer token on every endpoint except
   `/health`, see "Running" above.  The backend process itself must
   run as root or as a member of the `timekpr` group, because that is

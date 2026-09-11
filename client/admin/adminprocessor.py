@@ -7,6 +7,9 @@ Created on Aug 28, 2018
 # imports
 import os
 import getpass
+import shutil
+import subprocess
+import sys
 from os import geteuid
 
 # timekpr imports
@@ -75,16 +78,45 @@ class timekprAdminClient(object):
 
         # for CLI connections
         if timekprForceCLI:
-            # connect
-            self._timekprAdminConnector.initTimekprConnection(True)
-            # connected?
-            if self._timekprAdminConnector.isConnected()[1]:
-                # use CLI
-                # validate possible parameters and their values, when fine - execute them as well
-                self.checkAndExecuteAdminCommands(*args)
-                log.flushLogFile()
+            # the server asks polkit before doing anything, and polkit needs an agent to ask us for a password
+            ttyAgent = self.startTtyAuthenticationAgent()
+            try:
+                # connect
+                self._timekprAdminConnector.initTimekprConnection(True)
+                # connected?
+                if self._timekprAdminConnector.isConnected()[1]:
+                    # use CLI
+                    # validate possible parameters and their values, when fine - execute them as well
+                    self.checkAndExecuteAdminCommands(*args)
+                    log.flushLogFile()
+            finally:
+                self.stopTtyAuthenticationAgent(ttyAgent)
 
     # --------------- initialization / helper methods --------------- #
+
+    def startTtyAuthenticationAgent(self):
+        """Register polkit's text mode authentication agent for this process, if there is a terminal to ask on"""
+        agent = None
+        # no agent without a terminal or without polkit
+        if not sys.stdin.isatty() or shutil.which("pkttyagent") is None:
+            return None
+        try:
+            # pkttyagent closes the notify fd once it is registered (or exits, which closes it too)
+            readFd, writeFd = os.pipe()
+            agent = subprocess.Popen(["pkttyagent", "--process", str(os.getpid()), "--notify-fd", str(writeFd), "--fallback"], pass_fds=(writeFd,))
+            os.close(writeFd)
+            os.read(readFd, 1)
+            os.close(readFd)
+        except Exception as ex:
+            # without an agent authorization simply fails for those who need to authenticate
+            log.log(cons.TK_LOG_LEVEL_INFO, "could not start pkttyagent: %s" % (str(ex)))
+        return agent
+
+    def stopTtyAuthenticationAgent(self, pAgent):
+        """Stop the agent started by startTtyAuthenticationAgent"""
+        if pAgent is not None and pAgent.poll() is None:
+            pAgent.terminate()
+            pAgent.wait()
 
     def finishTimekpr(self, signal=None, frame=None):
         """Exit timekpr admin GUI gracefully"""

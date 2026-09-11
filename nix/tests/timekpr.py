@@ -14,6 +14,9 @@ ALICE_PASSWORD = CONFIG["alicePassword"]
 BOB = CONFIG["bob"]
 BOB_PASSWORD = CONFIG["bobPassword"]
 IDM_ADMIN_PASSWORD = CONFIG["idmAdminPassword"]
+CAROL = CONFIG["carol"]
+DAVE = CONFIG["dave"]
+ERIN = CONFIG["erin"]
 TIMEKPR_PACKAGE = CONFIG["timekprPackage"]
 BASH = "/run/current-system/sw/bin/bash"
 
@@ -25,11 +28,52 @@ HOLD = 45
 NO_TIME = "0;0;0;0;0;0;0"
 # Extra time granted for today, in seconds.
 EXTRA_TIME = "300"
+# Per-weekday limits a privileged user sets, distinguishable from NO_TIME.
+SOME_TIME = "60;60;60;60;60;60;60"
 TIMEKPR_LOG = "/var/log/timekpr.log"
+# What timekpra prints when the daemon refuses a command.  timekpra
+# always exits 0, so this text is the only signal.
+DENIED = "access denied"
+# What the daemon says when a per-user method is called by someone else.
+NOT_OWN_USER = "or the superuser may call this method"
+TIMEKPR_BUS = "com.timekpr.server /com/timekpr/server"
+LIMITS_INTERFACE = "com.timekpr.server.user.limits"
+SESSION_ATTRIBUTES_INTERFACE = "com.timekpr.server.user.sessionattributes"
+POLKIT_USER_CONFIGURE = "com.timekpr.server.user.admin.configure"
+POLKIT_USER_TIME_LEFT = "com.timekpr.server.user.admin.time-left"
 
 
 def timekpra(*args):
     return machine.succeed("timekpra " + " ".join(map(shlex.quote, args)))
+
+
+def timekpra_as(user, *args):
+    """Run timekpra as an unprivileged user and return its output."""
+    return machine.succeed(
+        f"runuser -u {shlex.quote(user)} -- timekpra "
+        + " ".join(map(shlex.quote, args))
+    )
+
+
+def call_as(user, interface, method, signature, *args):
+    """Call a method on the daemon as the given user; (status, output)."""
+    return machine.execute(
+        f"runuser -u {shlex.quote(user)} -- busctl --system call {TIMEKPR_BUS}"
+        f" {interface} {method} {signature} " + " ".join(map(shlex.quote, args))
+    )
+
+
+def wait_for_log(*needles):
+    """Wait for a log line containing all the needles; the log is flushed lazily."""
+    first, *rest = (f"grep -F {shlex.quote(needle)}" for needle in needles)
+    machine.wait_until_succeeds(" | ".join([f"{first} {TIMEKPR_LOG}", *rest]))
+
+
+def weekday_limits(user):
+    for line in timekpra("--userinfo", user).splitlines():
+        if line.startswith("LIMITS_PER_WEEKDAYS: "):
+            return line.split(": ", 1)[1]
+    raise AssertionError(f"no LIMITS_PER_WEEKDAYS in the configuration of {user}")
 
 
 def ssh_login(user, password):
@@ -100,6 +144,62 @@ def exercise(user, password):
         expect_login_survives(user, password)
 
 
+def exercise_authorization():
+    """The daemon decides who may call what: the admin interfaces go
+    through polkit, the per-user interfaces are limited to the user in
+    question.  Nobody here has an authentication agent, so anyone who
+    would have to authenticate is refused outright."""
+    with subtest(f"{CAROL}: an unprivileged user may not change limits"):
+        before = weekday_limits(ALICE)
+        assert DENIED in timekpra_as(CAROL, "--settimelimits", ALICE, SOME_TIME)
+        assert weekday_limits(ALICE) == before
+        wait_for_log(f"polkit: NOT AUTHORIZED {POLKIT_USER_CONFIGURE}", f"user={ALICE}")
+
+    with subtest(f"{CAROL}: an unprivileged user may not grant themselves time"):
+        assert DENIED in timekpra_as(CAROL, "--settimeleft", CAROL, "+", EXTRA_TIME)
+        wait_for_log(f"polkit: NOT AUTHORIZED {POLKIT_USER_TIME_LEFT}", f"user={CAROL}")
+
+    with subtest(f"{CAROL}: an unprivileged user may not list users"):
+        out = timekpra_as(CAROL, "--userlist")
+        assert DENIED in out and ALICE not in out, out
+
+    with subtest(f"{CAROL}: the per-user interfaces refuse other users"):
+        status, out = call_as(CAROL, LIMITS_INTERFACE, "requestTimeLeft", "s", ALICE)
+        assert status != 0 and NOT_OWN_USER in out, out
+        status, out = call_as(CAROL, LIMITS_INTERFACE, "requestTimeLimits", "s", ALICE)
+        assert status != 0 and NOT_OWN_USER in out, out
+        status, out = call_as(
+            CAROL,
+            SESSION_ATTRIBUTES_INTERFACE,
+            "processUserSessionAttributes",
+            "ssss",
+            ALICE,
+            "scrs",
+            "",
+            "true",
+        )
+        assert status != 0 and NOT_OWN_USER in out, out
+
+    with subtest(f"{ALICE}: the per-user interfaces accept the user themselves"):
+        # alice is not logged in, so the daemon answers "not found";
+        # the point is that the call is not refused.
+        status, out = call_as(ALICE, LIMITS_INTERFACE, "requestTimeLeft", "s", ALICE)
+        assert status == 0 and "is not found" in out, out
+
+    with subtest(f"{DAVE}: a member of the timekpr group may change limits"):
+        assert DENIED not in timekpra_as(DAVE, "--settimelimits", ALICE, SOME_TIME)
+        assert weekday_limits(ALICE) == SOME_TIME
+        assert ALICE in timekpra_as(DAVE, "--userlist")
+        wait_for_log(f"polkit: AUTHORIZED {POLKIT_USER_CONFIGURE}", f"user={ALICE}")
+
+    with subtest(f"{ERIN}: a rule may allow one action for one user only"):
+        assert DENIED not in timekpra_as(ERIN, "--settimeleft", ALICE, "+", EXTRA_TIME)
+        wait_for_log(f"polkit: AUTHORIZED {POLKIT_USER_TIME_LEFT}", f"user={ALICE}")
+        assert DENIED in timekpra_as(ERIN, "--settimeleft", CAROL, "+", EXTRA_TIME)
+        assert DENIED in timekpra_as(ERIN, "--settimelimits", ALICE, NO_TIME)
+        assert weekday_limits(ALICE) == SOME_TIME
+
+
 def main():
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("timekpr.service")
@@ -111,6 +211,7 @@ def main():
         )
 
     exercise(ALICE, ALICE_PASSWORD)
+    exercise_authorization()
 
     with subtest("kanidm: server, provisioning, and UNIX daemon are up"):
         machine.wait_for_unit("kanidm.service")

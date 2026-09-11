@@ -7,6 +7,8 @@ bin/timekprd usr/bin/
 resource/server/dbus/timekpr.conf etc/dbus-1/system.d/
 resource/server/logrotate.d/timekpr etc/logrotate.d/
 resource/server/polkit/com.ubuntu.timekpr.pkexec.policy usr/share/polkit-1/actions/
+resource/server/polkit/com.timekpr.server.policy usr/share/polkit-1/actions/
+resource/server/polkit/50-timekpr.rules usr/share/polkit-1/rules.d/
 resource/server/systemd/timekpr.service lib/systemd/system/
 resource/server/timekpr.conf etc/timekpr/
 
@@ -87,6 +89,7 @@ server/interface/dbus/__init__.py usr/lib/python3/dist-packages/timekpr/server/i
 server/interface/dbus/logind/__init__.py usr/lib/python3/dist-packages/timekpr/server/interface/dbus/logind/
 server/interface/dbus/logind/manager.py usr/lib/python3/dist-packages/timekpr/server/interface/dbus/logind/
 server/interface/dbus/logind/user.py usr/lib/python3/dist-packages/timekpr/server/interface/dbus/logind/
+server/interface/dbus/polkit.py usr/lib/python3/dist-packages/timekpr/server/interface/dbus/
 server/interface/__init__.py usr/lib/python3/dist-packages/timekpr/server/interface/
 server/timekprd.py usr/lib/python3/dist-packages/timekpr/server/
 server/user/playtime.py usr/lib/python3/dist-packages/timekpr/server/user/

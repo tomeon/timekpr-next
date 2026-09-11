@@ -129,6 +129,25 @@ Other facts about the sandbox worth knowing before trying something:
   containing `:` or `=` crash configparser on Python 3.14, and per-user
   D-Bus object paths were built by stripping characters from the user
   name, which broke domain users such as `bob@idm.nixos.test`.
+- Access to the daemon's D-Bus interface is decided by the daemon, not
+  the bus policy (which now lets anyone send).  Methods on the two
+  admin interfaces are declared with `timekprAuthorizedMethod` from
+  `server/interface/dbus/polkit.py`, which asks polkit for one of the
+  actions in `resource/server/polkit/com.timekpr.server.policy` (with
+  `user` and `method` details for rules) and replies asynchronously
+  once polkit answers, so an authentication prompt does not block the
+  main loop.  Every method on those interfaces must use it.  The
+  per-user interfaces only accept calls from that user or root.  Root
+  is always authorized (polkit does the same), which is why `timekpra`
+  as root in the test needs no rule.  `50-timekpr.rules` reproduces
+  the old `timekpr` group grant; site rules sorting earlier win.
+- `timekpra` always exits 0; the test detects refused commands by the
+  "access denied" text in its output and by checking that nothing
+  changed.  Polkit refuses non-root callers that have no agent to
+  authenticate with, so denial is immediate in the test.
+- The nixpkgs derivation runs `substituteInPlace --replace-fail` on
+  every `.policy` file, which fails on one not mentioning
+  `/usr/bin/timekpr`; the flake narrows that glob to `*.pkexec.policy`.
 - Kanidm: provisioning the `idm_admin` password requires
   `kanidm_1_11.withSecretProvisioning`; `services.kanidm.provision`
   cannot set POSIX attributes or passwords, so the test does that with

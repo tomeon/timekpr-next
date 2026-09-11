@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC
+ "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN"
+ "http://www.freedesktop.org/standards/PolicyKit/1/policyconfig.dtd">
+<policyconfig>
+  <vendor>Timekpr-nExT</vendor>
+  <vendor_url>https://mjasnik.gitlab.io/timekpr-next/</vendor_url>
+  <icon_name>timekpr</icon_name>
+
+  <!--
+    The timekpr server asks polkit for one of these actions before it
+    runs a method on its administration D-Bus interfaces.  The call
+    carries two details: "method", the D-Bus method name, and, for the
+    actions about a user, "user", the user the call is about.  Rules
+    (see polkit(8)) can use them to scope who may administer whom:
+
+      polkit.addRule(function(action, subject) {
+        if (action.id == "com.timekpr.server.user.admin.time-left" &&
+            subject.user == "alice" && action.lookup("user") == "bob") {
+          return polkit.Result.YES;
+        }
+      });
+
+    Members of the "timekpr" group are authorized for all of them by
+    50-timekpr.rules; the superuser always is.  Everyone else has to
+    authenticate as an administrator.
+  -->
+
+  <action id="com.timekpr.server.user.admin.read">
+    <description>Read a user's Timekpr-nExT limits and time spent</description>
+    <message>Authentication is required to read Timekpr-nExT user information</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.timekpr.server.user.admin.time-left">
+    <description>Change the time a user has left for today</description>
+    <message>Authentication is required to change the time a user has left for today</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.timekpr.server.user.admin.configure">
+    <description>Change a user's Timekpr-nExT limits and settings</description>
+    <message>Authentication is required to change Timekpr-nExT user limits</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin_keep</allow_active>
+    </defaults>
+  </action>
+
+  <action id="com.timekpr.server.admin.configure">
+    <description>Change the Timekpr-nExT server configuration</description>
+    <message>Authentication is required to change the Timekpr-nExT server configuration</message>
+    <defaults>
+      <allow_any>auth_admin</allow_any>
+      <allow_inactive>auth_admin</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+  </action>
+
+</policyconfig>

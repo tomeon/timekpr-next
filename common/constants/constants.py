@@ -131,6 +131,25 @@ TK_DBUS_USER_LIMITS_INTERFACE = "com.timekpr.server.user.limits"
 TK_DBUS_USER_SESSION_ATTRIBUTE_INTERFACE = "com.timekpr.server.user.sessionattributes"
 TK_DBUS_USER_ADMIN_INTERFACE = "com.timekpr.server.user.admin"
 
+# ## polkit ##
+# the polkit authority on the system bus
+TK_POLKIT_BUS_NAME = "org.freedesktop.PolicyKit1"
+TK_POLKIT_PATH = "/org/freedesktop/PolicyKit1/Authority"
+TK_POLKIT_AUTHORITY_INTERFACE = "org.freedesktop.PolicyKit1.Authority"
+# actions the server asks polkit about before running a method on the admin interfaces
+#   (declared in resource/server/polkit/com.timekpr.server.policy)
+TK_POLKIT_ACTION_USER_READ = "com.timekpr.server.user.admin.read"  # user list and user information
+TK_POLKIT_ACTION_USER_TIME_LEFT = "com.timekpr.server.user.admin.time-left"  # time / PlayTime left for today
+TK_POLKIT_ACTION_USER_CONFIGURE = "com.timekpr.server.user.admin.configure"  # everything else about a user
+TK_POLKIT_ACTION_SERVER_CONFIGURE = "com.timekpr.server.admin.configure"  # timekpr's own configuration
+# detail keys passed along with the action (available as action.lookup(key) in polkit rules)
+TK_POLKIT_DETAIL_USER = "user"  # the user the call is about, if any
+TK_POLKIT_DETAIL_METHOD = "method"  # the D-Bus method being called
+# how long (seconds) the server waits for polkit, which includes the time the caller takes to authenticate
+TK_POLKIT_TIMEOUT = 300
+# how long (seconds) admin clients wait for a reply from the server, which has to cover the wait above
+TK_DBUS_ADMIN_TIMEOUT = TK_POLKIT_TIMEOUT + 30
+
 # actual user session validation and control
 TK_CTRL_SCR_N = "scrs"
 TK_CTRL_SCR_K = "scrs:key"

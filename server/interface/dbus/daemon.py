@@ -26,6 +26,8 @@ from timekpr.server.config.configprocessor import timekprUserConfigurationProces
 from timekpr.server.config.configprocessor import timekprConfigurationProcessor
 from timekpr.server.config.userhelper import timekprUserStore
 from timekpr.server.config import userhelper
+from timekpr.server.interface.dbus.polkit import timekprPolkitAuthority
+from timekpr.server.interface.dbus.polkit import timekprAuthorizedMethod
 from timekpr.common.constants import messages as msg
 
 # default dbus
@@ -46,6 +48,8 @@ class timekprDaemon(dbus.service.Object):
         self._timekprBusName = dbus.service.BusName(cons.TK_DBUS_BUS_NAME, bus=self._timekprBus, replace_existing=True)
         # init DBUS
         super().__init__(self._timekprBusName, cons.TK_DBUS_SERVER_PATH)
+        # this decides who may call what (the admin interfaces go through polkit)
+        self._timekprPolkitAuthority = timekprPolkitAuthority(self._timekprBus)
 
         log.log(cons.TK_LOG_LEVEL_INFO, "finish init dbus daemon")
 
@@ -501,11 +505,13 @@ class timekprDaemon(dbus.service.Object):
             pUserConfigurationStore["ACTUAL_ACTIVE_PLAYTIME_ACTIVITY_COUNT"] = pTimekprUser.getPlayTimeActiveActivityCnt()
 
     # ## --------------- DBUS / communication methods --------------- ## #
-    # --------------- simple user time limits methods accessible by any --------------- #
+    # --------------- simple user time limits methods accessible by the user in question (and root) --------------- #
 
-    @dbus.service.method(cons.TK_DBUS_USER_LIMITS_INTERFACE, in_signature="s", out_signature="is")
-    def requestTimeLimits(self, pUserName):
+    @dbus.service.method(cons.TK_DBUS_USER_LIMITS_INTERFACE, in_signature="s", out_signature="is", sender_keyword="pSender")
+    def requestTimeLimits(self, pUserName, pSender=None):
         """Request to send config to client (returns error in case no user and the like)"""
+        # only the user themselves (or root) may ask
+        self._timekprPolkitAuthority.checkSenderIsUser(pUserName, pSender, self._timekprUserList)
         # result
         result = -1
         message = msg.getTranslation("TK_MSG_CONFIG_LOADER_USER_NOTFOUND") % (pUserName)
@@ -522,9 +528,11 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_LIMITS_INTERFACE, in_signature="s", out_signature="is")
-    def requestTimeLeft(self, pUserName):
+    @dbus.service.method(cons.TK_DBUS_USER_LIMITS_INTERFACE, in_signature="s", out_signature="is", sender_keyword="pSender")
+    def requestTimeLeft(self, pUserName, pSender=None):
         """Request to send current state of time & limits for user (returns error in case no user and the like)"""
+        # only the user themselves (or root) may ask
+        self._timekprPolkitAuthority.checkSenderIsUser(pUserName, pSender, self._timekprUserList)
         # result
         result = -1
         message = msg.getTranslation("TK_MSG_CONFIG_LOADER_USER_NOTFOUND") % (pUserName)
@@ -541,11 +549,13 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    # --------------- simple user session attributes accessible by any --------------- #
+    # --------------- simple user session attributes accessible by the user in question (and root) --------------- #
 
-    @dbus.service.method(cons.TK_DBUS_USER_SESSION_ATTRIBUTE_INTERFACE, in_signature="ssss", out_signature="is")
-    def processUserSessionAttributes(self, pUserName, pWhat, pKey, pValue):
+    @dbus.service.method(cons.TK_DBUS_USER_SESSION_ATTRIBUTE_INTERFACE, in_signature="ssss", out_signature="is", sender_keyword="pSender")
+    def processUserSessionAttributes(self, pUserName, pWhat, pKey, pValue, pSender=None):
         """Request to verify or set user session attributes (returns error in case no user and the like)"""
+        # only the user themselves (or root) may set these
+        self._timekprPolkitAuthority.checkSenderIsUser(pUserName, pSender, self._timekprUserList)
         # result
         result = -1
         message = msg.getTranslation("TK_MSG_CONFIG_LOADER_USER_NOTFOUND") % (pUserName)
@@ -564,7 +574,7 @@ class timekprDaemon(dbus.service.Object):
 
     # --------------- user information get methods accessible by privileged users (root and all in timekpr group) --------------- #
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="", out_signature="isaas")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "", "isaas", cons.TK_POLKIT_ACTION_USER_READ)
     def getUserList(self):
         """Get user list and their time left"""
         """Sets allowed days for the user
@@ -590,7 +600,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message, userList
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="ss", out_signature="isa{sv}")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "ss", "isa{sv}", cons.TK_POLKIT_ACTION_USER_READ, pUserNameArg="pUserName")
     def getUserInformation(self, pUserName, pInfoLvl):
         """Get user configuration (saved)"""
         """  this retrieves stored configuration and some realtime inforamation for the user"""
@@ -624,7 +634,7 @@ class timekprDaemon(dbus.service.Object):
 
     # --------------- user admin methods accessible by privileged users (root and all in timekpr group) --------------- #
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sas", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sas", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setAllowedDays(self, pUserName, pDayList):
         """Set up allowed days for the user"""
         """Sets allowed days for the user
@@ -651,7 +661,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="ssa{sa{si}}", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "ssa{sa{si}}", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setAllowedHours(self, pUserName, pDayNumber, pHourList):
         """Set up allowed hours for the user"""
         """This sets allowed hours for user for particular day
@@ -680,7 +690,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sai", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sai", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setTimeLimitForDays(self, pUserName, pDayLimits):
         """Set up new timelimits for each day for the user"""
         """This sets allowable time to user
@@ -707,7 +717,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sb", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sb", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setTrackInactive(self, pUserName, pTrackInactive):
         """Set track inactive sessions for the user"""
         """This sets whether inactive user sessions are tracked
@@ -735,7 +745,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sb", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sb", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setHideTrayIcon(self, pUserName, pHideTrayIcon):
         """Set hide tray icon for the user"""
         """This sets whether icon will be hidden from user
@@ -763,7 +773,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="ssss", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "ssss", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setLockoutType(self, pUserName, pLockoutType, pWakeFrom, pWakeTo):
         """Set restriction / lockout type for the user"""
         """Restricton / lockout types:
@@ -793,7 +803,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="si", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "si", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setTimeLimitForWeek(self, pUserName, pTimeLimitWeek):
         """Set up new timelimit for week for the user"""
         try:
@@ -818,7 +828,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="si", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "si", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setTimeLimitForMonth(self, pUserName, pTimeLimitMonth):
         """Set up new timelimit for month for the user"""
         try:
@@ -843,7 +853,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="ssi", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "ssi", "is", cons.TK_POLKIT_ACTION_USER_TIME_LEFT, pUserNameArg="pUserName")
     def setTimeLeft(self, pUserName, pOperation, pTimeLeft):
         """Set time left for today for the user"""
         """Sets time limits for user for this moment:
@@ -874,7 +884,7 @@ class timekprDaemon(dbus.service.Object):
 
     # --------------- user PlayTime admin methods accessible by privileged users (root and all in timekpr group) --------------- #
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sb", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sb", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setPlayTimeEnabled(self, pUserName, pPlayTimeEnabled):
         """Set whether PlayTime is enabled for the user"""
         """PlayTime enablement flag
@@ -902,7 +912,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sb", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sb", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setPlayTimeLimitOverride(self, pUserName, pPlayTimeLimitOverride):
         """Set whether PlayTime override is enabled for the user"""
         """PlayTime override enablement flag
@@ -930,7 +940,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sb", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sb", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setPlayTimeUnaccountedIntervalsEnabled(self, pUserName, pPlayTimeUnaccountedIntervalsEnabled):
         """Set whether PlayTime activities are allowed during unaccounted intervals for the user"""
         """PlayTime allowed during unaccounted intervals enablement flag
@@ -958,7 +968,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sas", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sas", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setPlayTimeAllowedDays(self, pUserName, pPlayTimeAllowedDays):
         """Set up allowed PlayTime days for the user"""
         """Sets allowed PlayTime days for the user
@@ -985,7 +995,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="sai", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "sai", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setPlayTimeLimitsForDays(self, pUserName, pPlayTimeLimits):
         """Set up new PlayTime limits for each day for the user"""
         """This sets allowable PlayTime limits to user
@@ -1012,7 +1022,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="saas", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "saas", "is", cons.TK_POLKIT_ACTION_USER_CONFIGURE, pUserNameArg="pUserName")
     def setPlayTimeActivities(self, pUserName, pPlayTimeActivities):
         """Set up new PlayTime activities for the user"""
         """This sets PlayTime activities (executable masks) for the user"""
@@ -1038,7 +1048,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_USER_ADMIN_INTERFACE, in_signature="ssi", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "ssi", "is", cons.TK_POLKIT_ACTION_USER_TIME_LEFT, pUserNameArg="pUserName")
     def setPlayTimeLeft(self, pUserName, pOperation, pTimeLeft):
         """Set time left for today for the user"""
         """Sets time limits for user for this moment:
@@ -1069,7 +1079,7 @@ class timekprDaemon(dbus.service.Object):
 
     # --------------- server admin get methods accessible by privileged users (root and all in timekpr group) --------------- #
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="", out_signature="isa{sv}")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "", "isa{sv}", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def getTimekprConfiguration(self):
         """Get all timekpr configuration from server"""
         # default
@@ -1093,7 +1103,7 @@ class timekprDaemon(dbus.service.Object):
 
     # --------------- server admin set methods accessible by privileged users (root and all in timekpr group) --------------- #
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="i", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "i", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprLogLevel(self, pLogLevel):
         """Set the logging level for server"""
         """ restart needed to fully engage, but newly logged in users get logging properly"""
@@ -1119,7 +1129,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="i", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "i", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprPollTime(self, pPollTimeSecs):
         """Set polltime for timekpr"""
         """ set in-memory polling time (this is the accounting precision of the time"""
@@ -1143,7 +1153,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="i", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "i", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprSaveTime(self, pSaveTimeSecs):
         """Set save time for timekpr"""
         """Set the interval at which timekpr saves user data (time spent, etc.)"""
@@ -1167,7 +1177,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="b", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "b", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprTrackInactive(self, pTrackInactive):
         """Set default value for tracking inactive sessions"""
         """Note that this is just the default value which is configurable at user level"""
@@ -1191,7 +1201,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="i", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "i", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprTerminationTime(self, pTerminationTimeSecs):
         """Set up user termination time"""
         """ User temination time is how many seconds user is allowed in before he's thrown out
@@ -1217,7 +1227,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="i", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "i", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprFinalWarningTime(self, pFinalWarningTimeSecs):
         """Set up final warning time for users"""
         """ Final warning time is the countdown lenght (in seconds) for the user before he's thrown out"""
@@ -1241,7 +1251,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="i", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "i", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprFinalNotificationTime(self, pFinalNotificationTimeSecs):
         """Set up final warning time for users"""
         """ Final warning time is the countdown lenght (in seconds) for the user before he's thrown out"""
@@ -1265,7 +1275,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="as", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "as", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprSessionsCtrl(self, pSessionsCtrl):
         """Set accountable session types for users"""
         """ Accountable sessions are sessions which are counted as active, there are handful of them, but predefined"""
@@ -1289,7 +1299,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="as", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "as", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprSessionsExcl(self, pSessionsExcl):
         """Set NON-accountable session types for users"""
         """ NON-accountable sessions are sessions which are explicitly ignored during session evaluation, there are handful of them, but predefined"""
@@ -1314,7 +1324,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="as", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "as", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprUsersExcl(self, pUsersExcl):
         """Set excluded usernames for timekpr"""
         """ Excluded usernames are usernames which are excluded from accounting
@@ -1341,7 +1351,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="b", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "b", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprPlayTimeEnabled(self, pPlayTimeEnabled):
         """Set whether PlayTime is enabled globally"""
         try:
@@ -1364,7 +1374,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="b", out_signature="is")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "b", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def setTimekprPlayTimeEnhancedActivityMonitorEnabled(self, pPlayTimeAdvancedSearchEnabled):
         """Set whether PlayTime is enabled globally"""
         try:
@@ -1389,7 +1399,7 @@ class timekprDaemon(dbus.service.Object):
 
     # --------------- DBUS helper methods --------------- #
 
-    @dbus.service.method(cons.TK_DBUS_ADMIN_INTERFACE, in_signature="s", out_signature="")
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "s", "", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
     def logCachedProcesses(self, pUserId):
         """Return cached PIDs and CMDLINEs"""
         # set up logging

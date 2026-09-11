@@ -113,6 +113,9 @@ class timekprAdminConnector(object):
         if "org.freedesktop.DBus.Error.AccessDenied" in pExceptionStr:
             result = -1
             message = msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED")
+            # the server says why (the text after the error name)
+            if ": " in pExceptionStr:
+                message = "%s (%s)" % (message, pExceptionStr.split(": ", 1)[1])
         else:
             result = -1
             message = msg.getTranslation("TK_MSG_UNEXPECTED_ERROR") % (("\"%s\" in \"%s.%s\"") % (pExceptionStr, pFPath, pFName))
@@ -141,7 +144,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message, userList = self._timekprUserAdminDbusInterface.getUserList()
+                result, message, userList = self._timekprUserAdminDbusInterface.getUserList(timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.getUserList.__name__)
@@ -166,7 +169,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message, userConfig = self._timekprUserAdminDbusInterface.getUserInformation(pUserName, pInfoLvl)
+                result, message, userConfig = self._timekprUserAdminDbusInterface.getUserInformation(pUserName, pInfoLvl, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.getUserConfigurationAndInformation.__name__)
@@ -192,7 +195,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setAllowedDays(pUserName, pDayList)
+                result, message = self._timekprUserAdminDbusInterface.setAllowedDays(pUserName, pDayList, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setAllowedDays.__name__)
@@ -216,7 +219,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setAllowedHours(pUserName, pDayNumber, pHourList)
+                result, message = self._timekprUserAdminDbusInterface.setAllowedHours(pUserName, pDayNumber, pHourList, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setAllowedHours.__name__)
@@ -240,7 +243,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setTimeLimitForDays(pUserName, pDayLimits)
+                result, message = self._timekprUserAdminDbusInterface.setTimeLimitForDays(pUserName, pDayLimits, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimeLimitForDays.__name__)
@@ -264,7 +267,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setTimeLimitForWeek(pUserName, pTimeLimitWeek)
+                result, message = self._timekprUserAdminDbusInterface.setTimeLimitForWeek(pUserName, pTimeLimitWeek, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimeLimitForWeek.__name__)
@@ -288,7 +291,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setTimeLimitForMonth(pUserName, pTimeLimitMonth)
+                result, message = self._timekprUserAdminDbusInterface.setTimeLimitForMonth(pUserName, pTimeLimitMonth, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimeLimitForMonth.__name__)
@@ -312,7 +315,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setTrackInactive(pUserName, pTrackInactive)
+                result, message = self._timekprUserAdminDbusInterface.setTrackInactive(pUserName, pTrackInactive, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.getUserList.__name__)
@@ -336,7 +339,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setHideTrayIcon(pUserName, pHideTrayIcon)
+                result, message = self._timekprUserAdminDbusInterface.setHideTrayIcon(pUserName, pHideTrayIcon, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setHideTrayIcon.__name__)
@@ -360,7 +363,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setLockoutType(pUserName, pLockoutType, pWakeFrom, pWakeTo)
+                result, message = self._timekprUserAdminDbusInterface.setLockoutType(pUserName, pLockoutType, pWakeFrom, pWakeTo, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setLockoutType.__name__)
@@ -384,7 +387,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setTimeLeft(pUserName, pOperation, pTimeLeft)
+                result, message = self._timekprUserAdminDbusInterface.setTimeLeft(pUserName, pOperation, pTimeLeft, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimeLeft.__name__)
@@ -410,7 +413,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setPlayTimeEnabled(pUserName, pPlayTimeEnabled)
+                result, message = self._timekprUserAdminDbusInterface.setPlayTimeEnabled(pUserName, pPlayTimeEnabled, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setPlayTimeEnabled.__name__)
@@ -434,7 +437,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setPlayTimeLimitOverride(pUserName, pPlayTimeLimitOverride)
+                result, message = self._timekprUserAdminDbusInterface.setPlayTimeLimitOverride(pUserName, pPlayTimeLimitOverride, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setPlayTimeLimitOverride.__name__)
@@ -458,7 +461,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setPlayTimeUnaccountedIntervalsEnabled(pUserName, pPlayTimeUnaccountedIntervalsEnabled)
+                result, message = self._timekprUserAdminDbusInterface.setPlayTimeUnaccountedIntervalsEnabled(pUserName, pPlayTimeUnaccountedIntervalsEnabled, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setPlayTimeUnaccountedIntervalsEnabled.__name__)
@@ -482,7 +485,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setPlayTimeAllowedDays(pUserName, pPlayTimeAllowedDays)
+                result, message = self._timekprUserAdminDbusInterface.setPlayTimeAllowedDays(pUserName, pPlayTimeAllowedDays, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setPlayTimeAllowedDays.__name__)
@@ -506,7 +509,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setPlayTimeLimitsForDays(pUserName, pPlayTimeLimits)
+                result, message = self._timekprUserAdminDbusInterface.setPlayTimeLimitsForDays(pUserName, pPlayTimeLimits, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setPlayTimeLimitsForDays.__name__)
@@ -530,7 +533,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setPlayTimeActivities(pUserName, pPlayTimeActivities)
+                result, message = self._timekprUserAdminDbusInterface.setPlayTimeActivities(pUserName, pPlayTimeActivities, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setPlayTimeActivities.__name__)
@@ -554,7 +557,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprUserAdminDbusInterface.setPlayTimeLeft(pUserName, pOperation, pTimeLeft)
+                result, message = self._timekprUserAdminDbusInterface.setPlayTimeLeft(pUserName, pOperation, pTimeLeft, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setPlayTimeLeft.__name__)
@@ -581,7 +584,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message, timekprConfig = self._timekprAdminDbusInterface.getTimekprConfiguration()
+                result, message, timekprConfig = self._timekprAdminDbusInterface.getTimekprConfiguration(timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.getTimekprConfiguration.__name__)
@@ -605,7 +608,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprLogLevel(pLogLevel)
+                result, message = self._timekprAdminDbusInterface.setTimekprLogLevel(pLogLevel, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprLogLevel.__name__)
@@ -629,7 +632,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprPollTime(pPollTimeSecs)
+                result, message = self._timekprAdminDbusInterface.setTimekprPollTime(pPollTimeSecs, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprPollTime.__name__)
@@ -653,7 +656,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprSaveTime(pSaveTimeSecs)
+                result, message = self._timekprAdminDbusInterface.setTimekprSaveTime(pSaveTimeSecs, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprSaveTime.__name__)
@@ -677,7 +680,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprTrackInactive(pTrackInactive)
+                result, message = self._timekprAdminDbusInterface.setTimekprTrackInactive(pTrackInactive, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprTrackInactive.__name__)
@@ -701,7 +704,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprTerminationTime(pTerminationTimeSecs)
+                result, message = self._timekprAdminDbusInterface.setTimekprTerminationTime(pTerminationTimeSecs, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprTerminationTime.__name__)
@@ -725,7 +728,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprFinalWarningTime(pFinalWarningTimeSecs)
+                result, message = self._timekprAdminDbusInterface.setTimekprFinalWarningTime(pFinalWarningTimeSecs, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprFinalWarningTime.__name__)
@@ -749,7 +752,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprFinalNotificationTime(pFinalNotificationTimeSecs)
+                result, message = self._timekprAdminDbusInterface.setTimekprFinalNotificationTime(pFinalNotificationTimeSecs, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprFinalNotificationTime.__name__)
@@ -773,7 +776,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprSessionsCtrl(pSessionsCtrl)
+                result, message = self._timekprAdminDbusInterface.setTimekprSessionsCtrl(pSessionsCtrl, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprSessionsCtrl.__name__)
@@ -797,7 +800,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprSessionsExcl(pSessionsExcl)
+                result, message = self._timekprAdminDbusInterface.setTimekprSessionsExcl(pSessionsExcl, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprSessionsExcl.__name__)
@@ -821,7 +824,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprUsersExcl(pUsersExcl)
+                result, message = self._timekprAdminDbusInterface.setTimekprUsersExcl(pUsersExcl, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprUsersExcl.__name__)
@@ -845,7 +848,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprPlayTimeEnabled(pPlayTimeEnabled)
+                result, message = self._timekprAdminDbusInterface.setTimekprPlayTimeEnabled(pPlayTimeEnabled, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprPlayTimeEnabled.__name__)
@@ -869,7 +872,7 @@ class timekprAdminConnector(object):
             # notify through dbus
             try:
                 # call dbus method
-                result, message = self._timekprAdminDbusInterface.setTimekprPlayTimeEnhancedActivityMonitorEnabled(pPlayTimeEnabled)
+                result, message = self._timekprAdminDbusInterface.setTimekprPlayTimeEnhancedActivityMonitorEnabled(pPlayTimeEnabled, timeout=cons.TK_DBUS_ADMIN_TIMEOUT)
             except Exception as ex:
                 # exception
                 result, message = self.formatException(str(ex), __name__, self.setTimekprPlayTimeEnhancedActivityMonitorEnabled.__name__)

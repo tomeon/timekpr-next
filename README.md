@@ -157,6 +157,12 @@ The rest is up to supervisor to decide. Read on to have complete understanding o
 
 Administration application is used to configure time limits and restrictions for users as well as technical options for Timekpr-nExT itself.
 
+Access to configuration is decided by [polkit](https://www.freedesktop.org/software/polkit/docs/latest/polkit.8.html): the Timekpr-nExT daemon asks
+polkit whether the caller may perform the requested action before it changes anything. By default an administrator (as polkit defines it, usually
+a member of ```sudo``` or ```wheel```) is asked for a password; members of the ```timekpr``` system group and the superuser are allowed without one.
+Site-specific rules in ```/etc/polkit-1/rules.d``` can scope access further, for example allow one user to grant extra time to one particular
+other user only. The actions and the details passed to rules are documented in ```/usr/share/polkit-1/actions/com.timekpr.server.policy```.
+
 To run administration application you either need to run it as superuser or you need to add yourself to ```timekpr``` system group to have password-less 
 access to configuration. Most people use to run in as superuser as it is the easiest, out of the box experience - nothing has to be configured to use it.
 
@@ -930,7 +936,8 @@ For CLI usage, please open your terminal emulator of choice (i.e. Gnome Terminal
 Timekpr-nExT CLI by printing usage notes and examples.
 
 **Please note** that CLI usage follows the same security principles as graphical application - either you have to be in the ```timekpr``` group, execute it 
-as ```root``` or use ```sudo``` to access its functionality even in CLI mode.
+as ```root``` or use ```sudo``` to access its functionality even in CLI mode. Otherwise polkit asks for an administrator password in the terminal 
+(through ```pkttyagent```, which ```timekpra``` starts when it runs in a terminal).
 
 Timekpr-nExT Administration application in both modes apply configuration in real-time, i.e. configuration is effective immediately.
 

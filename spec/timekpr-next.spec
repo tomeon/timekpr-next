@@ -116,6 +116,7 @@ update-desktop-database &> /dev/null || :
 %{_datadir}/locale/ru/LC_MESSAGES/*
 %{_datadir}/metainfo/*
 %{_datadir}/polkit-1/actions/*
+%{_datadir}/polkit-1/rules.d/*
 %{_datadir}/timekpr
 %{_prefix}/lib/python3/dist-packages/timekpr
 %{_prefix}/lib/systemd/system/*

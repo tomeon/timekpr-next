@@ -31,7 +31,7 @@ class timekprClient(object):
         """Initialize client"""
         # set username , etc.
         self._userName, self._userNameFull = misc.getNormalizedUserNames(pUID=os.getuid())
-        self._userNameDBUS = self._userName.replace(".", "").replace("-", "")
+        self._userNameDBUS = misc.getDBUSUserName(self._userName)
 
         # get our bus
         self._timekprBus = (dbus.SessionBus() if (cons.TK_DEV_ACTIVE and cons.TK_DEV_BUS == "ses") else dbus.SystemBus())

@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+# Run the GitHub Actions workflows locally with act, adding the plumbing
+# some sandboxes need.  Everything is detected from the environment, so
+# on an ordinary machine this is the same as plain `act`.
+#
+#  * If HTTPS_PROXY points at a loopback proxy, the job container is put
+#    on the host network and told about the proxy; a private CA named by
+#    SSL_CERT_FILE / CURL_CA_BUNDLE / NIX_SSL_CERT_FILE is mounted in and
+#    handed to curl, Nix and Node.
+#  * Nix inside the container cannot fetch github: flake inputs where
+#    GitHub's API is blocked, so the locked inputs are exported from the
+#    host store into a signed file:// binary cache mounted into the
+#    container and configured through NIX_USER_CONF_FILES.
+#  * If no Docker daemon is reachable but dockerd is installed and we
+#    are root, one is started (no systemd needed).
+#
+# All arguments are passed to act.
+set -euo pipefail
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+ensure_nix_on_path
+root=$(repo_root)
+
+if ! command -v act >/dev/null; then
+  log "act is not on PATH; re-running inside the devshell"
+  exec nix develop "$root" -c "$0" "$@"
+fi
+
+cache=$(cache_dir act)
+
+# --- Docker daemon -----------------------------------------------------------
+if [[ -z ${DOCKER_HOST:-} && ! -S /var/run/docker.sock ]]; then
+  if ! command -v dockerd >/dev/null; then
+    die "no Docker daemon reachable and dockerd is not installed"
+  fi
+  if [[ $(id -u) != 0 ]]; then
+    die "no Docker daemon reachable; start one (or run as root to have this script start dockerd)"
+  fi
+  log "starting dockerd (log: $cache/dockerd.log)"
+  setsid nohup dockerd >"$cache/dockerd.log" 2>&1 </dev/null &
+  for _ in {1..60}; do
+    if [[ -S /var/run/docker.sock ]]; then
+      break
+    fi
+    sleep 1
+  done
+  if [[ ! -S /var/run/docker.sock ]]; then
+    die "dockerd did not come up; see $cache/dockerd.log"
+  fi
+fi
+
+# --- binary cache with the flake inputs -------------------------------------
+"$root/scripts/flake-inputs-via-git"
+mapfile -t inputs < <(
+  nix flake archive --json --dry-run "$root" | python3 -c '
+import json, sys
+def walk(node):
+    for child in node.get("inputs", {}).values():
+        yield child["path"]
+        yield from walk(child)
+print("\n".join(sorted(set(walk(json.load(sys.stdin))))))'
+)
+key=$cache/cache-key.sec
+if [[ ! -e $key ]]; then
+  (umask 077 && nix key generate-secret --key-name timekpr-next-act >"$key")
+fi
+public_key=$(nix key convert-secret-to-public <"$key")
+nix store sign --key-file "$key" "${inputs[@]}"
+nix copy --to "file://$cache/inputs" "${inputs[@]}"
+printf 'extra-substituters = file:///inputcache\nextra-trusted-public-keys = %s\n' "$public_key" >"$cache/nix.conf"
+
+# --- act invocation --------------------------------------------------------
+container_opts=(-v "$cache/inputs:/inputcache:ro" -v "$cache/nix.conf:/act-nix.conf:ro")
+act_args=(--env NIX_USER_CONF_FILES=/act-nix.conf)
+
+proxy=${HTTPS_PROXY:-${https_proxy:-}}
+if [[ -n $proxy ]]; then
+  act_args+=(--env "HTTPS_PROXY=$proxy" --env "https_proxy=$proxy")
+  case $proxy in
+  *://127.* | *://localhost* | *://\[::1\]*)
+    log "loopback proxy $proxy: using host networking for the job container"
+    container_opts+=(--network host)
+    act_args+=(--cache-server-addr 127.0.0.1)
+    ;;
+  esac
+fi
+
+ca=${SSL_CERT_FILE:-${CURL_CA_BUNDLE:-${NIX_SSL_CERT_FILE:-}}}
+if [[ -n $ca ]]; then
+  container_opts+=(-v "$ca:/act-ca.crt:ro")
+  for var in SSL_CERT_FILE CURL_CA_BUNDLE NIX_SSL_CERT_FILE NODE_EXTRA_CA_CERTS; do
+    act_args+=(--env "$var=/act-ca.crt")
+  done
+fi
+
+cd "$root"
+exec act --container-options "${container_opts[*]}" "${act_args[@]}" "$@"

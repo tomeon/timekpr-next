@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Build a NixOS test's driver and run it directly, outside the Nix build
+# sandbox: the console log streams to the terminal, the machine can be
+# poked at in interactive mode, and no system features are required.
+#
+# usage: run-nixos-test [-i] [NAME] [-- DRIVER ARGS...]
+#
+# NAME is an attribute of checks.<system> (default: timekpr).  With -i
+# the interactive driver is started instead of running the test script.
+# Logs and machine state go to a fresh directory under the user cache.
+set -euo pipefail
+# shellcheck source=lib.sh
+. "$(dirname "$0")/lib.sh"
+ensure_nix_on_path
+
+interactive=false
+if [[ ${1:-} == -i ]]; then
+  interactive=true
+  shift
+fi
+name=${1:-timekpr}
+if (($# > 0)); then
+  shift
+fi
+if [[ ${1:-} == -- ]]; then
+  shift
+fi
+
+driver=driver
+if [[ $interactive == true ]]; then
+  driver=driverInteractive
+fi
+root=$(repo_root)
+system=$(current_system)
+run_dir=$(cache_dir "test-runs")/$name-$(date +%Y%m%d-%H%M%S)
+mkdir -p "$run_dir/out"
+
+log "building checks.$system.$name.$driver"
+nix build "$root#checks.$system.$name.$driver" -o "$run_dir/driver"
+if [[ ! -e /dev/kvm ]]; then
+  log "no /dev/kvm: the machine runs under software emulation"
+fi
+log "logging to $run_dir/log"
+
+cd "$run_dir"
+if [[ $interactive == true ]]; then
+  exec ./driver/bin/nixos-test-driver "$@"
+else
+  ./driver/bin/nixos-test-driver -o "$run_dir/out" "$@" 2>&1 | tee "$run_dir/log"
+  exit "${PIPESTATUS[0]}"
+fi

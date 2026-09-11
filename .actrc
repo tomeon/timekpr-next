@@ -1,0 +1,6 @@
+# Defaults for running the GitHub Actions workflows locally with `act`
+# (https://github.com/nektos/act), available in the devshell.
+#
+# Use the full-size runner image: the default "medium" image lacks tools the
+# workflow relies on.
+-P ubuntu-latest=catthehacker/ubuntu:act-latest

@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Run `nix flake check` in a way that works on machines without KVM.
+#
+# The NixOS test derivation declares that it needs the "kvm" system
+# feature, which Nix only advertises when /dev/kvm exists.  Without it
+# the check is refused outright; QEMU is perfectly able to run the test
+# under software emulation, just slowly.  Any extra arguments are passed
+# on to `nix flake check`.
+set -euo pipefail
+. "$(dirname "$0")/lib.sh"
+ensure_nix_on_path
+
+args=(-L)
+if [ ! -e /dev/kvm ]; then
+  log "no /dev/kvm: advertising the kvm feature so NixOS tests run under emulation"
+  args+=(--option extra-system-features kvm)
+fi
+exec nix flake check "${args[@]}" "$@"

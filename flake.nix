@@ -43,9 +43,12 @@
             src = pkgs.lib.fileset.toSource {
               root = ./.;
               fileset = pkgs.lib.fileset.difference ./. (pkgs.lib.fileset.unions [
+                ./.actrc
+                ./.github
                 ./flake.nix
                 ./flake.lock
                 ./nix
+                ./scripts
               ]);
             };
           });
@@ -76,10 +79,26 @@
           programs.alejandra.enable = true;
         };
 
-        devshells.default = {
-          packages = [config.treefmt.build.wrapper];
+        devshells.default = let
+          # Expose a script from ./scripts as a devshell command.
+          script = name: help: {
+            inherit name help;
+            category = "sandbox helpers";
+            command = ''exec "$PRJ_ROOT/scripts/${name}" "$@"'';
+          };
+        in {
+          packages = [
+            config.treefmt.build.wrapper
+            pkgs.git
+            pkgs.python3
+          ];
           commands = [
             {package = pkgs.act;}
+            (script "flake-inputs-via-git" "fetch or update github: flake inputs over git, without the GitHub API")
+            (script "flake-check" "nix flake check, running NixOS tests under emulation if there is no KVM")
+            (script "run-nixos-test" "build a NixOS test driver and run it outside the Nix sandbox")
+            (script "act-sandboxed" "run the GitHub Actions workflows with act behind a loopback proxy")
+            (script "github-latest-tags" "list a GitHub repository's newest version tags via git")
           ];
         };
       };

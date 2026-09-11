@@ -1,0 +1,13 @@
+#!/usr/bin/env bash
+# List the newest version tags of a GitHub repository using only git,
+# for environments where the GitHub API and web UI are unreachable.
+#
+# usage: github-latest-tags OWNER/REPO [COUNT]
+set -euo pipefail
+[ $# -ge 1 ] || { echo "usage: ${0##*/} OWNER/REPO [COUNT]" >&2; exit 2; }
+git ls-remote --tags "https://github.com/$1" \
+  | grep -v '\^{}$' \
+  | sed 's|.*refs/tags/||' \
+  | grep -E '^v?[0-9]+(\.[0-9]+)*$' \
+  | sort -V \
+  | tail -n "${2:-5}"

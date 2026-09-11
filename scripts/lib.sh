@@ -1,4 +1,6 @@
+# shellcheck shell=bash
 # Shared shell helpers for the scripts in this directory.  Source it:
+#   # shellcheck source=lib.sh
 #   . "$(dirname "$0")/lib.sh"
 
 log() {
@@ -12,11 +14,11 @@ die() {
 
 # Some environments install Nix without putting it on PATH.
 ensure_nix_on_path() {
-  if ! command -v nix > /dev/null; then
+  if ! command -v nix >/dev/null; then
     PATH="$HOME/.nix-profile/bin:/nix/var/nix/profiles/default/bin:$PATH"
     export PATH
   fi
-  command -v nix > /dev/null || die "nix not found on PATH"
+  command -v nix >/dev/null || die "nix not found on PATH"
 }
 
 repo_root() {

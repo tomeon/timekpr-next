@@ -4,6 +4,8 @@
 # The NixOS test driver runs this with `machine` and `subtest` in scope.
 # timekpr.nix prepends a definition of CONFIG, a dict holding the values
 # (user names, passwords, the timekpr store path) that both sides need.
+# Those three names are therefore undefined as far as linters can tell.
+# ruff: noqa: F821
 
 import shlex
 
@@ -34,14 +36,22 @@ def ssh_login(user, password):
     """Log in over SSH with a password, keep the session open for HOLD
     seconds, and return the command's (status, output)."""
     remote = f"sleep {HOLD}; echo SURVIVED"
-    cmd = " ".join([
-        "sshpass", "-p", shlex.quote(password),
-        "ssh",
-        "-o", "StrictHostKeyChecking=no",
-        "-o", "UserKnownHostsFile=/dev/null",
-        "-l", shlex.quote(user), "localhost",
-        shlex.quote(remote),
-    ])
+    cmd = " ".join(
+        [
+            "sshpass",
+            "-p",
+            shlex.quote(password),
+            "ssh",
+            "-o",
+            "StrictHostKeyChecking=no",
+            "-o",
+            "UserKnownHostsFile=/dev/null",
+            "-l",
+            shlex.quote(user),
+            "localhost",
+            shlex.quote(remote),
+        ]
+    )
     return machine.execute(cmd, timeout=HOLD + 300)
 
 
@@ -49,9 +59,7 @@ def wait_until_logged_out(user):
     machine.wait_until_fails(
         f"loginctl list-users --no-legend | grep -F {shlex.quote(user)}"
     )
-    machine.wait_until_succeeds(
-        f"grep -F 'user \"{user}\" has gone' {TIMEKPR_LOG}"
-    )
+    machine.wait_until_succeeds(f"grep -F 'user \"{user}\" has gone' {TIMEKPR_LOG}")
 
 
 def expect_login_survives(user, password):
@@ -68,9 +76,7 @@ def expect_login_terminated(user, password):
         f"login as {user} was not terminated: status={status}, output={out!r}"
     )
     # timekpr flushes its log file lazily, so wait for the line.
-    machine.wait_until_succeeds(
-        f"grep -F 'killing \"{user}\" session' {TIMEKPR_LOG}"
-    )
+    machine.wait_until_succeeds(f"grep -F 'killing \"{user}\" session' {TIMEKPR_LOG}")
     wait_until_logged_out(user)
 
 
@@ -118,9 +124,7 @@ def main():
             " kanidm login -D idm_admin"
         )
         machine.succeed("kanidm group posix set --gidnumber 10000 posix_users")
-        machine.succeed(
-            f"kanidm person posix set --gidnumber 10001 --shell {BASH} bob"
-        )
+        machine.succeed(f"kanidm person posix set --gidnumber 10001 --shell {BASH} bob")
         machine.succeed(
             f"answer-password {shlex.quote(BOB_PASSWORD)}"
             " kanidm person posix set-password bob"

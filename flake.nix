@@ -74,9 +74,42 @@
           });
         };
 
-        treefmt = {
+        treefmt = let
+          # The helper scripts have no file extensions, so list them.
+          shellScripts = [
+            "scripts/act-sandboxed"
+            "scripts/flake-check"
+            "scripts/github-latest-tags"
+            "scripts/lib.sh"
+            "scripts/run-nixos-test"
+          ];
+          # Only Python written for this flake; timekpr's own sources are
+          # left as upstream formats them.
+          pythonScripts = [
+            "nix/tests/timekpr.py"
+            "scripts/flake-inputs-via-git"
+          ];
+        in {
           projectRootFile = "flake.nix";
           programs.alejandra.enable = true;
+          programs.shellcheck = {
+            enable = true;
+            includes = shellScripts;
+            # Resolve `source` directives relative to the sourcing script.
+            source-path = "SCRIPTDIR";
+          };
+          programs.shfmt = {
+            enable = true;
+            includes = shellScripts;
+          };
+          programs.ruff-check = {
+            enable = true;
+            includes = pythonScripts;
+          };
+          programs.ruff-format = {
+            enable = true;
+            includes = pythonScripts;
+          };
         };
 
         devshells.default = let

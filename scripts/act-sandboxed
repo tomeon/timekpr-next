@@ -16,11 +16,12 @@
 #
 # All arguments are passed to act.
 set -euo pipefail
+# shellcheck source=lib.sh
 . "$(dirname "$0")/lib.sh"
 ensure_nix_on_path
 root=$(repo_root)
 
-if ! command -v act > /dev/null; then
+if ! command -v act >/dev/null; then
   log "act is not on PATH; re-running inside the devshell"
   exec nix develop "$root" -c "$0" "$@"
 fi
@@ -29,10 +30,10 @@ cache=$(cache_dir act)
 
 # --- Docker daemon -----------------------------------------------------------
 if [ -z "${DOCKER_HOST:-}" ] && [ ! -S /var/run/docker.sock ]; then
-  command -v dockerd > /dev/null || die "no Docker daemon reachable and dockerd is not installed"
+  command -v dockerd >/dev/null || die "no Docker daemon reachable and dockerd is not installed"
   [ "$(id -u)" = 0 ] || die "no Docker daemon reachable; start one (or run as root to have this script start dockerd)"
   log "starting dockerd (log: $cache/dockerd.log)"
-  setsid nohup dockerd > "$cache/dockerd.log" 2>&1 < /dev/null &
+  setsid nohup dockerd >"$cache/dockerd.log" 2>&1 </dev/null &
   for _ in $(seq 1 60); do
     [ -S /var/run/docker.sock ] && break
     sleep 1
@@ -53,12 +54,12 @@ print("\n".join(sorted(set(walk(json.load(sys.stdin))))))'
 )
 key=$cache/cache-key.sec
 if [ ! -e "$key" ]; then
-  (umask 077 && nix key generate-secret --key-name timekpr-next-act > "$key")
+  (umask 077 && nix key generate-secret --key-name timekpr-next-act >"$key")
 fi
-public_key=$(nix key convert-secret-to-public < "$key")
+public_key=$(nix key convert-secret-to-public <"$key")
 nix store sign --key-file "$key" "${inputs[@]}"
 nix copy --to "file://$cache/inputs" "${inputs[@]}"
-printf 'extra-substituters = file:///inputcache\nextra-trusted-public-keys = %s\n' "$public_key" > "$cache/nix.conf"
+printf 'extra-substituters = file:///inputcache\nextra-trusted-public-keys = %s\n' "$public_key" >"$cache/nix.conf"
 
 # --- act invocation --------------------------------------------------------
 container_opts=(-v "$cache/inputs:/inputcache:ro" -v "$cache/nix.conf:/act-nix.conf:ro")
@@ -68,11 +69,11 @@ proxy=${HTTPS_PROXY:-${https_proxy:-}}
 if [ -n "$proxy" ]; then
   act_args+=(--env "HTTPS_PROXY=$proxy" --env "https_proxy=$proxy")
   case $proxy in
-    *://127.* | *://localhost* | *://\[::1\]*)
-      log "loopback proxy $proxy: using host networking for the job container"
-      container_opts+=(--network host)
-      act_args+=(--cache-server-addr 127.0.0.1)
-      ;;
+  *://127.* | *://localhost* | *://\[::1\]*)
+    log "loopback proxy $proxy: using host networking for the job container"
+    container_opts+=(--network host)
+    act_args+=(--cache-server-addr 127.0.0.1)
+    ;;
   esac
 fi
 

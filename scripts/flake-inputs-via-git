@@ -49,19 +49,20 @@ def die(*args):
 def ensure_nix_on_path():
     if shutil.which("nix") is None:
         home = Path.home()
-        os.environ["PATH"] = os.pathsep.join([
-            str(home / ".nix-profile/bin"),
-            "/nix/var/nix/profiles/default/bin",
-            os.environ.get("PATH", ""),
-        ])
+        os.environ["PATH"] = os.pathsep.join(
+            [
+                str(home / ".nix-profile/bin"),
+                "/nix/var/nix/profiles/default/bin",
+                os.environ.get("PATH", ""),
+            ]
+        )
     if shutil.which("nix") is None:
         die("nix not found on PATH")
 
 
-def run(cmd, **kwargs):
-    kwargs.setdefault("check", True)
+def run(cmd, check=True, **kwargs):
     kwargs.setdefault("text", True)
-    return subprocess.run(cmd, **kwargs)
+    return subprocess.run(cmd, check=check, **kwargs)
 
 
 def output(cmd, **kwargs):
@@ -122,10 +123,15 @@ class GitMirror:
         return output(["git", "-C", str(self.dir), *args], **kwargs)
 
     def has(self, rev: str) -> bool:
-        return run(
-            ["git", "-C", str(self.dir), "cat-file", "-e", f"{rev}^{{commit}}"],
-            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        ).returncode == 0
+        return (
+            run(
+                ["git", "-C", str(self.dir), "cat-file", "-e", f"{rev}^{{commit}}"],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            ).returncode
+            == 0
+        )
 
     def fetch(self, rev: str):
         if not self.has(rev):
@@ -164,7 +170,9 @@ class GitMirror:
             run(["tar", "-x", "-C", str(tree)], stdin=archive.stdout)
             if archive.wait() != 0:
                 die(f"git archive failed for {self.url} at {rev}")
-            return output(["nix", "store", "add", "--mode", "nar", "--name", "source", str(tree)])
+            return output(
+                ["nix", "store", "add", "--mode", "nar", "--name", "source", str(tree)]
+            )
 
 
 # --- flake.lock ----------------------------------------------------------------
@@ -178,10 +186,15 @@ def github_nodes(lock: dict):
 
 
 def store_path_valid(path: str) -> bool:
-    return run(
-        ["nix", "path-info", path],
-        check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-    ).returncode == 0
+    return (
+        run(
+            ["nix", "path-info", path],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        ).returncode
+        == 0
+    )
 
 
 def ensure_present(lock: dict, mirrors: Path):
@@ -211,16 +224,20 @@ def ensure_present(lock: dict, mirrors: Path):
 def update(lock: dict, mirrors: Path, wanted: list[str]) -> bool:
     root_inputs = lock["nodes"][lock["root"]]["inputs"]
     updatable = {
-        name: key for name, key in root_inputs.items()
-        if isinstance(key, str) and lock["nodes"][key].get("locked", {}).get("type") == "github"
+        name: key
+        for name, key in root_inputs.items()
+        if isinstance(key, str)
+        and lock["nodes"][key].get("locked", {}).get("type") == "github"
     }
     if not wanted:
         wanted = sorted(updatable)
     changed = False
     for name in wanted:
         if name not in updatable:
-            die(f"{name!r} is not a top-level github: input of this flake "
-                f"(candidates: {', '.join(sorted(updatable))})")
+            die(
+                f"{name!r} is not a top-level github: input of this flake "
+                f"(candidates: {', '.join(sorted(updatable))})"
+            )
         node = lock["nodes"][updatable[name]]
         locked, original = node["locked"], node["original"]
         mirror = GitMirror(locked["owner"], locked["repo"], mirrors)
@@ -244,25 +261,46 @@ def update(lock: dict, mirrors: Path, wanted: list[str]) -> bool:
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--update", action="store_true",
-                        help="update inputs to the newest commit of their ref")
-    parser.add_argument("--flake", default=None,
-                        help="flake directory (default: this repository)")
+    parser.add_argument(
+        "--update",
+        action="store_true",
+        help="update inputs to the newest commit of their ref",
+    )
+    parser.add_argument(
+        "--flake", default=None, help="flake directory (default: this repository)"
+    )
     parser.add_argument("inputs", nargs="*", help="inputs to update (default: all)")
     args = parser.parse_args()
     if args.inputs and not args.update:
         parser.error("input names only make sense with --update")
 
     ensure_nix_on_path()
-    flake_dir = Path(args.flake) if args.flake else Path(
-        output(["git", "-C", str(Path(__file__).resolve().parent), "rev-parse", "--show-toplevel"])
+    flake_dir = (
+        Path(args.flake)
+        if args.flake
+        else Path(
+            output(
+                [
+                    "git",
+                    "-C",
+                    str(Path(__file__).resolve().parent),
+                    "rev-parse",
+                    "--show-toplevel",
+                ]
+            )
+        )
     )
     lock_file = flake_dir / "flake.lock"
     if not lock_file.exists():
-        die(f"{lock_file} does not exist; create it with `nix flake lock` "
-            "on a machine with GitHub access")
+        die(
+            f"{lock_file} does not exist; create it with `nix flake lock` "
+            "on a machine with GitHub access"
+        )
     lock = json.loads(lock_file.read_text())
-    mirrors = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "timekpr-next/git-mirrors"
+    mirrors = (
+        Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+        / "timekpr-next/git-mirrors"
+    )
 
     if args.update:
         if update(lock, mirrors, args.inputs):
@@ -272,7 +310,10 @@ def main():
             log("nothing to update")
     ensure_present(lock, mirrors)
     # Let Nix confirm the lock file and store contents agree.
-    run(["nix", "flake", "metadata", "--no-write-lock-file", str(flake_dir)], stdout=subprocess.DEVNULL)
+    run(
+        ["nix", "flake", "metadata", "--no-write-lock-file", str(flake_dir)],
+        stdout=subprocess.DEVNULL,
+    )
     log("all github: inputs are in the store")
 
 

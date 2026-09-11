@@ -9,6 +9,7 @@
 # the interactive driver is started instead of running the test script.
 # Logs and machine state go to a fresh directory under the user cache.
 set -euo pipefail
+# shellcheck source=lib.sh
 . "$(dirname "$0")/lib.sh"
 ensure_nix_on_path
 

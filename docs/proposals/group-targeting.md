@@ -1,6 +1,6 @@
 # Proposal: targeting groups in addition to users
 
-Status: scoping only, no code written.
+Status: scoping only, no code written.  Revision 2, after design review.
 Scope basis: this repository at commit `5c6ee67` (timekpr-next 0.5.8 plus
 the Nix flake).
 
@@ -22,17 +22,29 @@ where a supervisor of many users finds it tedious to repeat the same
 configuration per user and the maintainer points at multi-day selection
 in the GUI rather than any cross-user mechanism.
 
-"Targeting groups" can mean three different features.  They differ by
-an order of magnitude in cost, so this proposal separates them:
+The proposed model, in one paragraph: a *policy* is a config file.  A
+user policy is `timekpr.<user>.conf`, a group policy is
+`groups/timekpr.<group>.conf`.  Neither is created automatically; a
+policy exists because an admin created it, and it can be created
+before the user or any group member has ever logged in.  A user's
+effective policy is their own policy if one exists, otherwise the
+most-restrictive merge of the group policies whose groups they belong
+to, after a precedence graph declared in the group files has removed
+overridden groups, otherwise the built-in defaults (no limits).  The
+only enforcement action is logging the user out.  Accounting (time
+spent, time left, "today" adjustments) stays per user.
 
-| Feature | Meaning | Recommendation |
+The work splits into a prerequisite phase that changes how user
+policies are created, and the group phase proper:
+
+| Phase | Content | Estimate |
 | --- | --- | --- |
-| A. Bulk apply | `timekpra --settimelimits @kids ...` writes the same setting into each member's own config | Phase 1, roughly 5 person-days |
-| B. Inherited configuration | Members without their own settings follow a group config file; changes to the group propagate to logged-in members | Phase 2, roughly 8 to 10 person-days |
-| C. Shared budget | One pool of time spent across all members | Out of scope, see "Not proposed" |
+| 0. Prerequisites | Stop auto-creating user config files; setters create on demand; a delete-policy command; lockout clamped to logout | about 3 person-days |
+| 1. Group policies | Group files, membership, merge and precedence, D-Bus, CLI, GUI, tests | about 11 to 12 person-days |
+| Optional | Physically remove the lock, suspend, suspendwake, shutdown code and UI | about 2 person-days |
 
-Accounting (time spent, time left, "today" adjustments) stays per user
-in both phases.  Only configuration becomes group-addressable.
+A shared time budget across group members is not proposed; see "Not
+proposed".
 
 ## How targeting works today
 
@@ -52,20 +64,22 @@ Both files are always written in full with every key present
 ([initUserConfiguration, config.py:805-909](../../common/utils/config.py#L805-L909)),
 and saving rewrites only keys that already exist in the file
 ([_saveConfigFile, config.py:27-77](../../common/utils/config.py#L27-L77)).
-There is no such thing as an unset key, which matters for inheritance
-(see decision 3).
 
 **User discovery.**  On startup the daemon walks `pwd.getpwall()`,
 filters by UID range, shell and a name regexp, and creates config and
 control files for every user that passes
 ([server/config/userhelper.py:55-79](../../server/config/userhelper.py#L55-L79),
 [:118-152](../../server/config/userhelper.py#L118-L152)).
-The admin user list is the set of config files on disk, not a live
-account list
-([getSavedUserList, userhelper.py:155-218](../../server/config/userhelper.py#L155-L218)).
-No file imports `grp`.  The only "set of users" in the code base is
-`TIMEKPR_USERS_EXCL`, a semicolon-separated list of names
-([resource/server/timekpr.conf:34](../../resource/server/timekpr.conf#L34)).
+A user that arrives later (a domain user, or one created after
+startup) gets both files on first login, because the loaders fall back
+to writing defaults when the file is missing
+([config.py:710-716](../../common/utils/config.py#L710-L716),
+[:1289-1294](../../common/utils/config.py#L1289-L1294)).  The admin
+user list is the set of config files on disk, not a live account list
+([getSavedUserList, userhelper.py:155-218](../../server/config/userhelper.py#L155-L218)),
+and every admin setter refuses a user without a config file
+([configprocessor.py:31-47](../../server/config/configprocessor.py#L31-L47)).
+No file imports `grp`.
 
 **Runtime.**  Each logged-in user gets a `timekprUser` object holding
 its own limits and counters
@@ -79,6 +93,21 @@ Limits are loaded from the user's file by `adjustLimitsFromConfig`
 ([userdata.py:239-336](../../server/user/userdata.py#L239-L336)), and
 external edits are picked up by comparing the file's mtime on every save
 ([saveSpent, userdata.py:653-694](../../server/user/userdata.py#L653-L694)).
+
+**Enforcement.**  When continuous time left drops to the termination
+time, the user enters a restriction list with a lockout type taken
+from their config, one of `lock`, `suspend`, `suspendwake`,
+`terminate`, `kill`, `shutdown`
+([daemon.py:316-332](../../server/interface/dbus/daemon.py#L316-L332),
+[constants.py:161-166](../../common/constants/constants.py#L161-L166)).
+The restriction loop has one branch per type
+([daemon.py:353-455](../../server/interface/dbus/daemon.py#L353-L455)),
+backed by `lockUserSessions`, `suspendComputer`, `shutdownComputer`,
+`findNextAvailableIntervalStart` and `setWakeUpByRTC`
+([userdata.py:852](../../server/user/userdata.py#L852),
+[:912](../../server/user/userdata.py#L912),
+[manager.py:360-376](../../server/interface/dbus/logind/manager.py#L360-L376),
+[userhelper.py:88-104](../../server/config/userhelper.py#L88-L104)).
 
 **Admin surface.**  The `com.timekpr.server.user.admin` interface has
 two getters and seventeen setters; every one takes `pUserName` as its
@@ -103,285 +132,433 @@ that each call several per-user setters
 method ([resource/server/dbus/timekpr.conf](../../resource/server/dbus/timekpr.conf)).
 New methods on an existing interface need no policy change.
 
-## Design constraints that shape the proposal
+## Design decisions
 
-1. **Resolve membership from the user side, not the group side.**
-   `grp.getgrnam(name).gr_mem` lists only explicit secondary members
-   and only what the NSS backend enumerates.  For domain users this is
-   unreliable: the test's Kanidm user `bob@idm.nixos.test` is not
-   returned by `pwd.getpwall()` before first login, which is why the
-   daemon creates his config on first login rather than at startup
-   ([AGENTS.md, "Things learned"](../../AGENTS.md)).  `os.getgrouplist(user, primary_gid)`
-   walks NSS for one user and includes the primary group, and works for
-   Kanidm and SSSD users.  So the question the code should ask is "which
-   of the configured groups is this user in", evaluated when the user's
-   `timekprUser` is created and when a group config changes, never
-   "who is in this group" as the source of truth.  A group-to-members
-   listing is still useful for the admin UI and for bulk apply, but it
-   should be presented as best effort (the union of `gr_mem`, primary
-   GIDs of users with a config file, and `getgrouplist` over users with
-   a config file).
+### D1. Group targets are `@<group>` in the existing user-name argument
 
-2. **Groups must be opt-in.**  Every user is in `users`, and admins are
-   in `wheel` or `sudo`.  Treating every POSIX group as a targeting
-   scope would make effective limits depend on accidental membership.
-   Proposed: a new `TIMEKPR_GROUPS` key in `[SESSION]` of
-   `/etc/timekpr/timekpr.conf` listing the groups timekpr manages, in
-   priority order.  Groups not listed are invisible to timekpr.
+Every admin setter, the CLI, and the GUI already carry a target string.
+A leading `@` marks a group.  This keeps all D-Bus signatures, the
+client proxy, and the CLI argument shapes unchanged.
 
-3. **A group name can reuse the existing `pUserName` parameter.**
-   The user-name regexp requires the first character to be
-   alphanumeric, `_` or `.`
-   ([userhelper.py:34](../../server/config/userhelper.py#L34)), so a
-   leading `@` can never be a user.  Passing `@kids` through the
-   existing seventeen setters keeps the D-Bus signatures, the client
-   proxy and the CLI argument shapes unchanged.  Domain user names
-   contain `@` but never start with it, so `bob@idm.nixos.test` stays
-   unambiguous.
+A leading `@` cannot collide with a user timekpr manages:
 
-4. **Group config files must not collide with user config files.**
-   `getSavedUserList` globs `timekpr.*.conf` and takes the middle part
-   as a user name ([userhelper.py:183-192](../../server/config/userhelper.py#L183-L192)).
-   Group files should live in a subdirectory,
-   `<TIMEKPR_CONFIG_DIR>/groups/timekpr.<group>.conf`, with sections
-   `[@<group>]` and `[@<group>.PLAYTIME]`, so the existing scan cannot
-   mistake them for users and the same loader code can be reused with a
-   different section name.
+- POSIX portable user names are drawn from `[A-Za-z0-9._-]`
+  ([POSIX.1-2017 §3.437 and §3.282](https://pubs.opengroup.org/onlinepubs/9699919799/basedefs/V1_chap03.html)).
+- shadow-utils `useradd` requires the first character to be one of
+  `[a-zA-Z0-9_.]` ([shadow `lib/chkname.c`](https://github.com/shadow-maint/shadow/blob/master/lib/chkname.c)).
+- systemd's relaxed mode, used for names from NSS, tolerates an
+  embedded `@` and does not forbid a leading one
+  ([systemd User/Group Name Syntax](https://systemd.io/USER_NAMES/)),
+  so a leading `@` is representable in `/etc/passwd`.  Domain naming
+  schemes put the `@` in the middle (`bob@idm.nixos.test`).
+- Decisively, timekpr's own validity regexp requires the first
+  character to be `[a-zA-Z0-9_.]`
+  ([userhelper.py:34](../../server/config/userhelper.py#L34)), and a
+  user failing it is treated as a system user and never tracked
+  ([daemon.py:203-207](../../server/interface/dbus/daemon.py#L203-L207)).
+  The `@` check belongs next to that regexp.
 
-5. **The config file format has no "unset".**  Inheritance therefore
-   needs an explicit marker in the user file.  Proposed: one new key in
-   the `[<user>]` section, `CONFIG_SOURCE = user | group`, defaulting to
-   `user` for existing files (the loader already writes defaults for
-   missing keys, [config.py:788-792](../../common/utils/config.py#L788-L792),
-   so upgrades are automatic).  Per-key inheritance is deliberately not
-   proposed for the first version; see decision 3 below.
+The same escaping already used for D-Bus object paths
+(`Gio.dbus_escape_object_path`, [misc.py:37-42](../../common/utils/misc.py#L37-L42))
+covers `@` if a group ever needs an object path, which this proposal
+does not require.
 
-## Phase 1: bulk apply to `@group`
+### D2. Policy files are created only by admins
 
-Goal: a supervisor can set the same configuration on every member of a
-group in one command or one click.  Nothing changes at runtime; each
-user's own file is written exactly as if the supervisor had targeted
-them individually.
+The daemon stops creating `timekpr.<user>.conf` on startup and on
+first login.  A user config file exists if and only if an admin set
+something for that user, so its presence *is* the "user policy
+present" test, and no marker key is needed.  Consequences:
+
+- Admin setters create the file on demand when the target has none
+  (today they refuse, [configprocessor.py:31-47](../../server/config/configprocessor.py#L31-L47)).
+  A policy can therefore be set for a user who has never logged in,
+  or for a group none of whose members has logged in.
+- A new command deletes a policy (`--deletepolicy <target>`), which is
+  how an admin returns a user to group or default treatment.  Without
+  it, an accidentally created user policy would shadow the group
+  forever.
+- The counters file `<user>.time` keeps being created automatically,
+  on first login by the daemon and on demand by `setTimeLeft` for a
+  user who has not logged in yet (today that setter also refuses,
+  [configprocessor.py:49-65](../../server/config/configprocessor.py#L49-L65)).
+  Counters are not policy.
+- A user with no policy of any kind is tracked with the built-in
+  defaults, which impose no limits.  That is the same outcome as today
+  for an unconfigured user.
+- The admin user list becomes the union of users with a policy file,
+  users from `pwd.getpwall()` passing the validity check, and known
+  members of groups with a policy file.  Each entry carries a
+  provenance flag so the GUI can show "user policy", "group policy"
+  or "default".
+- Existing installations already have an auto-created file for every
+  user.  After upgrade those count as explicit user policies with
+  default values and would shadow any group policy.  The README must
+  say so and point at `--deletepolicy`.  An automatic migration that
+  deletes files whose values equal the defaults is possible but
+  heuristic; it is listed under open questions.
+- The README sentence "user list is retrieved from your system and
+  initial configuration is applied"
+  ([README.md:184-190](../../README.md#L184-L190)) changes.
+
+### D3. A group is a policy file; membership comes from NSS
+
+There is no list of managed groups in `timekpr.conf`.  The groups
+timekpr knows about are exactly those with a file in
+`<TIMEKPR_CONFIG_DIR>/groups/`.  Creating `groups/timekpr.users.conf`
+is the admin's explicit act of putting every member of `users` under
+policy.
+
+Membership is resolved from the user side.  `grp.getgrnam(g).gr_mem`
+lists only explicit secondary members and only what the NSS backend
+enumerates, which is unreliable for domain users: the test's Kanidm
+user `bob@idm.nixos.test` is not returned by `pwd.getpwall()` before
+first login ([AGENTS.md, "Things learned"](../../AGENTS.md)).
+`os.getgrouplist(user, primary_gid)` walks NSS for one user, includes
+the primary group, and works for Kanidm and SSSD users.  So the code
+asks "which groups with a policy file is this user in", evaluated when
+the user's `timekprUser` is created and whenever the set of group
+files or their mtimes changes.
+
+A group-to-members listing is still wanted by the admin UI and by the
+"today" fan-out below.  It is best effort: the union of `gr_mem`,
+users whose primary GID is the group, and `getgrouplist` over every
+user known to the admin list.  The UI should label it as such.
+
+### D4. Effective policy
+
+For a user U:
+
+1. If `timekpr.<U>.conf` exists, it is the policy.  Group policies are
+   not consulted.
+2. Otherwise let G be the set of groups with a policy file that U
+   belongs to.  Remove from G every group that is overridden, directly
+   or transitively, by another group in G (see D5).  If G is empty, the
+   policy is the defaults.  If G has one element, that file is the
+   policy.
+3. Otherwise the policy is the per-key most-restrictive merge of the
+   remaining files (table below).  This is the "logged out under any
+   policy means logged out" rule: time left is monotone in every limit
+   key, so the merged policy is at least as restrictive as each input,
+   and evaluating the merge once gives the same outcome as evaluating
+   each policy and taking the minimum, without N copies of the limit
+   structure per user in `userdata.py`.
+
+The resolver lives in `common/utils/config.py`, so that
+`adjustLimitsFromConfig` ([userdata.py:239-336](../../server/user/userdata.py#L239-L336)),
+the admin getters, and the client all see one effective policy through
+the existing getters and nothing in the accounting loop changes.
+
+Merge table.  Only keys that survive D6 and D7 appear.
+
+| Key | Most restrictive merge |
+| --- | --- |
+| `ALLOWED_WEEKDAYS` | intersection |
+| `ALLOWED_HOURS_n` | per hour: present only if present in all; start = max, end = min, dropped if empty; the unaccounted flag `!` (time not counted, so a relaxation) is kept only if all inputs set it |
+| `LIMITS_PER_WEEKDAYS` | minimum per day |
+| `LIMIT_PER_WEEK`, `LIMIT_PER_MONTH` | minimum |
+| `TRACK_INACTIVE` | logical OR (counting idle time is more restrictive) |
+| `PLAYTIME_ENABLED` | logical OR |
+| `PLAYTIME_LIMIT_OVERRIDE_ENABLED` | logical AND (override mode counts less time, so it is a relaxation) |
+| `PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED` | logical AND |
+| `PLAYTIME_ALLOWED_WEEKDAYS` | intersection |
+| `PLAYTIME_LIMITS_PER_WEEKDAYS` | minimum per day |
+| `PLAYTIME_ACTIVITIES` | union of process masks |
+
+Every remaining key has a well-defined most-restrictive value, so two
+groups that are incomparable in the precedence graph never need a
+tie-break.  That is a direct consequence of D6 and D7; with the lockout
+type still in play there would have been keys with no natural order.
+
+### D5. Precedence is a graph declared in the group files
+
+Each group policy file may carry `OVERRIDES = <group>;<group>;...`
+in its main section.  `OVERRIDES = kids` in `groups/timekpr.teens.conf`
+means: for a user in both `teens` and `kids`, `kids` is dropped before
+merging.  The relation is transitive.  Edges naming groups that have
+no policy file, or that the user is not in, are ignored for that user.
+
+This is a partial order, so adding or removing a group never requires
+renumbering anything, and unrelated groups simply merge (D4 step 3).
+The only extra machinery is a cycle check at load time: a cycle is
+logged as a configuration error and, for the groups on the cycle, the
+edges are ignored, which falls back to most-restrictive merging.  With
+tens of groups at most, a depth-first search on each resolution is
+free.
+
+The GUI can show the relation as a list of "overrides" on the group
+page; no graph drawing is needed.
+
+### D6. The only enforcement action is logging out
+
+The lockout types `lock`, `suspend`, `suspendwake` and `shutdown` are
+dropped from the policy model.  `terminate` (logind `TerminateSession`)
+is the behaviour.  Whether `kill` (logind `KillSession` with SIGTERM,
+[manager.py:325-328](../../server/interface/dbus/logind/manager.py#L325-L328))
+survives as a harsher variant of logout is the one judgment call left
+open below; this proposal drops it too and keeps a single behaviour.
+
+Two ways to do it, in order of cost:
+
+- **Ignore** (Phase 0): the resolver returns `terminate` regardless of
+  what a file says, the setter accepts only `terminate`, the GUI hides
+  the radio group ([admin.glade:2751-2899](../../resource/client/forms/admin.glade#L2751-L2899)),
+  and the CLI help for `--setlockouttype` says so.  The dead branches
+  in the restriction loop stay in the tree.
+- **Remove** (optional phase): delete the `lock` and `suspend` branches
+  ([daemon.py:379-455](../../server/interface/dbus/daemon.py#L379-L455)),
+  `lockUserSessions`, `findNextAvailableIntervalStart`,
+  `suspendComputer`, `shutdownComputer`, `setWakeUpByRTC`, the
+  `WAKEUP_HOUR_INTERVAL` key, the `setLockoutType` method and its
+  proxy, CLI and GUI counterparts, the README sections
+  ([README.md:436-506](../../README.md#L436-L506)), and the
+  corresponding message strings in eleven translations.
+
+This repository is a fork of the Launchpad upstream.  Removal widens
+the diff for any future upstream merge, which is why it is optional
+and separate.
+
+### D7. User-specific keys are ignored in group files
+
+`HIDE_TRAY_ICON` is about one person's desktop, not about policy.  In
+a group file it is ignored and the default (`False`) applies to members
+without a user policy.  The GUI does not show it on a group page.
+
+`WAKEUP_HOUR_INTERVAL` goes with D6.  Every other key in the user file
+is a limit and is listed in the merge table.
+
+### D8. File layout
+
+- User policy: `<config dir>/timekpr.<user>.conf`, unchanged.
+- Group policy: `<config dir>/groups/timekpr.<group>.conf`, sections
+  `[@<group>]` and `[@<group>.PLAYTIME]`.  The subdirectory keeps the
+  existing user scan ([userhelper.py:183-192](../../server/config/userhelper.py#L183-L192))
+  from seeing group files, and makes "which groups have a policy" one
+  directory listing.  The `@` in the section name lets one config class
+  use "section = target" for both kinds of file.
+- Sample: `resource/server/timekpr.GROUP.conf` installed next to the
+  existing `timekpr.USER.conf` sample, excluded from listings the same
+  way.
+
+## Phase 0: prerequisites
+
+These change user-policy handling and enforcement without introducing
+groups.  They are independently useful and independently testable.
 
 ### Server
 
-- `server/config/userhelper.py` (small): add `getTimekprGroups()`
-  reading the new `TIMEKPR_GROUPS` key, `getGroupMembers(group)` as
-  described in constraint 1, and `isGroupTarget(name)` for the `@`
-  prefix.  Extend `timekprConfig` in `common/utils/config.py` with the
-  key's load, default, save and log lines
-  ([the pattern at config.py:226-228, 338-340, 417-418](../../common/utils/config.py#L226-L228)).
-- `server/interface/dbus/daemon.py` (medium): wrap the seventeen
-  user setters so that a `@group` target expands to the member list and
-  applies the existing per-user path to each, collecting results.  The
-  natural shape is one private helper `_forEachTarget(pTarget, fn)`
-  called from each setter, so the per-method bodies barely change.
-  `setTimeLeft` and `setPlayTimeLeft` expand the same way (each member's
-  control file gets the adjustment).  Add `getGroupList` returning
-  `[[group, member-count]]` on the same interface.  `getUserInformation`
-  with a `@group` target is not meaningful in Phase 1 (there is no group
-  file yet) and should return an error.
-- `server/config/configprocessor.py`: no change.
-- Error reporting: today a setter returns one `(result, message)` pair.
-  For a group target, return the first failure's message prefixed with
-  the member name, and continue applying to the remaining members.  A
-  partial failure is more useful than an abort because the files that
-  did get written are already visible to logged-in users.
+- `server/config/userhelper.py`: `checkAndInitUsers` stops writing
+  config files; it keeps validating users and creating counters files.
+  `getSavedUserList` becomes the union described in D2 and returns a
+  provenance flag per entry.  The `pwd.getpwall()` part is what it is
+  today; the group part arrives in Phase 1.
+- `common/utils/config.py`: `loadUserConfiguration` no longer calls
+  `initUserConfiguration` when the file is missing
+  ([config.py:710-716](../../common/utils/config.py#L710-L716)); it
+  returns defaults in memory and reports "no file".  The
+  `saveSpent` mtime check must tolerate a missing file
+  ([userdata.py:661](../../server/user/userdata.py#L661),
+  [getUserConfigLastModified, config.py:1146](../../common/utils/config.py#L1146)),
+  and must also notice a file *appearing* while the user is logged in.
+  Proposed: compare a policy fingerprint (file mtime or `None`) instead
+  of a bare mtime.
+- `server/config/configprocessor.py`: `loadAndCheckUserConfiguration`
+  creates the file with defaults when asked to set something and the
+  file is missing; `getSavedUserInformation` reports defaults plus
+  `POLICY_SOURCE = default` when it is missing.  `checkAndSetTimeLeft`
+  and `checkAndSetPlayTimeLeft` create the counters file on demand.
+  `checkAndSetLockoutType` accepts only `terminate`.
+- `server/interface/dbus/daemon.py`: new method `deletePolicy(s target)`
+  on the user admin interface; after deleting, a logged-in user is
+  re-resolved and notified.  The resolver clamps the lockout type.
 
-### D-Bus interface
+### Clients
 
-- No signature changes.  One new method, `getGroupList`, on
-  `com.timekpr.server.user.admin`.  No change to
-  `resource/server/dbus/timekpr.conf` or the polkit policy, which only
-  guards `pkexec timekpra` as a whole
-  ([resource/server/polkit/com.ubuntu.timekpr.pkexec.policy:7-16](../../resource/server/polkit/com.ubuntu.timekpr.pkexec.policy#L7-L16)).
-- Versioning: a new client against an old daemon gets
-  `org.freedesktop.DBus.Error.UnknownMethod` for `getGroupList` and a
-  "user not found" result for `@kids` targets.  Both are already
-  surfaced as ordinary error messages by `formatException`
-  ([administration.py:110-122](../../client/interface/dbus/administration.py#L110-L122)).
+- CLI: `--deletepolicy`; `--userinfo` prints `POLICY_SOURCE`;
+  `--setlockouttype` help text reduced.
+- GUI: a "Delete policy" button next to the user selector; a
+  provenance label; lockout radio group hidden.
+- `timekprc`: no change.
 
-### Admin CLI (`timekpra`)
+### Tests and docs
 
-- `client/admin/adminprocessor.py` (small): add `--grouplist`; accept
-  `@group` wherever a user name is accepted (no parsing change needed,
-  the string is passed through).  Add the command to
-  `TK_USER_ADMIN_COMMANDS` with a help line in
-  `common/constants/messages.py`.
-- `client/interface/dbus/administration.py` (small): one new proxy
-  method for `getGroupList`.
-
-### Admin GUI (`timekpra` graphical)
-
-- `client/gui/admingui.py` and `resource/client/forms/admin.glade`
-  (medium): append groups to the existing `TimekprUserSelectionLS`
-  list store as `@kids (n members)` rows, so the same combo and the same
-  four apply paths work unchanged.  When a group is selected, disable
-  the "Info & today" widgets and the `retrieveUserInfoAndConfig` call
-  (no saved state to show), and blank the limit widgets rather than
-  loading anything.  This is a deliberately thin UI: the supervisor
-  fills in the form and presses Apply, and the values land in every
-  member's file.
-- New user-visible strings need entries in `resource/locale/timekpr.pot`
-  and will show untranslated in the eleven shipped languages until the
-  `.po` files are updated.
-
-### Client (`timekprc`)
-
-No change.  Members receive the usual `timeConfigurationChangedNotification`
-from `adjustLimitsFromConfig(False)` when their file is written.
-
-### Packaging and tests
-
-- `debian/install` enumerates every Python file individually
-  ([debian/install:47-110](../../debian/install#L47-L110)); Phase 1
-  adds no new modules, so only the sample `timekpr.conf` changes.  The
-  nixpkgs derivation generates a `setup.py` using
-  `find_namespace_packages`, so new modules in later phases are picked
-  up automatically
-  ([nixpkgs pkgs/by-name/ti/timekpr/package.nix](https://github.com/NixOS/nixpkgs/blob/master/pkgs/by-name/ti/timekpr/package.nix)).
-- `nix/tests/timekpr.nix` and `nix/tests/timekpr.py`: create a local
-  group `kids` containing `alice`, and a Kanidm POSIX group `kids`
-  containing `bob` (the test already creates `posix_users` this way,
-  [timekpr.py:126-128](../../nix/tests/timekpr.py#L126-L128)).  Set
-  `TIMEKPR_GROUPS = kids` in the patched `timekpr.conf`
-  ([timekpr.nix:57-65](../../nix/tests/timekpr.nix#L57-L65)).  Add
-  subtests: `--grouplist` shows `kids`; `--settimelimits @kids 0;...`
-  terminates both logins; `--settimeleft @kids + 300` lets both survive.
-  The domain user is the important case because it exercises
-  `getgrouplist` through `kanidm-unixd`.
-- README: a short "Groups" subsection under "User configuration".
+- NixOS test: the per-user "unrestricted login first" step
+  ([timekpr.py:88-90](../../nix/tests/timekpr.py#L88-L90)) is replaced
+  by asserting that `--settimelimits` works *before* first login and is
+  enforced at first login.  Add `--deletepolicy` followed by a
+  surviving login.  The Kanidm user exercises the "no passwd entry
+  yet" path.
+- README: "User configuration" and "Additional options" sections.
 
 ### Effort
 
 | Item | Estimate |
 | --- | --- |
-| Config key, membership helpers | 0.5 day |
-| Daemon target expansion, `getGroupList` | 1 day |
-| CLI, proxy, messages | 0.5 day |
-| GUI (combo rows, disable today tab) | 1.5 days |
-| NixOS test (two runs of about 10 minutes each without KVM per iteration) | 1 day |
-| README, `.pot` | 0.5 day |
+| Loader, fingerprint, create-on-demand | 1 day |
+| User list union, `deletePolicy`, lockout clamp | 1 day |
+| CLI, GUI, messages | 0.5 day |
+| Tests, README | 0.5 day |
 
-About five person-days.  Risk is low: the only behavioural change for
-existing installs is a new key in `timekpr.conf`, which the loader
-adds with an empty default.
+About three person-days.
 
-## Phase 2: inherited group configuration
-
-Goal: a group has its own configuration file; members with
-`CONFIG_SOURCE = group` follow it, and editing the group updates
-logged-in members immediately.  New accounts added to the group pick up
-the limits without any per-user step.
+## Phase 1: group policies
 
 ### Common (`common/utils/config.py`)
 
-- Generalise `timekprUserConfig` so the constructor takes the file
-  path and section name rather than deriving both from a user name.
-  Group files then reuse the whole class, including `initUserConfiguration`,
-  `saveUserConfiguration` and all getters and setters (about 40 methods,
-  [config.py:674-1250](../../common/utils/config.py#L674-L1250)).
-  This is the single most valuable refactor in the proposal; without it
-  the group file needs a 600-line copy.
-- Add `CONFIG_SOURCE` to the user section (load, default, save, log).
-- Add an effective-config resolver: after loading the user's own file,
-  if `CONFIG_SOURCE = group`, find the first group in `TIMEKPR_GROUPS`
-  that the user belongs to, load that group's file, and overlay every
-  limit key from it.  Expose `getEffectiveGroup()` and the group file's
-  mtime.  Putting the resolver here means `userdata.py`,
-  `configprocessor.py` and the admin getters all see the effective
-  values without further changes.
-- Decide what a group file's `HIDE_TRAY_ICON`, `LOCKOUT_TYPE` and
-  `WAKEUP_HOUR_INTERVAL` mean for members.  They are ordinary limit
-  keys and should inherit like the rest; the proposal does not carve
-  out exceptions.
+- Generalise `timekprUserConfig` so the constructor takes a file path
+  and a section name rather than deriving both from a user name.  Group
+  files then reuse the whole class, including `initUserConfiguration`,
+  `saveUserConfiguration` and the roughly forty getters and setters
+  ([config.py:674-1250](../../common/utils/config.py#L674-L1250)).
+  Without this the group file needs a 600-line copy.  This is the main
+  regression risk of the whole proposal because it sits under every
+  read and write; the existing NixOS test covers the user path.
+- Add the `OVERRIDES` key to the group variant (load, default, save,
+  log), ignored in user files.
+- Add `timekprPolicyResolver`: given a user name, the config dir and a
+  membership function, produce one effective config object per D4 and
+  D5, plus provenance (`user`, `group:<names>`, `default`) and a
+  fingerprint (user file mtime or `None`, sorted `(group, mtime)` pairs
+  for the groups considered).  The merge table lives here.
 
 ### Server
 
-- `server/config/userhelper.py`: extend `checkAndInitUsers` so that a
-  newly created user file gets `CONFIG_SOURCE = group` when the user is
-  in a configured group, and `user` otherwise.  Add
-  `getSavedGroupList` scanning the `groups/` subdirectory.
-- `server/config/configprocessor.py`: make
-  `timekprUserConfigurationProcessor` accept a group target and operate
-  on the group's config object.  The seventeen `checkAndSet*` methods
-  only touch `self._timekprUserConfig`
+- `server/config/userhelper.py`: `getGroupsWithPolicy()` (directory
+  listing), `getUserGroups(user)` via `os.getgrouplist`, best-effort
+  `getGroupMembers(group)` per D3, `isGroupTarget(name)` per D1, and
+  the group part of the admin user list.
+- `server/config/configprocessor.py`: the constructor takes a target;
+  for `@group` it operates on the group's config object.  The seventeen
+  `checkAndSet*` methods only touch `self._timekprUserConfig`
   ([configprocessor.py:268-1039](../../server/config/configprocessor.py#L268-L1039)),
-  so once the config class is generalised this is a constructor change.
-  `getSavedUserInformation` gains three keys in its result dict:
-  `CONFIG_SOURCE`, `EFFECTIVE_GROUP` and `GROUPS` (the configured groups
-  the user is in).  For a `@group` target it returns the group's saved
-  configuration and no control values.
-- `server/interface/dbus/daemon.py`: after a write to `@group`, call
-  `adjustLimitsFromConfig(False)` on every logged-in `timekprUser`
-  whose effective group is that group, so they are notified.  Extend
-  the external-edit detection in `saveSpent` to compare the group
-  file's mtime as well as the user's.  Add `setConfigSource(user, source)`
-  as one new D-Bus method (or fold it into an existing setter; a
-  separate method is clearer).
-- `server/user/userdata.py`: no change beyond the mtime comparison,
-  because `adjustLimitsFromConfig` reads through the config getters.
+  so once the class is generalised this is a constructor change plus
+  the `OVERRIDES` setter.  `getSavedUserInformation` for a user returns
+  the *effective* policy with provenance keys `POLICY_SOURCE` and
+  `GROUPS`; for `@group` it returns that file and no counters.
+  Setting a user-specific key (`HIDE_TRAY_ICON`) on a group target is
+  rejected with a message.
+- `server/interface/dbus/daemon.py`:
+  - `timekprUser` creation calls the resolver instead of loading the
+    user file directly; `saveSpent` compares the fingerprint.
+  - After any write to `@group`, or a `deletePolicy`, every logged-in
+    `timekprUser` re-resolves; those whose effective policy changed get
+    `adjustLimitsFromConfig(False)` so the client is notified.  A
+    membership change in NSS is picked up at the next fingerprint
+    check by re-running `getUserGroups` (cheap, one NSS call per user
+    per poll; or cache with a short TTL).
+  - `setTimeLeft` and `setPlayTimeLeft` on `@group` fan out to the
+    best-effort member list, restricted to members that have a
+    counters file (the others have no "today" yet).  Results are
+    collected; the first failure's message is returned prefixed with
+    the member name, and the remaining members are still processed.
+  - New getter `getGroupList` returning `[[group, member-count]]`.
+  - `getUserList` includes provenance.
 
 ### D-Bus interface
 
-- `getUserInformation` returns three additional keys (additive, no
-  signature change).  `getUserInformation("@kids", "S")` becomes valid.
-- One new method `setConfigSource(s user, s source)`.
-- Still no policy file change.
+- No signature changes on existing methods.  `getUserInformation`
+  returns two additional keys (additive).  New methods: `getGroupList`,
+  `deletePolicy` (Phase 0), `setOverrides(s group, as groups)`.
+- No change to `resource/server/dbus/timekpr.conf` or to the polkit
+  policy, which only guards `pkexec timekpra` as a whole
+  ([com.ubuntu.timekpr.pkexec.policy:7-16](../../resource/server/polkit/com.ubuntu.timekpr.pkexec.policy#L7-L16)).
+- A new client against an old daemon gets `UnknownMethod` for the new
+  getters and "user not found" for `@` targets; both already surface as
+  ordinary error messages via `formatException`
+  ([administration.py:110-122](../../client/interface/dbus/administration.py#L110-L122)).
 
 ### Admin CLI
 
-- `--groupinfo @kids` (reuses `--userinfo` output formatting).
-- `--setconfigsource 'user' 'group|user'`.
-- `printUserConfig` prints the three new keys.
+- `--grouplist`, `--groupinfo @kids` (reuses `--userinfo` formatting),
+  `--setoverrides @teens 'kids;guests'`.  `@group` accepted by every
+  existing `--set...` command with no parsing change.
+- `printUserConfig` prints `POLICY_SOURCE`, `GROUPS`, `OVERRIDES`.
+- `common/constants/messages.py` and `constants.py`
+  `TK_USER_ADMIN_COMMANDS` gain the entries.
+- `client/interface/dbus/administration.py`: one proxy method per new
+  D-Bus method.
 
 ### Admin GUI
 
-- Group rows in the selector now load the group's configuration into
-  the form like a user would, with the "Info & today" tab disabled.
-- User view: a label "Configuration inherited from @kids" plus a
-  toggle that calls `setConfigSource`, and greying out the limit widgets
-  while inheriting.  Writing a limit for an inheriting user must either
-  be refused or switch the user to `CONFIG_SOURCE = user` first
-  (decision 4).  This is the largest single piece of GUI work because
-  `applyUserConfig` and the four `calculate...ControlAvailability`
-  methods all assume the widgets are editable
-  ([admingui.py:1322-1486](../../client/gui/admingui.py#L1322-L1486),
-  [:1574-1787](../../client/gui/admingui.py#L1574-L1787)).
+This is the largest single piece.
 
-### Client
+- The selector lists users and groups; group rows are `@kids (n
+  members, best effort)`.  Users show their provenance.
+- Selecting a group loads its file into the same form and disables the
+  "Info & today" tab (per-user counters only), except the add and
+  subtract time buttons, which fan out per D3.
+- Selecting a user with no user policy shows the effective policy
+  read-only with a "Create user policy from this" button; the four
+  apply paths ([admingui.py:1909-2248](../../client/gui/admingui.py#L1909-L2248))
+  then write a user file.  "Delete policy" returns the user to group
+  or default treatment.  The five `calculate...Availability` methods
+  ([admingui.py:1574-1787](../../client/gui/admingui.py#L1574-L1787))
+  need a read-only mode.
+- A small "Overrides" list on the group page, editable.
+- `HIDE_TRAY_ICON` hidden on group pages.
+- New strings go into `resource/locale/timekpr.pot` and show
+  untranslated until the eleven `.po` files are updated.
 
-No change.  The client only ever sees effective limits over the
-existing signals.
+### Client (`timekprc`)
 
-### Packaging and tests
+No change.  It only ever receives effective limits over the existing
+signals.
 
-- `debian/install`: add the `groups/` sample file if one is shipped;
-  `debian/postinst` should create `/var/lib/timekpr/config/groups`.
-  The NixOS module in nixpkgs owns `/var/lib/timekpr` via `StateDirectory`
-  or `tmpfiles`; check that the subdirectory is created on NixOS too.
-- NixOS test: write a `@kids` config with no time, check both users are
-  terminated without any per-user command; set `alice` to
-  `CONFIG_SOURCE = user` and grant her time, check she survives while
-  `bob` is still terminated.
-- README: document the file layout, `CONFIG_SOURCE`, precedence.
+### Packaging
+
+- `debian/install` enumerates every Python file individually
+  ([debian/install:47-110](../../debian/install#L47-L110)); add any new
+  module and the `timekpr.GROUP.conf` sample.  `debian/postinst`
+  creates `/var/lib/timekpr/config/groups`.
+- The nixpkgs derivation generates a `setup.py` using
+  `find_namespace_packages`, so new modules are picked up automatically
+  ([nixpkgs pkgs/by-name/ti/timekpr/package.nix](https://github.com/NixOS/nixpkgs/blob/master/pkgs/by-name/ti/timekpr/package.nix)).
+  Check how the NixOS module provisions `/var/lib/timekpr` and add the
+  subdirectory there too.
+
+### Tests
+
+Extend `nix/tests/timekpr.nix` and `nix/tests/timekpr.py`:
+
+- Local group `kids` containing `alice`; Kanidm POSIX group `kids`
+  containing `bob` (the test already creates `posix_users` this way,
+  [timekpr.py:126-128](../../nix/tests/timekpr.py#L126-L128)).  The
+  Kanidm user is the important case: it exercises `getgrouplist`
+  through `kanidm-unixd` for a user with no passwd enumeration.
+- `--settimelimits @kids 0;...` before either has logged in: both
+  logins terminated.
+- `--settimelimits alice ...` with time: alice survives, bob still
+  terminated (user policy wins).  `--deletepolicy alice`: alice
+  terminated again.
+- Second group `teens` with time, `--setoverrides @teens kids`, alice
+  added to `teens`: alice survives.  Then remove the override: alice
+  terminated (most-restrictive merge).
+- `--settimeleft @kids + 300` after both have counters files: both
+  survive.
+
+Each VM iteration is about ten minutes without KVM.
 
 ### Effort
 
 | Item | Estimate |
 | --- | --- |
-| Config class generalisation, `CONFIG_SOURCE`, resolver | 2 days |
-| Config processor and user helper changes | 1 day |
-| Daemon propagation, mtime watch, `setConfigSource` | 1 day |
+| Config class generalisation, resolver, merge, precedence graph | 3 days |
+| User helper, config processor | 1 day |
+| Daemon: resolution, fingerprint, propagation, fan-out, getters | 1.5 days |
 | CLI, proxy, messages | 0.5 day |
-| GUI inherit indicator, toggle, group editing | 2 to 3 days |
-| Tests | 1 day |
-| Docs, `.pot`, packaging | 1 day |
+| GUI | 3 days |
+| Tests | 1.5 days |
+| README, `.pot`, packaging | 1 day |
 
-About eight to ten person-days on top of Phase 1.  The refactor of
-`timekprUserConfig` is the main regression risk because it sits under
-every read and write; the existing NixOS test covers the user path and
-should be run after every step.
+About eleven to twelve person-days on top of Phase 0.
+
+## Optional: remove the non-logout code
+
+Per D6, about two person-days: the server branches and helpers listed
+there, `setLockoutType` and its proxy and CLI command, the glade radio
+group and its handler ([admingui.py:2861](../../client/gui/admingui.py#L2861)),
+the README sections, and the message strings.  Best done as its own
+commit after Phase 1 so the diff against upstream stays reviewable.
 
 ## Not proposed: shared budget per group
 
@@ -389,47 +566,42 @@ A pooled counter ("the kids share three hours a day between them")
 would need a third file type in the work dir, reconciliation between
 every member's in-memory counters on every 3-second poll
 ([daemon.py:245-334](../../server/interface/dbus/daemon.py#L245-L334)),
-and a rule for concurrent sessions (two members logged in at once burn
-the pool at double rate, or not).  The accounting engine in
-`userdata.py` assumes one control file and one set of counters per
+and a rule for concurrent sessions.  The accounting engine in
+`userdata.py` assumes one counters file and one set of counters per
 user throughout.  This is a rewrite of the accounting core rather than
-an extension, and no user has asked for it.  It is listed here only so
-that the phrase "group limits" is not read as promising it.
+an extension, and nobody has asked for it.
 
-## Decisions needed before Phase 1
+## Open questions
 
-1. **Opt-in group list versus all POSIX groups.**  Proposal: opt-in via
-   `TIMEKPR_GROUPS`.  Reason given in constraint 2.
-2. **Precedence when a user is in several configured groups.**
-   Proposal: first match in `TIMEKPR_GROUPS` order.  Alternative: refuse
-   to inherit and log a warning.  Only matters in Phase 2.
-3. **Whole-file versus per-key inheritance.**  Proposal: whole file
-   (`CONFIG_SOURCE`).  Per-key inheritance needs a representation for
-   "unset" in a format that always writes every key, which means either
-   a sentinel value or a second marker key per limit.  It can be added
-   later without changing the file layout.
-4. **Writing a limit for an inheriting user.**  Proposal: the setter
-   returns an error telling the supervisor to switch the source first.
-   Auto-detaching is friendlier in the GUI but surprising from the CLI
-   and from scripts.
-5. **Wire syntax for group targets.**  Proposal: `@group` in the
-   existing `pUserName` argument.  Alternative: a parallel set of
-   `setGroup*` methods, which doubles the D-Bus surface and the proxy
-   for no functional gain.
-6. **Whether Phase 1 ships alone.**  Bulk apply solves the request in
-   question 708545 by itself and leaves the runtime untouched.  Phase 2
-   can follow once the file layout and membership rules have been
-   exercised in the field.
+1. **`kill` as a second logout variant.**  It is a logout, only
+   harsher.  This proposal drops it for a single behaviour; keeping it
+   costs nothing technically.
+2. **Migration of auto-created user files.**  After upgrade every
+   existing user has a file that now counts as an explicit policy.
+   Options: document `--deletepolicy` only; or a one-time startup pass
+   that deletes user files whose values equal the defaults and logs
+   each deletion.  The second is convenient but destroys a file the
+   admin may have created deliberately with default values.
+3. **Setting a user-specific key on a group.**  Reject (proposed) or
+   silently ignore.
+4. **Fan-out of "today" adjustments to groups.**  Proposed above as
+   best effort over members with a counters file.  The alternative is
+   to refuse `@group` for `setTimeLeft` and keep "today" strictly per
+   user.
+5. **Group membership refresh cadence.**  One `getgrouplist` call per
+   logged-in user per 3-second poll is cheap locally but goes to the
+   identity daemon for domain users.  A short TTL (30 seconds, the same
+   as the save interval) is the proposed compromise.
 
 ## Files touched, by component
 
-| Component | Phase 1 | Phase 2 |
+| Component | Phase 0 | Phase 1 |
 | --- | --- | --- |
-| Server daemon | `server/interface/dbus/daemon.py` | same, plus `server/user/userdata.py` (mtime) |
-| Server config | `server/config/userhelper.py`, `common/utils/config.py` (one key) | `common/utils/config.py` (class generalisation, resolver), `server/config/configprocessor.py` |
-| D-Bus interface | one new method | one more method, three new result keys |
+| Server daemon | `server/interface/dbus/daemon.py` | same, plus `server/user/userdata.py` (fingerprint) |
+| Server config | `server/config/userhelper.py`, `server/config/configprocessor.py`, `common/utils/config.py` | same, plus the resolver (new module or in `config.py`) |
+| D-Bus interface | `deletePolicy` | `getGroupList`, `setOverrides`, two new result keys |
 | Admin CLI | `client/admin/adminprocessor.py`, `client/interface/dbus/administration.py`, `common/constants/{constants,messages}.py` | same files |
 | Admin GUI | `client/gui/admingui.py`, `resource/client/forms/admin.glade` | same files, larger change |
 | Client | none | none |
-| Packaging | `resource/server/timekpr.conf`, `debian/install` (sample conf only) | `debian/install`, `debian/postinst`, NixOS state directory |
-| Tests and docs | `nix/tests/timekpr.{nix,py}`, `README.md`, `resource/locale/timekpr.pot` | same |
+| Packaging | `resource/server/timekpr.USER.conf` comments | `debian/install`, `debian/postinst`, `resource/server/timekpr.GROUP.conf`, NixOS state directory |
+| Tests and docs | `nix/tests/timekpr.{nix,py}`, `README.md` | same, plus `resource/locale/timekpr.pot` |

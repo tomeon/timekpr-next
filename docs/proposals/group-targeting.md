@@ -1,6 +1,6 @@
 # Proposal: targeting groups in addition to users
 
-Status: scoping only, no code written.  Revision 2, after design review.
+Status: scoping only, no code written.  Revision 3, after design review.
 Scope basis: this repository at commit `5c6ee67` (timekpr-next 0.5.8 plus
 the Nix flake).
 
@@ -39,9 +39,13 @@ policies are created, and the group phase proper:
 
 | Phase | Content | Estimate |
 | --- | --- | --- |
-| 0. Prerequisites | Stop auto-creating user config files; setters create on demand; a delete-policy command; lockout clamped to logout | about 3 person-days |
-| 1. Group policies | Group files, membership, merge and precedence, D-Bus, CLI, GUI, tests | about 11 to 12 person-days |
-| Optional | Physically remove the lock, suspend, suspendwake, shutdown code and UI | about 2 person-days |
+| 0a. Prerequisites | Stop auto-creating user config files; setters create on demand; a delete-policy command; lockout clamped to logout | about 3 person-days |
+| 0b. Remove PlayTime | Delete the process monitor, its seven setters, its accounting, its GUI and client display, and its strings | about 3 person-days |
+| 1. Group policies | Group files, membership, merge and precedence, D-Bus, CLI, GUI, tests | about 9 to 10 person-days |
+| Optional | Physically remove the lock, suspend, suspendwake, kill, shutdown code and UI, and the leftover process killer | about 2 person-days |
+
+Phase 0b comes before Phase 1 because it shrinks everything Phase 1
+generalises: the config class, the setters, the GUI.
 
 A shared time budget across group members is not proposed; see "Not
 proposed".
@@ -239,7 +243,7 @@ list.  The UI should label it as such.  Nothing on the server depends
 on it.
 
 Groups carry policy only.  Accounting is per user without exception:
-`setTimeLeft` and `setPlayTimeLeft` refuse a `@group` target, the
+`setTimeLeft` refuses a `@group` target, the
 "Info & today" tab has no group form, and there is no group counters
 file.
 
@@ -278,12 +282,14 @@ much time is charged and at least as many things are forbidden.
 | `LIMITS_PER_WEEKDAYS` | minimum per day | |
 | `LIMIT_PER_WEEK`, `LIMIT_PER_MONTH` | minimum | |
 | `TRACK_INACTIVE` | logical OR | with it on, a session that is logged in but not the active one on the seat (locked screen, switched to another user, idle hint set) still burns time; with it off, only the active, unlocked, non-idle session counts ([logind/user.py:150-224](../../server/interface/dbus/logind/user.py#L150-L224)) |
-| `PLAYTIME_ENABLED` | logical OR | PlayTime is an *extra* limit on the listed processes inside the ordinary limits; when it is off the listed processes are just ordinary screen time ([README.md:304-330](../../README.md#L304-L330)).  Enabling it adds a constraint.  The one case where "enabled" is a relaxation is override mode, and that is handled by the next row |
-| `PLAYTIME_LIMIT_OVERRIDE_ENABLED` | logical AND | in override mode the ordinary daily, weekly and monthly limits are charged only while a listed process runs and everything else is free time ([README.md:339-345](../../README.md#L339-L345), [userdata.py:856-866](../../server/user/userdata.py#L856-L866)); it is the least restrictive PlayTime setting, so `False` wins |
-| `PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED` | logical AND | `False` forbids the listed processes during `!` hours |
-| `PLAYTIME_ALLOWED_WEEKDAYS` | intersection | |
-| `PLAYTIME_LIMITS_PER_WEEKDAYS` | minimum per day | |
-| `PLAYTIME_ACTIVITIES` | union of process masks | the list is the set of processes *subject to* the PlayTime limit (or, in override mode, the set that is charged), so a longer list restricts more; union is the additive merge |
+
+The PlayTime keys are gone with Phase 0b.  For the record, they also
+had well-defined merges: `PLAYTIME_ENABLED` OR (PlayTime is an extra
+limit on the listed processes, so enabling it adds a constraint),
+`PLAYTIME_LIMIT_OVERRIDE_ENABLED` AND (override mode charges time only
+while a listed process runs, a relaxation),
+`PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED` AND, the day and limit lists
+as for ordinary time, and `PLAYTIME_ACTIVITIES` union.
 
 A ranking exists for `HIDE_TRAY_ICON` as well (`True` withholds
 information from the user), so it could be merged with OR if it is
@@ -328,11 +334,8 @@ Two further places kill processes today and fall under the same rule:
   ([daemon.py:272-274](../../server/interface/dbus/daemon.py#L272-L274),
   [playtime.py:431-442](../../server/user/playtime.py#L431-L442)).
   That is the whole enforcement mechanism of PlayTime; there is no
-  logout variant.  The options are to leave PlayTime as it is and
-  accept the exception, to make PlayTime exhaustion log the user out
-  like any other limit, or to drop PlayTime.  This proposal keeps the
-  PlayTime keys in the policy model so the merge is complete, and
-  leaves the enforcement choice as an open question.
+  logout variant.  PlayTime is removed in Phase 0b, which also settles
+  its evasion problem (see there).
 - **Leftover process cleanup.**  After terminating sessions the daemon
   schedules `killLeftoverUserProcesses`, which walks the process table
   with psutil and terminates the user's processes that were reparented
@@ -397,19 +400,11 @@ Two things change with D2:
   overridden).  It replaces the need for a `[DEFAULTS]` section in
   `timekpr.conf` and a second file format.
 
-`PLAYTIME_ACTIVITIES` is a candidate for a global seed list (the
-games installed on the machine are the same for everyone).  With `@all`
-that falls out for free: put the list in the `@all` policy and it
-unions into every group merge.  It does not reach a user with their
-own policy file, by D4 rule 1; if that is wanted, the user policy can
-declare `OVERRIDES`-style additivity later, and this proposal does not
-go there.
-
 ### D9. File layout
 
 - User policy: `<config dir>/timekpr.<user>.conf`, unchanged.
 - Group policy: `<config dir>/groups/timekpr.<group>.conf`, sections
-  `[@<group>]` and `[@<group>.PLAYTIME]`.  The subdirectory keeps the
+  `[@<group>]` (after Phase 0b there is no PlayTime section).  The subdirectory keeps the
   existing user scan ([userhelper.py:183-192](../../server/config/userhelper.py#L183-L192))
   from seeing group files, and makes "which groups have a policy" one
   directory listing.  The `@` in the section name lets one config class
@@ -418,7 +413,7 @@ go there.
   existing `timekpr.USER.conf` sample, excluded from listings the same
   way.
 
-## Phase 0: prerequisites
+## Phase 0a: prerequisites
 
 These change user-policy handling and enforcement without introducing
 groups.  They are independently useful and independently testable.
@@ -444,7 +439,7 @@ groups.  They are independently useful and independently testable.
   creates the file with defaults when asked to set something and the
   file is missing; `getSavedUserInformation` reports defaults plus
   `POLICY_SOURCE = default` when it is missing.  `checkAndSetTimeLeft`
-  and `checkAndSetPlayTimeLeft` create the counters file on demand.
+  creates the counters file on demand.
   `checkAndSetLockoutType` accepts only `terminate`.
 - `server/interface/dbus/daemon.py`: new method `deletePolicy(s target)`
   on the user admin interface; after deleting, a logged-in user is
@@ -479,6 +474,73 @@ groups.  They are independently useful and independently testable.
 
 About three person-days.
 
+## Phase 0b: remove PlayTime
+
+PlayTime is a per-user limit on named processes, enforced by killing
+them.  It goes for two reasons.  Killing processes is out of scope
+(D6).  And it is evadable by the user it targets:
+
+- In the default mode the daemon matches the configured mask against
+  the kernel's record of the executable, `readlink /proc/<pid>/exe`
+  ([playtime.py:214-234](../../server/user/playtime.py#L214-L234),
+  [:61-87](../../server/user/playtime.py#L61-L87)).  Changing `argv[0]`
+  does *not* defeat that.  Copying the binary to another name, or
+  starting it through the dynamic loader (`ld.so ./game`, whose `exe`
+  is `ld.so`), does.
+- The motivating case, Windows games under Proton (the sample masks
+  are `DOOMEternalx64vk.exe` and the like,
+  [timekpr.USER.conf:52-54](../../resource/server/timekpr.USER.conf#L52-L54)),
+  has `exe` pointing at the wine preloader, so the game name is only
+  visible on the command line.  Catching those needs the "enhanced
+  activity monitor", which matches `/proc/<pid>/cmdline`
+  ([playtime.py:242-249](../../server/user/playtime.py#L242-L249)).
+  The command line is the process's own memory; any process can
+  rewrite it, and a shell can start one with a false `argv[0]`
+  (`exec -a`).  So the mode the feature was built for is the trivially
+  bypassed one.
+
+### Footprint
+
+Counts are lines mentioning PlayTime.
+
+| Area | Where | Size |
+| --- | --- | --- |
+| Process monitor | `server/user/playtime.py` | whole file, 473 lines |
+| Accounting | `server/user/userdata.py` (`TK_CTRL_PTCNT` structure, balance and spent branches, `getPlayTimeLeft`) | 79 lines |
+| Daemon | `server/interface/dbus/daemon.py` (poll-loop branch, 7 user setters, `logCachedProcesses`, 2 global setters) | 66 lines |
+| Config processor | `server/config/configprocessor.py` (7 `checkAndSet*`, saved-info keys, 2 global checks) | 94 lines |
+| Config classes | `common/utils/config.py` (user section `[<user>.PLAYTIME]`, control keys `PLAYTIME_SPENT_*`, global master switches) | 171 lines |
+| Constants and strings | `common/constants/constants.py`, `common/constants/messages.py`, `resource/locale/timekpr.pot` and eleven `.po` files | 22, 49, 92 lines |
+| Signals | `common/utils/notifications.py` (PlayTime fields in the `timeLeft` and `timeLimits` payloads) | 12 lines |
+| Admin CLI and proxy | `client/admin/adminprocessor.py`, `client/interface/dbus/administration.py` (7 commands, 7 proxy methods) | 60, 36 lines |
+| Admin GUI | `client/gui/admingui.py`, `resource/client/forms/admin.glade` (the PlayTime tab) | 283, 133 lines |
+| Client | `client/gui/clientgui.py`, `client/interface/ui/notificationarea.py` and the indicator files, `resource/client/forms/client.glade` (PlayTime left display and notifications) | 53, 22, 27 lines |
+| Samples and docs | `resource/server/timekpr.USER.conf`, `USER.time`, `timekpr.conf`, `README.md` | 17, 5, 6, 45 lines |
+
+### Compatibility
+
+- D-Bus: seven methods leave `com.timekpr.server.user.admin` and three
+  leave `com.timekpr.server.admin`.  An old client calling them gets
+  `UnknownMethod`, surfaced as an error message.  The `timeLeft` and
+  `timeLimits` signal payloads are dicts, so dropping keys is
+  compatible as long as the client tolerates their absence; the client
+  is changed in the same phase anyway.
+- Files: old user config files carry a `[<user>.PLAYTIME]` section and
+  old counters files carry `PLAYTIME_SPENT_*` keys.  The loader ignores
+  sections it does not read, and `_saveConfigFile` drops keys it does
+  not know on the next save ([config.py:53-55](../../common/utils/config.py#L53-L55)),
+  so no migration step is needed beyond Phase 0a's.
+- This is the first phase that touches `timekprc`, because the client
+  displays PlayTime left.
+- The `psutil` dependency stays only for the leftover process killer;
+  once that goes (optional phase) `psutil` can be dropped from the
+  package dependencies.
+
+### Effort
+
+About three person-days, most of it in the admin GUI and in keeping
+the eleven translation files consistent.
+
 ## Phase 1: group policies
 
 ### Common (`common/utils/config.py`)
@@ -488,9 +550,11 @@ About three person-days.
   files then reuse the whole class, including `initUserConfiguration`,
   `saveUserConfiguration` and the roughly forty getters and setters
   ([config.py:674-1250](../../common/utils/config.py#L674-L1250)).
-  Without this the group file needs a 600-line copy.  This is the main
-  regression risk of the whole proposal because it sits under every
-  read and write; the existing NixOS test covers the user path.
+  Without this the group file needs a several-hundred-line copy.  This
+  is the main regression risk of the whole proposal because it sits
+  under every read and write; the existing NixOS test covers the user
+  path.  After Phase 0b the class has eleven policy keys instead of
+  twenty-three.
 - Add the `OVERRIDES` key to the group variant (load, default, save,
   log), ignored in user files.
 - Add `timekprPolicyResolver`: given a user name, the config dir and a
@@ -510,7 +574,8 @@ About three person-days.
   `checkAndSet*` methods only touch `self._timekprUserConfig`
   ([configprocessor.py:268-1039](../../server/config/configprocessor.py#L268-L1039)),
   so once the class is generalised this is a constructor change plus
-  the `OVERRIDES` setter.  `getSavedUserInformation` for a user returns
+  the `OVERRIDES` setter.  After Phase 0b there are ten of them, not
+  seventeen.  `getSavedUserInformation` for a user returns
   the *effective* policy with provenance keys `POLICY_SOURCE` and
   `GROUPS`; for `@group` it returns that file and no counters.
   Setting a user-specific key (`HIDE_TRAY_ICON`) on a group target is
@@ -524,8 +589,7 @@ About three person-days.
     membership change in NSS is picked up at the next fingerprint
     check by re-running `getUserGroups` (cheap, one NSS call per user
     per poll; or cache with a short TTL).
-  - `setTimeLeft` and `setPlayTimeLeft` return an error for a `@group`
-    target (D3).
+  - `setTimeLeft` returns an error for a `@group` target (D3).
   - New getter `getGroupList` returning `[[group, member-count]]`, the
     count being best effort.
   - `getUserList` includes provenance.
@@ -618,15 +682,15 @@ Each VM iteration is about ten minutes without KVM.
 
 | Item | Estimate |
 | --- | --- |
-| Config class generalisation, resolver, merge, precedence graph | 3 days |
+| Config class generalisation, resolver, merge, precedence graph | 2.5 days |
 | User helper, config processor | 1 day |
-| Daemon: resolution, fingerprint, propagation, fan-out, getters | 1.5 days |
+| Daemon: resolution, fingerprint, propagation, getters | 1.5 days |
 | CLI, proxy, messages | 0.5 day |
-| GUI | 3 days |
+| GUI | 2 days |
 | Tests | 1.5 days |
 | README, `.pot`, packaging | 1 day |
 
-About eleven to twelve person-days on top of Phase 0.
+About nine to ten person-days on top of Phase 0.
 
 ## Optional: remove the non-logout code
 
@@ -649,30 +713,26 @@ an extension, and nobody has asked for it.
 
 ## Open questions
 
-1. **PlayTime enforcement kills processes** (D6).  Keep the exception,
-   turn PlayTime exhaustion into a logout, or drop PlayTime.  The
-   policy model and merge table are the same in all three cases; only
-   `daemon.py:272-274` and `playtime.py` change.
-2. **Leftover process cleanup** (D6).  Proposed removal in favour of
+1. **Leftover process cleanup** (D6).  Proposed removal in favour of
    logind's `KillUserProcesses`.
-3. **Setting a user-specific key on a group.**  Reject (proposed) or
+2. **Setting a user-specific key on a group.**  Reject (proposed) or
    silently ignore.
-4. **`HIDE_TRAY_ICON` in group policy.**  User-only per D7; an OR merge
+3. **`HIDE_TRAY_ICON` in group policy.**  User-only per D7; an OR merge
    is available if that changes.
-5. **Group membership refresh cadence.**  One `getgrouplist` call per
+4. **Group membership refresh cadence.**  One `getgrouplist` call per
    logged-in user per 3-second poll is cheap locally but goes to the
    identity daemon for domain users.  A short TTL (30 seconds, the same
    as the save interval) is the proposed compromise.
 
 ## Files touched, by component
 
-| Component | Phase 0 | Phase 1 |
-| --- | --- | --- |
-| Server daemon | `server/interface/dbus/daemon.py` | same, plus `server/user/userdata.py` (fingerprint) |
-| Server config | `server/config/userhelper.py`, `server/config/configprocessor.py`, `common/utils/config.py` | same, plus the resolver (new module or in `config.py`) |
-| D-Bus interface | `deletePolicy` | `getGroupList`, `setOverrides`, two new result keys |
-| Admin CLI | `client/admin/adminprocessor.py`, `client/interface/dbus/administration.py`, `common/constants/{constants,messages}.py` | same files |
-| Admin GUI | `client/gui/admingui.py`, `resource/client/forms/admin.glade` | same files, larger change |
-| Client | none | none |
-| Packaging | `resource/server/timekpr.USER.conf` comments | `debian/install`, `debian/postinst`, `resource/server/timekpr.GROUP.conf`, NixOS state directory |
-| Tests and docs | `nix/tests/timekpr.{nix,py}`, `README.md` | same, plus `resource/locale/timekpr.pot` |
+| Component | Phase 0a | Phase 0b | Phase 1 |
+| --- | --- | --- | --- |
+| Server daemon | `server/interface/dbus/daemon.py` | same, `server/user/userdata.py`, delete `server/user/playtime.py` | `daemon.py`, `userdata.py` (fingerprint) |
+| Server config | `server/config/userhelper.py`, `server/config/configprocessor.py`, `common/utils/config.py` | `configprocessor.py`, `config.py` | same, plus the resolver (new module or in `config.py`) |
+| D-Bus interface | `deletePolicy` | ten methods removed, signal payload keys removed | `getGroupList`, `setOverrides`, two new result keys |
+| Admin CLI | `client/admin/adminprocessor.py`, `client/interface/dbus/administration.py`, `common/constants/{constants,messages}.py` | same files | same files |
+| Admin GUI | `client/gui/admingui.py`, `resource/client/forms/admin.glade` | same files (PlayTime tab) | same files, larger change |
+| Client | none | `client/gui/clientgui.py`, `client/interface/ui/*`, `client/interface/dbus/*`, `resource/client/forms/client.glade`, `common/utils/notifications.py` | none |
+| Packaging | `resource/server/timekpr.USER.conf` comments | samples, `debian/install` (drop `playtime.py`) | `debian/install`, `debian/postinst`, `resource/server/timekpr.GROUP.conf`, NixOS state directory |
+| Tests and docs | `nix/tests/timekpr.{nix,py}`, `README.md` | `README.md`, `resource/locale/*` | same, plus `resource/locale/timekpr.pot` |

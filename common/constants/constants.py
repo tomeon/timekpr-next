@@ -138,7 +138,9 @@ TK_POLKIT_PATH = "/org/freedesktop/PolicyKit1/Authority"
 TK_POLKIT_AUTHORITY_INTERFACE = "org.freedesktop.PolicyKit1.Authority"
 # actions the server asks polkit about before running a method on the admin interfaces
 #   (declared in resource/server/polkit/com.timekpr.server.policy)
-TK_POLKIT_ACTION_USER_READ = "com.timekpr.server.user.admin.read"  # user list and user information
+#   polkit remembers an "auth_admin_keep" authentication per action, so everything
+#   read-only is one action: the admin GUI then asks once when it opens
+TK_POLKIT_ACTION_READ = "com.timekpr.server.admin.read"  # user list, user information, server configuration
 TK_POLKIT_ACTION_USER_TIME_LEFT = "com.timekpr.server.user.admin.time-left"  # time / PlayTime left for today
 TK_POLKIT_ACTION_USER_CONFIGURE = "com.timekpr.server.user.admin.configure"  # everything else about a user
 TK_POLKIT_ACTION_SERVER_CONFIGURE = "com.timekpr.server.admin.configure"  # timekpr's own configuration

@@ -9,6 +9,7 @@ resource/server/logrotate.d/timekpr etc/logrotate.d/
 resource/server/polkit/com.ubuntu.timekpr.pkexec.policy usr/share/polkit-1/actions/
 resource/server/polkit/com.timekpr.server.policy usr/share/polkit-1/actions/
 resource/server/polkit/50-timekpr.rules usr/share/polkit-1/rules.d/
+resource/server/polkit/timekpr.pkla var/lib/polkit-1/localauthority/10-vendor.d/
 resource/server/systemd/timekpr.service lib/systemd/system/
 resource/server/timekpr.conf etc/timekpr/
 

@@ -22,13 +22,21 @@
       });
 
     Members of the "timekpr" group are authorized for all of them by
-    50-timekpr.rules; the superuser always is.  Everyone else has to
-    authenticate as an administrator.
+    50-timekpr.rules (polkit 0.106 and later) or timekpr.pkla (polkit
+    0.105 and earlier, whose Local Authority knows identities and
+    actions but not details); the superuser always is.  Everyone else
+    has to authenticate as an administrator.
+
+    polkit remembers an auth_admin_keep authentication per action for a
+    few minutes.  Everything read-only is therefore one action, so the
+    administration GUI asks once when it opens, and each configuring
+    action keeps as well, since applying a page of settings is a series
+    of calls.
   -->
 
-  <action id="com.timekpr.server.user.admin.read">
-    <description>Read a user's Timekpr-nExT limits and time spent</description>
-    <message>Authentication is required to read Timekpr-nExT user information</message>
+  <action id="com.timekpr.server.admin.read">
+    <description>Read Timekpr-nExT configuration and user information</description>
+    <message>Authentication is required to read Timekpr-nExT configuration and user information</message>
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>
@@ -62,7 +70,7 @@
     <defaults>
       <allow_any>auth_admin</allow_any>
       <allow_inactive>auth_admin</allow_inactive>
-      <allow_active>auth_admin</allow_active>
+      <allow_active>auth_admin_keep</allow_active>
     </defaults>
   </action>
 

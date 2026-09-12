@@ -141,6 +141,12 @@ Other facts about the sandbox worth knowing before trying something:
   is always authorized (polkit does the same), which is why `timekpra`
   as root in the test needs no rule.  `50-timekpr.rules` reproduces
   the old `timekpr` group grant; site rules sorting earlier win.
+  `timekpr.pkla` says the same for polkit 0.105 and earlier (Ubuntu
+  22.04, Debian 11), which ignore `.rules` files; polkit 0.106 and
+  later ignore `.pkla` files, so both ship.  polkit remembers an
+  `auth_admin_keep` authentication per action id, which is why all
+  read-only methods share one action and the configuring actions keep
+  too: the admin GUI reads on open and applies a page as several calls.
 - `timekpra` always exits 0; the test detects refused commands by the
   "access denied" text in its output and by checking that nothing
   changed.  Polkit refuses non-root callers that have no agent to

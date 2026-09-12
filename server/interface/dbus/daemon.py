@@ -574,7 +574,7 @@ class timekprDaemon(dbus.service.Object):
 
     # --------------- user information get methods accessible by privileged users (root and all in timekpr group) --------------- #
 
-    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "", "isaas", cons.TK_POLKIT_ACTION_USER_READ)
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "", "isaas", cons.TK_POLKIT_ACTION_READ)
     def getUserList(self):
         """Get user list and their time left"""
         """Sets allowed days for the user
@@ -600,7 +600,7 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message, userList
 
-    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "ss", "isa{sv}", cons.TK_POLKIT_ACTION_USER_READ, pUserNameArg="pUserName")
+    @timekprAuthorizedMethod(cons.TK_DBUS_USER_ADMIN_INTERFACE, "ss", "isa{sv}", cons.TK_POLKIT_ACTION_READ, pUserNameArg="pUserName")
     def getUserInformation(self, pUserName, pInfoLvl):
         """Get user configuration (saved)"""
         """  this retrieves stored configuration and some realtime inforamation for the user"""
@@ -1079,7 +1079,7 @@ class timekprDaemon(dbus.service.Object):
 
     # --------------- server admin get methods accessible by privileged users (root and all in timekpr group) --------------- #
 
-    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "", "isa{sv}", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE)
+    @timekprAuthorizedMethod(cons.TK_DBUS_ADMIN_INTERFACE, "", "isa{sv}", cons.TK_POLKIT_ACTION_READ)
     def getTimekprConfiguration(self):
         """Get all timekpr configuration from server"""
         # default

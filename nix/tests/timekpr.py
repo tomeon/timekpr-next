@@ -37,6 +37,7 @@ DENIED = "access denied"
 TIMEKPR_BUS = "com.timekpr.server /com/timekpr/server"
 LIMITS_INTERFACE = "com.timekpr.server.user.limits"
 SESSION_ATTRIBUTES_INTERFACE = "com.timekpr.server.user.sessionattributes"
+POLKIT_READ = "com.timekpr.server.admin.read"
 POLKIT_USER_CONFIGURE = "com.timekpr.server.user.admin.configure"
 POLKIT_USER_TIME_LEFT = "com.timekpr.server.user.admin.time-left"
 
@@ -160,6 +161,7 @@ def exercise_authorization():
     with subtest(f"{CAROL}: an unprivileged user may not list users"):
         out = timekpra_as(CAROL, "--userlist")
         assert DENIED in out and ALICE not in out, out
+        wait_for_log(f"polkit: NOT AUTHORIZED {POLKIT_READ}", "method=getUserList")
 
     with subtest(f"{CAROL}: the per-user interfaces refuse other users"):
         # busctl reports the AccessDenied error only on stderr, which the
@@ -193,12 +195,14 @@ def exercise_authorization():
         assert weekday_limits(ALICE) == SOME_TIME
         assert ALICE in timekpra_as(DAVE, "--userlist")
         wait_for_log(f"polkit: AUTHORIZED {POLKIT_USER_CONFIGURE}", f"user={ALICE}")
+        wait_for_log(f"polkit: AUTHORIZED {POLKIT_READ}", "method=getUserList")
 
     with subtest(f"{ERIN}: a rule may allow one action for one user only"):
         assert DENIED not in timekpra_as(ERIN, "--settimeleft", ALICE, "+", EXTRA_TIME)
         wait_for_log(f"polkit: AUTHORIZED {POLKIT_USER_TIME_LEFT}", f"user={ALICE}")
         assert DENIED in timekpra_as(ERIN, "--settimeleft", CAROL, "+", EXTRA_TIME)
         assert DENIED in timekpra_as(ERIN, "--settimelimits", ALICE, NO_TIME)
+        assert DENIED in timekpra_as(ERIN, "--userinfo", ALICE)
         assert weekday_limits(ALICE) == SOME_TIME
 
 

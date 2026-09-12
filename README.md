@@ -163,6 +163,11 @@ a member of ```sudo``` or ```wheel```) is asked for a password; members of the `
 Site-specific rules in ```/etc/polkit-1/rules.d``` can scope access further, for example allow one user to grant extra time to one particular
 other user only. The actions and the details passed to rules are documented in ```/usr/share/polkit-1/actions/com.timekpr.server.policy```.
 
+On polkit 0.105 and earlier (Ubuntu 22.04 and older, Debian 11 and older) there are no JavaScript rules; there the ```timekpr``` group is granted by
+```/var/lib/polkit-1/localauthority/10-vendor.d/timekpr.pkla```, and site-specific entries go in ```/etc/polkit-1/localauthority/50-local.d/*.pkla```
+(see [pklocalauthority](https://www.freedesktop.org/software/polkit/docs/0.105/pklocalauthority.8.html)). Those entries match identities and actions
+only, so scoping by the user being administered needs polkit 0.106 or later.
+
 To run administration application you either need to run it as superuser or you need to add yourself to ```timekpr``` system group to have password-less 
 access to configuration. Most people use to run in as superuser as it is the easiest, out of the box experience - nothing has to be configured to use it.
 

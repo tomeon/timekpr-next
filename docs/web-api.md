@@ -17,9 +17,13 @@ available at `/api/v1/openapi.json` and an interactive one at
 
 ## Running
 
-`timekprw.service` runs `timekprw` as an unprivileged dynamic user in
-the `timekpr` group, which is what the daemon's D-Bus policy requires
-for the administration interfaces.  Options (`--listen`,
+`timekprw.service` runs `timekprw` as the unprivileged user `timekprw`
+(created by `sysusers.d/timekprw.conf`; on NixOS declare it with
+`extraGroups = ["timekpr"]`), a member of the `timekpr` group, which
+the polkit rule shipped with the daemon authorizes for the
+administration interfaces.  The daemon looks that membership up
+through NSS, so a `DynamicUser` with a supplementary group would not
+do.  Options (`--listen`,
 `--token-file`, `--static-dir`, `--root-path`, `--no-auth`) can also be
 given as environment variables `TIMEKPRW_<OPTION>`, for example through
 `/etc/timekpr/timekprw.env`, which the unit reads if it exists.
@@ -59,8 +63,8 @@ except `/health` requires a bearer token (`Authorization: Bearer
 <token>`), read from, in order: the file named by `--token-file`, the
 systemd credential `token` (a drop-in with
 `LoadCredential=token:/path/to/file`), or `/etc/timekpr/timekprw.token`.
-The token file must be readable by the service, which runs as a
-dynamic user in the `timekpr` group, and should be readable by nobody
+The token file must be readable by the service, which runs as
+`timekprw` in the `timekpr` group, and should be readable by nobody
 else: `0640 root:timekpr`, or hand it over as the systemd credential
 `token` as the NixOS test does.  `timekprw` refuses to start when it
 cannot read the file and warns when the file is world readable.  With

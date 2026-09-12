@@ -147,7 +147,15 @@
       "token:${timekprwTokenFile}"
     ];
 
+    # The user timekprw.service runs as (sysusers.d is not applied on
+    # NixOS); polkit authorizes it through the timekpr group.
+    users.groups.timekprw = {};
     users.users = {
+      timekprw = {
+        isSystemUser = true;
+        group = "timekprw";
+        extraGroups = ["timekpr"];
+      };
       ${alice} = {
         isNormalUser = true;
         password = alicePassword;

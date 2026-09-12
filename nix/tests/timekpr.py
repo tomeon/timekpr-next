@@ -278,7 +278,9 @@ def exercise_authorization():
         wait_for_log(f"polkit: NOT AUTHORIZED {POLKIT_USER_CONFIGURE}", f"user={ALICE}")
 
     with subtest(f"{CAROL}: an unprivileged user may not grant themselves time"):
-        assert DENIED in timekpra_as(CAROL, "--settimeleft", CAROL, "+", str(EXTRA_TIME))
+        assert DENIED in timekpra_as(
+            CAROL, "--settimeleft", CAROL, "+", str(EXTRA_TIME)
+        )
         wait_for_log(f"polkit: NOT AUTHORIZED {POLKIT_USER_TIME_LEFT}", f"user={CAROL}")
 
     with subtest(f"{CAROL}: an unprivileged user may not list users"):
@@ -321,7 +323,9 @@ def exercise_authorization():
         wait_for_log(f"polkit: AUTHORIZED {POLKIT_READ}", "method=getUserList")
 
     with subtest(f"{ERIN}: a rule may allow one action for one user only"):
-        assert DENIED not in timekpra_as(ERIN, "--settimeleft", ALICE, "+", str(EXTRA_TIME))
+        assert DENIED not in timekpra_as(
+            ERIN, "--settimeleft", ALICE, "+", str(EXTRA_TIME)
+        )
         wait_for_log(f"polkit: AUTHORIZED {POLKIT_USER_TIME_LEFT}", f"user={ALICE}")
         assert DENIED in timekpra_as(ERIN, "--settimeleft", CAROL, "+", str(EXTRA_TIME))
         assert DENIED in timekpra_as(ERIN, "--settimelimits", ALICE, NO_TIME)

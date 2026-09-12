@@ -64,9 +64,16 @@ API reference and is installed with the package.
   (`server/user/userdata.py`), so the API's `limits_per_day` map is
   translated on both sides and the limits are re-sent whenever the
   allowed days change.
+- `timekprw.service` runs as the static user `timekprw` (a member of
+  `timekpr`, from `resource/server/sysusers.d/timekprw.conf`; the
+  NixOS test declares it) rather than a `DynamicUser`: the daemon asks
+  polkit, whose group rule resolves membership through NSS, which
+  does not see a process-only `SupplementaryGroups=`.
 - The web dependencies (FastAPI, uvicorn) are added to nixpkgs'
   derivation in `flake.nix` via `propagatedBuildInputs` and to
   `debian/control` as `Recommends`.
+- The connector appends the daemon's reason to its access-denied
+  message, so `bridge.py` matches that message by prefix.
 - Listening is "bound socket in, web server on top": `--listen`
   accepts `HOST:PORT`, `unix:PATH` and `fd:N`, and sockets passed by
   systemd socket activation are picked up from `LISTEN_FDS`.  UNIX

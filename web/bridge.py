@@ -121,9 +121,10 @@ class Bridge(object):
         code, message = result[0], result[1]
         if code == _RESULT_NOT_READY or (code != 0 and not connected):
             raise DaemonError(503, message)
-        if code != 0 and message == msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED"):
-            # the daemon's D-Bus policy refused us: timekprw is not root or in
-            # the timekpr group (this message is the connector's own, in our locale)
+        if code != 0 and message.startswith(msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED")):
+            # the daemon (through polkit) refused us: timekprw's user is not in
+            # the timekpr group; the connector appends the daemon's reason to
+            # its own message, which is in our locale
             raise DaemonError(502, message)
         if code != 0 and message in daemon_failure_texts():
             # the daemon could not apply a valid request (its log has the reason,

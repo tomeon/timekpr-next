@@ -14,6 +14,7 @@ resource/server/polkit/timekpr.pkla var/lib/polkit-1/localauthority/10-vendor.d/
 resource/server/systemd/timekpr.service lib/systemd/system/
 resource/server/systemd/timekprw.service lib/systemd/system/
 resource/server/systemd/timekprw.socket lib/systemd/system/
+resource/server/sysusers.d/timekprw.conf lib/sysusers.d/
 resource/server/timekpr.conf etc/timekpr/
 
 # sample runtime files

@@ -167,28 +167,31 @@
             "nix/tests/web/*.py"
             "scripts/flake-inputs-via-git"
           ];
-        in {
-          projectRootFile = "flake.nix";
-          programs.alejandra.enable = true;
-          programs.shellcheck = {
-            enable = true;
-            includes = shellScripts;
-            # Resolve `source` directives relative to the sourcing script.
-            source-path = "SCRIPTDIR";
+        in
+          treefmt: {
+            projectRootFile = "flake.nix";
+            programs.alejandra.enable = true;
+            programs.shellcheck = {
+              enable = true;
+              includes = treefmt.options.programs.shellcheck.includes.default ++ shellScripts;
+              # Resolve `source` directives relative to the sourcing script.
+              source-path = "SCRIPTDIR";
+            };
+            programs.shfmt = {
+              enable = true;
+              includes = treefmt.options.programs.shfmt.includes.default ++ shellScripts;
+            };
+            programs.prettier.enable = true;
+            programs.ruff-check = {
+              enable = true;
+              includes = treefmt.options.programs.ruff-check.includes.default ++ pythonScripts;
+            };
+            programs.ruff-format = {
+              enable = true;
+              includes = treefmt.options.programs.ruff-format.includes.default ++ pythonScripts;
+            };
+            programs.xmllint.enable = true;
           };
-          programs.shfmt = {
-            enable = true;
-            includes = shellScripts;
-          };
-          programs.ruff-check = {
-            enable = true;
-            includes = pythonScripts;
-          };
-          programs.ruff-format = {
-            enable = true;
-            includes = pythonScripts;
-          };
-        };
 
         devshells.default = let
           # Expose a script from ./scripts as a devshell command.

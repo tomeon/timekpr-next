@@ -43,7 +43,10 @@ def browser():
         # headless shell, so ask for the "chromium" channel (new headless).
         launch = {"args": ["--no-sandbox"], "channel": "chromium"}
         if os.environ.get("TIMEKPRW_TEST_CHROMIUM"):
-            launch = {"args": ["--no-sandbox"], "executable_path": os.environ["TIMEKPRW_TEST_CHROMIUM"]}
+            launch = {
+                "args": ["--no-sandbox"],
+                "executable_path": os.environ["TIMEKPRW_TEST_CHROMIUM"],
+            }
         browser = p.chromium.launch(**launch)
         yield browser
         browser.close()

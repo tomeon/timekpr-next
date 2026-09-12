@@ -97,6 +97,7 @@ in {
     wantedBy = ["sockets.target"];
     listenStreams = ["0.0.0.0:${toString timekprwPort}"];
   };
+  networking.firewall.allowedTCPPorts = [timekprwPort];
   systemd.services.timekprw.serviceConfig.LoadCredential = [
     "token:${pkgs.writeText "timekprw-token" timekprwToken}"
   ];

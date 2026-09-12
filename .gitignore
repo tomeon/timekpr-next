@@ -1,4 +1,8 @@
+# Byte-compiled / optimized / DLL files
+**/__pycache__/
+*.py[cod]
+**/.ropeproject/
+**/runtime.tmp/
 # Nix build outputs
 /result
 /result-*
-__pycache__/

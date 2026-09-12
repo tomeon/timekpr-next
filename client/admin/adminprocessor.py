@@ -18,8 +18,8 @@ from timekpr.common.log import log
 from timekpr.client.interface.dbus.administration import timekprAdminConnector
 from timekpr.common.utils.config import timekprConfig
 from timekpr.common.constants import messages as msg
+from timekpr.common.utils import cmdhelp
 from timekpr.common.utils.misc import findHourStartEndMinutes as findHourStartEndMinutes
-from timekpr.common.utils.misc import isHelpRequested as isHelpRequested
 from timekpr.common.utils.misc import splitConfigValueNameParam as splitConfigValueNameParam
 
 
@@ -39,9 +39,9 @@ class timekprAdminClient(object):
     def startTimekprAdminClient(self, *args):
         """Start up timekpr admin (choose gui or cli and start this up)"""
         # help is served before anything else: it needs no configuration, no log file and no connection to the daemon
-        if self.isHelpCommand(*args):
+        if cmdhelp.isHelpRequested(args[1:]):
             # print help and get out
-            self.printAdminHelp()
+            cmdhelp.printAdminHelp()
             return
 
         # check whether we need CLI or GUI
@@ -133,11 +133,12 @@ class timekprAdminClient(object):
 
     # --------------- parameter validation methods --------------- #
 
-    @staticmethod
-    def getAdminCommandIdx(*args):
-        """Determine the index of the admin command in the arguments passed to timekpra"""
-        # initial param idx
+    def checkAndExecuteAdminCommands(self, *args):
+        """Init connection to timekpr dbus server"""
+        # initial param len
         paramIdx = 0
+        paramLen = len(args)
+        adminCmdIncorrect = False
         tmpIdx = 0
 
         # determine parameter offset
@@ -147,25 +148,6 @@ class timekprAdminClient(object):
             # check for script
             if "/timekpra" in rArg or "timekpra.py" in rArg:
                 paramIdx = tmpIdx
-
-        # return
-        return paramIdx
-
-    @staticmethod
-    def isHelpCommand(*args):
-        """Check whether the command passed to timekpra is a request for help"""
-        # the command is the first argument after the script
-        paramIdx = timekprAdminClient.getAdminCommandIdx(*args)
-
-        # help is asked for explicitly
-        return isHelpRequested(args[paramIdx:paramIdx + 1])
-
-    def checkAndExecuteAdminCommands(self, *args):
-        """Init connection to timekpr dbus server"""
-        # initial param len
-        paramIdx = self.getAdminCommandIdx(*args)
-        paramLen = len(args)
-        adminCmdIncorrect = False
 
         # this gets the command itself (args[0] is the script name)
         adminCmd = args[paramIdx] if paramLen > paramIdx else "timekpra"
@@ -381,31 +363,7 @@ class timekprAdminClient(object):
                 log.consoleOut(msg.getTranslation("TK_MSG_CONSOLE_COMMAND_INCORRECT"), *args, "\n")
 
             # print help
-            self.printAdminHelp()
-
-    @staticmethod
-    def printAdminHelp():
-        """Print the usage notice and the supported commands (this needs no privileges and no daemon)"""
-        # log notice
-        log.consoleOut("%s\n*) %s\n*) %s\n*) %s\n" % (
-            msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_HEAD"),
-            msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_TIME"),
-            msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_HOURS"),
-            msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_DAYS"))
-        )
-        # log usage notes text
-        log.consoleOut("%s\n" % (msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTES")))
-        # initial order
-        cmds = ["--help", "--userlist", "--userinfo"]
-        # print initial commands as first
-        for rCmd in cmds:
-            log.consoleOut(" ", rCmd, cons.TK_USER_ADMIN_COMMANDS[rCmd], "\n")
-
-        # print help
-        for rCmd, rCmdDesc in cons.TK_USER_ADMIN_COMMANDS.items():
-            # do not print already known commands
-            if rCmd not in cmds:
-                log.consoleOut(" ", rCmd, rCmdDesc, "\n")
+            cmdhelp.printAdminHelp()
 
     # --------------- parameter execution methods --------------- #
 

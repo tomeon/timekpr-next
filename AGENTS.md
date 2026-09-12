@@ -151,12 +151,20 @@ Other facts about the sandbox worth knowing before trying something:
   "access denied" text in its output and by checking that nothing
   changed.  Polkit refuses non-root callers that have no agent to
   authenticate with, so denial is immediate in the test.
-- `--help` (and `-h`) is answered by all three commands before anything
-  else happens: no self-running check, no configuration, no log file and
-  no connection to the bus, so it works for anyone who may execute them.
-  Keep it that way when adding start-up work.  Every other `timekpra`
-  command still needs the daemon; the connector connects to the bus
-  lazily, so a missing bus is reported rather than raised.
+- `-h` and `--help` are answered by all three commands before any other
+  work: the check is the first thing each entry script does, ahead of its
+  own timekpr imports, so no self-running check, configuration, log file,
+  D-Bus, GTK or daemon is involved and help works for anyone who may
+  execute the command, in any state of the system (`env -i`, no bus, no
+  `/etc/timekpr`).  The texts live in `common/utils/cmdhelp.py`, which
+  imports nothing until help is actually printed; it then pulls in
+  `constants` (and with it the `dbus` python module, for the version and
+  timekpr's own command list) and nothing else.  Keep it that way when
+  adding start-up work, and keep the check ahead of the imports: loading
+  GTK for a help message is what made `timeout 3s timekprc --help` fail.
+  Every other `timekpra` command still needs the daemon; the connector
+  connects to the bus lazily, so a missing bus is reported rather than
+  raised.
 - The nixpkgs derivation runs `substituteInPlace --replace-fail` on
   every `.policy` file, which fails on one not mentioning
   `/usr/bin/timekpr`; the flake narrows that glob to `*.pkexec.policy`.

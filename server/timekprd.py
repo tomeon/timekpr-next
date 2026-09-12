@@ -7,6 +7,22 @@ Created on Aug 28, 2018
 # imports
 import os
 import sys
+
+# set up our python path
+if "/usr/lib/python3/dist-packages" not in sys.path:
+    sys.path.append("/usr/lib/python3/dist-packages")
+
+# timekpr imports (help only, the rest is imported after help is dealt with)
+from timekpr.common.utils import cmdhelp
+
+# help is answered before any other work is done: no self-running check, no
+# configuration, no log file, no D-Bus and no privileges of any kind
+if __name__ == "__main__" and cmdhelp.isHelpRequested(sys.argv[1:]):
+    # print help and get out
+    cmdhelp.printHelp(cmdhelp.TK_CMD_SERVER)
+    sys.exit(0)
+
+# imports
 import dbus
 # distro detection
 try:
@@ -18,10 +34,6 @@ except (ImportError, ValueError):
     # if successful, mark it so
     _DISTRO_AVAILABLE = False
 
-# set up our python path
-if "/usr/lib/python3/dist-packages" not in sys.path:
-    sys.path.append("/usr/lib/python3/dist-packages")
-
 # imports
 import signal
 
@@ -32,25 +44,9 @@ from timekpr.server.interface.dbus.daemon import timekprDaemon
 from timekpr.common.utils import misc
 from timekpr.server.config.userhelper import timekprUserStore
 
-# usage text (the daemon itself takes no options)
-_TK_USAGE = """Timekpr-nExT daemon (v. %s)
-
-Usage:
-  timekprd         start the timekpr daemon (needs superuser privileges)
-  timekprd --help  print this help and exit
-
-The daemon is normally started by systemd (timekpr.service).
-Time limits are administered with timekpra."""
-
 
 # main start
 if __name__ == "__main__":
-    # help must work for anyone who can execute this, so it is printed before anything else is set up
-    if misc.isHelpRequested(sys.argv[1:]):
-        # print help and get out
-        log.consoleOut(_TK_USAGE % (cons.TK_VERSION))
-        sys.exit(0)
-
     # simple self-running check
     if misc.checkAndSetRunning(os.path.splitext(os.path.basename(__file__))[0]):
         # get out

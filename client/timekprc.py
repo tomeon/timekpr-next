@@ -12,30 +12,22 @@ import signal
 if "/usr/lib/python3/dist-packages" not in sys.path:
     sys.path.append("/usr/lib/python3/dist-packages")
 
+# timekpr imports (help only, the rest is imported after help is dealt with)
+from timekpr.common.utils import cmdhelp
+
+# help is answered before any other work is done: no self-running check, no
+# configuration, no log file, no D-Bus, no GTK and no tray icon
+if __name__ == "__main__" and cmdhelp.isHelpRequested(sys.argv[1:]):
+    # print help and get out
+    cmdhelp.printHelp(cmdhelp.TK_CMD_CLIENT)
+    sys.exit(0)
+
 # timekpr imports
 from timekpr.client.interface.dbus.daemon import timekprClient
-from timekpr.common.constants import constants as cons
-from timekpr.common.log import log
 from timekpr.common.utils import misc
-
-# usage text (the client itself takes no options)
-_TK_USAGE = """Timekpr-nExT user client (v. %s)
-
-Usage:
-  timekprc         start the user client (tray icon and user notifications)
-  timekprc --help  print this help and exit
-
-The client is normally started automatically when a user session starts.
-Time limits are administered with timekpra."""
 
 # main start
 if __name__ == "__main__":
-    # help must work for anyone who can execute this, so it is printed before anything else is set up
-    if misc.isHelpRequested(sys.argv[1:]):
-        # print help and get out
-        log.consoleOut(_TK_USAGE % (cons.TK_VERSION))
-        sys.exit(0)
-
     # simple self-running check
     if misc.checkAndSetRunning(os.path.splitext(os.path.basename(__file__))[0], getpass.getuser()):
         # get out

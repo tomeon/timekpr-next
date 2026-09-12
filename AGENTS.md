@@ -151,6 +151,12 @@ Other facts about the sandbox worth knowing before trying something:
   "access denied" text in its output and by checking that nothing
   changed.  Polkit refuses non-root callers that have no agent to
   authenticate with, so denial is immediate in the test.
+- `--help` (and `-h`) is answered by all three commands before anything
+  else happens: no self-running check, no configuration, no log file and
+  no connection to the bus, so it works for anyone who may execute them.
+  Keep it that way when adding start-up work.  Every other `timekpra`
+  command still needs the daemon; the connector connects to the bus
+  lazily, so a missing bus is reported rather than raised.
 - The nixpkgs derivation runs `substituteInPlace --replace-fail` on
   every `.policy` file, which fails on one not mentioning
   `/usr/bin/timekpr`; the flake narrows that glob to `*.pkexec.policy`.

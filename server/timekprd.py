@@ -32,9 +32,25 @@ from timekpr.server.interface.dbus.daemon import timekprDaemon
 from timekpr.common.utils import misc
 from timekpr.server.config.userhelper import timekprUserStore
 
+# usage text (the daemon itself takes no options)
+_TK_USAGE = """Timekpr-nExT daemon (v. %s)
+
+Usage:
+  timekprd         start the timekpr daemon (needs superuser privileges)
+  timekprd --help  print this help and exit
+
+The daemon is normally started by systemd (timekpr.service).
+Time limits are administered with timekpra."""
+
 
 # main start
 if __name__ == "__main__":
+    # help must work for anyone who can execute this, so it is printed before anything else is set up
+    if misc.isHelpRequested(sys.argv[1:]):
+        # print help and get out
+        log.consoleOut(_TK_USAGE % (cons.TK_VERSION))
+        sys.exit(0)
+
     # simple self-running check
     if misc.checkAndSetRunning(os.path.splitext(os.path.basename(__file__))[0]):
         # get out

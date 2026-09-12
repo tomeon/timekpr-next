@@ -107,6 +107,12 @@ def measureDBUSTimeElapsed(pStart=False, pStop=False, pPrintToConsole=False, pDb
     return result
 
 
+def isHelpRequested(pArgs):
+    """Check whether the arguments ask for the usage text"""
+    # help is asked for explicitly (pArgs is expected to be the argument list without the script itself)
+    return any(rArg in ("--help", "-h") for rArg in pArgs)
+
+
 def checkAndSetRunning(pAppName, pUserName=""):
     """Check whether application is already running"""
     # set up pidfile name

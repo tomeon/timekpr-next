@@ -35,6 +35,14 @@ TIMEKPR_LOG = "/var/log/timekpr.log"
 # always exits 0, so this text is the only signal.
 DENIED = "access denied"
 TIMEKPR_BUS = "com.timekpr.server /com/timekpr/server"
+# A bus address nothing listens on, to prove that --help needs no daemon.
+NO_BUS = "unix:path=/nonexistent"
+# Each command's --help output must mention this.
+HELP_NEEDLES = {
+    "timekpra": "--settimelimits",
+    "timekprc": "start the user client",
+    "timekprd": "start the timekpr daemon",
+}
 LIMITS_INTERFACE = "com.timekpr.server.user.limits"
 SESSION_ATTRIBUTES_INTERFACE = "com.timekpr.server.user.sessionattributes"
 POLKIT_READ = "com.timekpr.server.admin.read"
@@ -143,6 +151,25 @@ def exercise(user, password):
         expect_login_survives(user, password)
 
 
+def exercise_help():
+    """--help must work for whoever may run the command: without root,
+    without the timekpr group and without a daemon to talk to."""
+    for command, needle in HELP_NEEDLES.items():
+        with subtest(f"{command}: --help works for an unprivileged user"):
+            out = machine.succeed(
+                f"runuser -u {shlex.quote(CAROL)} --"
+                f" env DBUS_SYSTEM_BUS_ADDRESS={shlex.quote(NO_BUS)}"
+                f" {command} --help"
+            )
+            assert needle in out, out
+
+    with subtest("timekpra: --help writes nothing"):
+        # help comes before the self-running check and before logging is
+        # set up, so neither the pid file nor the log file is created
+        machine.succeed(f"test ! -e /tmp/timekpra.{CAROL}.pid")
+        machine.succeed(f"test ! -e /tmp/timekpra.{CAROL}.log")
+
+
 def exercise_authorization():
     """The daemon decides who may call what: the admin interfaces go
     through polkit, the per-user interfaces are limited to the user in
@@ -216,6 +243,7 @@ def main():
             "systemctl show -p ExecStart --value timekpr.service"
         )
 
+    exercise_help()
     exercise(ALICE, ALICE_PASSWORD)
     exercise_authorization()
 

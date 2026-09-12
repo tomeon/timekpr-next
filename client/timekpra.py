@@ -18,6 +18,13 @@ from timekpr.common.utils import misc
 
 # main start
 if __name__ == "__main__":
+    # help must work for anyone who can execute this, so it is printed before the self-running check,
+    # before the configuration is read and before a connection to the daemon is attempted
+    if timekprAdminClient.isHelpCommand(*sys.argv):
+        # print help and get out
+        timekprAdminClient.printAdminHelp()
+        sys.exit(0)
+
     # simple self-running check
     if misc.checkAndSetRunning(os.path.splitext(os.path.basename(__file__))[0], getpass.getuser()):
         # get out

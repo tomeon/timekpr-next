@@ -27,6 +27,8 @@ Depends: gir1.2-ayatanaappindicator3-0.1 | gir1.2-appindicator3-0.1,
          systemd | systemd-shim,
          ${misc:Depends},
          ${python3:Depends}
+Recommends: python3-fastapi,
+            python3-uvicorn
 Suggests: espeak,
           gnome-shell-extension-appindicator,
           python3-espeak

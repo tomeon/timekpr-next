@@ -72,6 +72,9 @@ TK_LOG_FILE_ADMIN = "timekpra.<USER>.log"
 TK_LOG_FILE_ADMIN_SU = "timekpra.su.log"
 # main config file
 TK_MAIN_CONFIG_DIR = "/etc/timekpr"
+# web application (timekprw): static files and the default bearer token file
+TK_WEB_DIR = "/usr/share/timekpr/web"
+TK_WEB_TOKEN_FILE = "/etc/timekpr/timekprw.token"
 # runtime directory for timekpr user configuration files
 TK_CONFIG_DIR = "/var/lib/timekpr/config"
 # runtime directory for timekpr time control files

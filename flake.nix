@@ -27,6 +27,30 @@
         inputs.treefmt-nix.flakeModule
       ];
 
+      flake = {
+        # The demo machine: timekpr, its web front end, and users to try
+        # them on (nix/demo/module.nix), with this flake's timekpr package.
+        nixosModules.demo = {pkgs, ...}: {
+          imports = [./nix/demo/module.nix];
+          services.timekpr.package = inputs.self.packages.${pkgs.stdenv.hostPlatform.system}.timekpr;
+        };
+
+        # The demo machine as a QEMU VM; see docs/demo-vm.md.
+        nixosConfigurations = let
+          demo = system:
+            inputs.nixpkgs.lib.nixosSystem {
+              inherit system;
+              modules = [
+                inputs.self.nixosModules.demo
+                ./nix/demo/vm.nix
+              ];
+            };
+        in {
+          demo = demo "x86_64-linux";
+          demo-aarch64-linux = demo "aarch64-linux";
+        };
+      };
+
       systems = [
         "x86_64-linux"
         "aarch64-linux"
@@ -55,16 +79,64 @@
             # fails on one that does not mention it.  Only the pkexec policy
             # does; the polkit actions for the D-Bus interface do not.
             postPatch = builtins.replaceStrings ["**/*.policy"] ["**/*.pkexec.policy"] old.postPatch;
+            # timekprw, the web front end, needs these on top of nixpkgs'
+            # dependency list.
+            propagatedBuildInputs =
+              old.propagatedBuildInputs
+              ++ (with pkgs.python3Packages; [
+                fastapi
+                uvicorn
+              ]);
           });
 
           default = config.packages.timekpr;
         };
 
-        checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-          timekpr = pkgs.testers.nixosTest (import ./nix/tests/timekpr.nix {
-            inherit (config.packages) timekpr;
-          });
-        };
+        checks = let
+          # Tests of the web front end against a fake daemon connector (no
+          # D-Bus, no VM): the pytest suite in nix/tests/web.
+          webTests = name: extraPackages: env: files:
+            pkgs.runCommand name ({
+                nativeBuildInputs = [
+                  (pkgs.python3.withPackages (ps:
+                    with ps;
+                      [
+                        dbus-python
+                        fastapi
+                        httpx
+                        psutil
+                        pygobject3
+                        pytest
+                        uvicorn
+                      ]
+                      ++ extraPackages ps))
+                ];
+              }
+              // env) ''
+              mkdir pkg
+              ln -s ${config.packages.timekpr.src} pkg/timekpr
+              export PYTHONPATH="$PWD/pkg" HOME="$TMPDIR"
+              pytest -p no:cacheprovider --basetemp="$TMPDIR/pytest" ${files}
+              touch "$out"
+            '';
+        in
+          {
+            # The API, the conversions, the listeners, socket activation and
+            # timekpra's HTTP connector.
+            web = webTests "timekpr-web-tests" (_: []) {} ./nix/tests/web;
+          }
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            # The web UI in a headless Chromium driven by Playwright.
+            web-ui = webTests "timekpr-web-ui-tests" (ps: [ps.playwright]) {
+              PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers-chromium;
+              PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
+            } "${./nix/tests/web}/test_ui.py";
+
+            timekpr = pkgs.testers.nixosTest (import ./nix/tests/timekpr.nix {
+              inherit (config.packages) timekpr;
+              demoModule = inputs.self.nixosModules.demo;
+            });
+          };
 
         # The same test on a systemd-nspawn container instead of a QEMU VM.
         # Not a flake check because it needs the Nix daemon configured with
@@ -74,6 +146,7 @@
         legacyPackages = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
           tests.timekpr-container = pkgs.testers.nixosTest (import ./nix/tests/timekpr.nix {
             inherit (config.packages) timekpr;
+            demoModule = inputs.self.nixosModules.demo;
             backend = "container";
           });
         };
@@ -91,6 +164,7 @@
           # left as upstream formats them.
           pythonScripts = [
             "nix/tests/timekpr.py"
+            "nix/tests/web/*.py"
             "scripts/flake-inputs-via-git"
           ];
         in {

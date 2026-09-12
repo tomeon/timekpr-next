@@ -1,0 +1,47 @@
+[Unit]
+Description=Timekpr-nExT web front end
+Documentation=file:/usr/share/doc/timekpr-next/web-api.md
+# No After=timekpr.service: that unit orders itself after multi-user.target,
+# which would make a cycle.  timekprw reconnects to the daemon on demand.
+After=dbus.service
+Wants=timekpr.service
+
+[Service]
+Type=simple
+# Runs as the unprivileged user from sysusers.d/timekprw.conf.  The daemon
+# asks polkit before serving the administration interfaces, and the rule
+# the package ships authorizes the timekpr group, of which that user is a
+# member (through NSS, which is why it is not a DynamicUser).
+User=timekprw
+Group=timekprw
+RemoveIPC=yes
+# Options: TIMEKPRW_LISTEN, TIMEKPRW_TOKEN_FILE, ... (see timekprw --help).
+# With timekprw.socket active its sockets are used instead of the default
+# TCP listener.  The bearer token is read from the systemd credential
+# "token" when one is loaded (LoadCredential=token:/path/to/token in a
+# drop-in), otherwise from /etc/timekpr/timekprw.token.
+EnvironmentFile=-/etc/timekpr/timekprw.env
+ExecStart=/usr/bin/timekprw
+StandardOutput=journal
+StandardError=journal
+Restart=on-failure
+RestartSec=10
+# hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictRealtime=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+
+[Install]
+WantedBy=multi-user.target

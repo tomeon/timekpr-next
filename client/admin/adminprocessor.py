@@ -6,6 +6,7 @@ Created on Aug 28, 2018
 
 # imports
 import os
+import sys
 import getpass
 import shutil
 import subprocess
@@ -31,10 +32,30 @@ class timekprAdminClient(object):
     def __init__(self):
         """Initialize admin client"""
         # get our connector
-        self._timekprAdminConnector = timekprAdminConnector()
+        # main connector (chosen when the arguments are known)
+        self._timekprAdminConnector = None
 
         # main object for GUI
         self._adminGUI = None
+
+    def extractOption(self, pArgs, pOption, pDefault):
+        """Remove "--option VALUE" or "--option=VALUE" from the arguments, returning (arguments, value)"""
+        args = list(pArgs)
+        value = pDefault
+        idx = 0
+        while idx < len(args):
+            if args[idx] == pOption:
+                if idx + 1 >= len(args):
+                    log.consoleOut("%s needs a value" % (pOption))
+                    sys.exit(1)
+                value = args[idx+1]
+                del args[idx:idx+2]
+            elif args[idx].startswith(pOption + "="):
+                value = args[idx][len(pOption)+1:]
+                del args[idx]
+            else:
+                idx += 1
+        return args, value
 
     def startTimekprAdminClient(self, *args):
         """Start up timekpr admin (choose gui or cli and start this up)"""
@@ -44,6 +65,14 @@ class timekprAdminClient(object):
             cmdhelp.printAdminHelp()
             return
 
+        # talk to timekprw over HTTP instead of to the daemon over D-Bus?
+        args, server = self.extractOption(args, "--server", os.getenv("TIMEKPRA_SERVER"))
+        args, tokenFile = self.extractOption(args, "--token-file", os.getenv("TIMEKPRA_TOKEN_FILE"))
+        if server:
+            from timekpr.client.interface.http.administration import timekprAdminHttpConnector
+            self._timekprAdminConnector = timekprAdminHttpConnector(server, tokenFile)
+        else:
+            self._timekprAdminConnector = timekprAdminConnector()
         # check whether we need CLI or GUI
         lastParam = args[len(args)-1]
         timekprForceCLI = False
@@ -57,7 +86,10 @@ class timekprAdminClient(object):
         log.setLogging(_timekprConfig.getTimekprLogLevel(), cons.TK_LOG_TEMP_DIR, (cons.TK_LOG_OWNER_ADMIN_SU if geteuid() == 0 else cons.TK_LOG_OWNER_ADMIN), getpass.getuser())
 
         # check for script
-        if ("/timekpra" in lastParam or "timekpra.py" in lastParam):
+        if server:
+            # the GUI talks D-Bus only
+            timekprForceCLI = True
+        elif ("/timekpra" in lastParam or "timekpra.py" in lastParam):
             # whether we have X running or wayland?
             timekprX11Available = os.getenv("DISPLAY") is not None
             timekprWaylandAvailable = os.getenv("WAYLAND_DISPLAY") is not None

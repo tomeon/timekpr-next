@@ -37,6 +37,8 @@ HOLD = 45
 ALL_DAYS = list(range(1, 8))
 # Per-weekday limits in seconds: no screen time at all.
 NO_TIME = {day: 0 for day in ALL_DAYS}
+# The same as timekpra --settimelimits takes it.
+NO_TIME_ARG = ";".join(map(str, NO_TIME.values()))
 # Extra time granted for today, in seconds.
 EXTRA_TIME = 300
 # Per-weekday limits a privileged user sets, distinguishable from NO_TIME.
@@ -150,7 +152,7 @@ class Timekpra:
         return user in self.run("--userlist")
 
     def forbid(self, user):
-        self.run("--settimelimits", user, ";".join(map(str, NO_TIME.values())))
+        self.run("--settimelimits", user, NO_TIME_ARG)
 
     def grant(self, user, seconds):
         self.run("--settimeleft", user, "+", str(seconds))
@@ -328,7 +330,7 @@ def exercise_authorization():
         )
         wait_for_log(f"polkit: AUTHORIZED {POLKIT_USER_TIME_LEFT}", f"user={ALICE}")
         assert DENIED in timekpra_as(ERIN, "--settimeleft", CAROL, "+", str(EXTRA_TIME))
-        assert DENIED in timekpra_as(ERIN, "--settimelimits", ALICE, NO_TIME)
+        assert DENIED in timekpra_as(ERIN, "--settimelimits", ALICE, NO_TIME_ARG)
         assert DENIED in timekpra_as(ERIN, "--userinfo", ALICE)
         assert weekday_limits(ALICE) == SOME_TIME
 
@@ -382,7 +384,7 @@ def check_web_api():
             assert line in info, f"{line!r} not in timekpra --userinfo:\n{info}"
         # back to the defaults (keeping "no time"), through D-Bus
         DBUS.run("--setalloweddays", ALICE, ";".join(map(str, ALL_DAYS)))
-        DBUS.run("--settimelimits", ALICE, ";".join(map(str, NO_TIME.values())))
+        DBUS.run("--settimelimits", ALICE, NO_TIME_ARG)
         DBUS.run("--setlockouttype", ALICE, "terminate")
         DBUS.run("--setplaytimeenabled", ALICE, "false")
         DBUS.run("--setallowedhours", ALICE, "ALL", ";".join(map(str, range(24))))

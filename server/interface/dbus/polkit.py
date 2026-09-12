@@ -31,6 +31,8 @@ from timekpr.common.constants import messages as msg
 _ACCESS_DENIED = "org.freedesktop.DBus.Error.AccessDenied"
 # CheckAuthorization flag asking polkit to involve the caller's authentication agent
 _ALLOW_USER_INTERACTION = 1
+# the error dbus-python raises when polkit has not answered within the timeout
+_NO_REPLY = "org.freedesktop.DBus.Error.NoReply"
 # keyword arguments dbus-python passes to the wrapped admin methods
 _SENDER_KW = "pSender"
 _REPLY_KW = "pReply"
@@ -50,6 +52,8 @@ class timekprPolkitAuthority(object):
         self._bus = pBus
         # on the session bus (development only) there is no polkit subject for the caller
         self._isDevelopmentBus = isinstance(pBus, dbus.SessionBus)
+        # counter making the cancellation ids of pending checks unique (polkit requires that per caller)
+        self._checkCount = 0
 
     # --------------- caller identity --------------- #
 
@@ -117,8 +121,23 @@ class timekprPolkitAuthority(object):
                 _deny(", authentication was required" if isChallenge else "")
 
         def _errorHandler(pException):
+            # when we stop waiting, polkit should stop asking too (else the agent keeps prompting)
+            if isinstance(pException, dbus.exceptions.DBusException) and pException.get_dbus_name() == _NO_REPLY:
+                self._bus.call_async(
+                    cons.TK_POLKIT_BUS_NAME,
+                    cons.TK_POLKIT_PATH,
+                    cons.TK_POLKIT_AUTHORITY_INTERFACE,
+                    "CancelCheckAuthorization",
+                    "s",
+                    (cancellationId,),
+                    None,
+                    None
+                )
             _deny(", error asking polkit: %s" % (str(pException)))
 
+        # unique per pending check from this connection
+        self._checkCount += 1
+        cancellationId = "timekpr-%i" % (self._checkCount)
         # org.freedesktop.PolicyKit1.Authority.CheckAuthorization(Subject subject, String action_id, Dict<String,String> details, CheckAuthorizationFlags flags, String cancellation_id) -> AuthorizationResult
         subject = dbus.Struct(("system-bus-name", dbus.Dictionary({"name": pSender}, signature="sv")), signature="sa{sv}")
         self._bus.call_async(
@@ -127,7 +146,7 @@ class timekprPolkitAuthority(object):
             cons.TK_POLKIT_AUTHORITY_INTERFACE,
             "CheckAuthorization",
             "(sa{sv})sa{ss}us",
-            (subject, pActionId, dbus.Dictionary(pDetails, signature="ss"), dbus.UInt32(_ALLOW_USER_INTERACTION), ""),
+            (subject, pActionId, dbus.Dictionary(pDetails, signature="ss"), dbus.UInt32(_ALLOW_USER_INTERACTION), cancellationId),
             _replyHandler,
             _errorHandler,
             timeout=cons.TK_POLKIT_TIMEOUT
@@ -157,7 +176,8 @@ def timekprAuthorizedMethod(pDbusInterface, pInSignature, pOutSignature, pAction
             raise ValueError("%s has no argument %s" % (pMethod.__name__, pUserNameArg))
         userNameIdx = argNames.index(pUserNameArg) if pUserNameArg is not None else None
         # how many values the reply carries, which decides how the return value is sent
-        outLen = len(dbus.Signature(pOutSignature))
+        #   (iterating a Signature yields its complete types; len() would count characters)
+        outLen = sum(1 for _rType in dbus.Signature(pOutSignature))
 
         def wrapper(self, *pArgs, **pKeywords):
             sender = pKeywords[_SENDER_KW]

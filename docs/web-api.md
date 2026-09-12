@@ -289,6 +289,11 @@ endpoints: "forbid login" is
 `PATCH .../config {"limits_per_day": {"1": 0, ..., "7": 0}}`, and an
 exemption is `POST .../time-left {"operation": "add", "seconds": 300}`.
 
+### Trying it
+
+`docs/demo-vm.md` describes a NixOS virtual machine with the daemon,
+`timekprw` and users to try them on.
+
 ### Web UI
 
 `timekprw` serves a small single-page UI from `web/static/` at `/`

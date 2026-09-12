@@ -18,10 +18,21 @@ Upstream code lives in `bin/`, `client/`, `common/`, `server/`,
   hardcodes `version = "0.5.8"` inside a `rec` attribute set, so
   overriding `version` alone does not propagate into its generated
   `setup.py`.
+- `nixosModules.demo` (`nix/demo/module.nix`) is the machine with
+  timekpr, `timekprw`, a local user, a Kanidm domain user and the
+  authorization test users; `nix/demo/settings.nix` holds the values
+  the test also needs.  `nixosConfigurations.demo` (and
+  `demo-aarch64-linux`) is that module plus the QEMU VM profile
+  (`nix/demo/vm.nix`, port forwards, console autologin); see
+  `docs/demo-vm.md`.  The module gets this flake's package through
+  `inputs.self`, so it works from any host system.
 - `checks.<system>.timekpr` is a `pkgs.testers.nixosTest` defined in
-  `nix/tests/timekpr.nix` (machine configuration) and
-  `nix/tests/timekpr.py` (test script).  `checks.<system>.treefmt`
-  comes from treefmt-nix.
+  `nix/tests/timekpr.nix` (the demo module plus VM sizing) and
+  `nix/tests/timekpr.py` (test script).  All machine setup lives in
+  the module: what used to be imperative in the script (giving bob
+  POSIX attributes with the kanidm CLI) is the oneshot
+  `demo-kanidm-users.service`, which the test waits for.
+  `checks.<system>.treefmt` comes from treefmt-nix.
 - `legacyPackages.<system>.tests.timekpr-container` is the same test on
   the systemd-nspawn backend (`backend = "container"`).  It is not a
   check because it needs a cgroup v2 host and a Nix daemon configured
@@ -87,14 +98,25 @@ API reference and is installed with the package.
   `timekpr.conf` and `timekpr.conf.prev` in place); the test expects
   a `500` from `PATCH /api/v1/config` for that reason.
 - `checks.<system>.web` runs the pytest suite in `nix/tests/web/`
-  (no VM, a minute or so): the API through FastAPI's `TestClient`,
-  the conversions, and the listeners, socket activation and HTTP
+  (no VM, seconds): the API through FastAPI's `TestClient`, the
+  conversions, and the listeners, socket activation and HTTP
   connector against a real uvicorn started through `timekprw.main()`
   with a fake connector (`fake.py`; `Bridge(connector)` takes any
   object with the connector's method names, and `main()` takes a
-  `bridge`).  `LISTEN_PID` cannot be set from a `preexec_fn`; the
-  tests wrap the child in `sh -c 'LISTEN_PID=$$ ... exec ...'`.  The
-  suite is flake Python, so ruff formats it.
+  `bridge`; `helpers.py` starts that server).  `serve.py` presents
+  activation descriptors itself, since `LISTEN_PID` cannot be set
+  from a `preexec_fn`.  The suite is flake Python, so ruff formats
+  it.
+- `checks.<system>.web-ui` runs `test_ui.py` from the same suite: the
+  UI in nixpkgs' Playwright Chromium (`playwright-driver.browsers-chromium`
+  via `PLAYWRIGHT_BROWSERS_PATH`, launched with `--no-sandbox` because
+  the Nix sandbox has no user namespaces) against `timekprw` on the
+  fake connector, checking the daemon side through the HTTP connector.
+  It is a separate check so the API tests need no browser; locally,
+  `TIMEKPRW_TEST_CHROMIUM=/path/to/chrome` points Playwright at
+  another Chromium.  OCR in the NixOS test was rejected: the UI has a
+  DOM to assert on, and OCR would need a desktop session in the VM
+  and fuzzy text matching.
 - The NixOS test runs `timekprw` socket activated (the package's
   socket unit plus a TCP `listenStreams` drop-in), drives one user
   through `timekpra` over D-Bus and the other through `timekpra

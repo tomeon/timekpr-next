@@ -15,7 +15,6 @@ ALICE = CONFIG["alice"]
 ALICE_PASSWORD = CONFIG["alicePassword"]
 BOB = CONFIG["bob"]
 BOB_PASSWORD = CONFIG["bobPassword"]
-IDM_ADMIN_PASSWORD = CONFIG["idmAdminPassword"]
 CAROL = CONFIG["carol"]
 DAVE = CONFIG["dave"]
 ERIN = CONFIG["erin"]
@@ -27,7 +26,6 @@ TIMEKPRW_SOCKET = CONFIG["timekprwSocket"]
 TIMEKPRW_URL = f"http://127.0.0.1:{TIMEKPRW_PORT}"
 TIMEKPRW_UNIX_URL = f"unix://{TIMEKPRW_SOCKET}"
 API = f"{TIMEKPRW_URL}/api/v1"
-BASH = "/run/current-system/sw/bin/bash"
 
 # How long each SSH login keeps its session open.  timekpr polls every
 # 3 seconds and terminates an over-limit session after a 15 second
@@ -479,23 +477,8 @@ def main():
     exercise_authorization()
     check_web_api()
 
-    with subtest("kanidm: server, provisioning, and UNIX daemon are up"):
-        machine.wait_for_unit("kanidm.service")
-        machine.wait_for_unit("kanidm-unixd.service")
-        machine.wait_for_file("/run/kanidm-unixd/sock")
-        machine.wait_until_succeeds("kanidm-unix status | grep -q online")
-
-    with subtest("kanidm: make bob a POSIX user with a UNIX password"):
-        machine.succeed(
-            f"answer-password {shlex.quote(IDM_ADMIN_PASSWORD)}"
-            " kanidm login -D idm_admin"
-        )
-        machine.succeed("kanidm group posix set --gidnumber 10000 posix_users")
-        machine.succeed(f"kanidm person posix set --gidnumber 10001 --shell {BASH} bob")
-        machine.succeed(
-            f"answer-password {shlex.quote(BOB_PASSWORD)}"
-            " kanidm person posix set-password bob"
-        )
+    with subtest("kanidm: the demo machine gave bob a POSIX account"):
+        machine.wait_for_unit("demo-kanidm-users.service")
         machine.wait_until_succeeds(f"getent passwd {shlex.quote(BOB)}")
 
     exercise(BOB, BOB_PASSWORD, UNIX)

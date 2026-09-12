@@ -76,11 +76,18 @@ function encode(username) {
   return encodeURIComponent(username);
 }
 
-/* which top-level fields of `next` differ from `previous` (JSON-wise) */
+/* JSON with object keys sorted, so that key order does not count as a change */
+function canonical(value) {
+  return JSON.stringify(value, (_key, val) =>
+    val && typeof val === "object" && !Array.isArray(val) ? Object.fromEntries(Object.keys(val).sort().map((k) => [k, val[k]])) : val,
+  );
+}
+
+/* which top-level fields of `next` differ from `previous` */
 function diff(previous, next) {
   const changes = {};
   for (const key of Object.keys(next)) {
-    if (JSON.stringify(previous[key]) !== JSON.stringify(next[key])) changes[key] = next[key];
+    if (canonical(previous[key]) !== canonical(next[key])) changes[key] = next[key];
   }
   return changes;
 }
@@ -238,7 +245,7 @@ function renderConfig(config) {
 
 function readConfig() {
   const form = $("#config-form");
-  const lockout = { type: form.lockout_type.value };
+  const lockout = { type: form.lockout_type.value, wake_from: null, wake_to: null };
   if (lockout.type === "suspendwake") Object.assign(lockout, { wake_from: Number(form.wake_from.value), wake_to: Number(form.wake_to.value) });
   const activities = form.pt_activities.value.split("\n").map((s) => s.trim()).filter(Boolean).map((line) => {
     const [process, ...rest] = line.split("=");
@@ -267,8 +274,11 @@ async function saveConfig(event) {
   try {
     const next = readConfig();
     const patch = diff(state.config, next);
-    if (patch.playtime) patch.playtime = diff(state.config.playtime, next.playtime);
-    if (patch.allowed_hours) patch.allowed_hours = diff(state.config.allowed_hours, next.allowed_hours);
+    // only the changed parts of the nested objects, and nothing when none changed
+    for (const key of ["playtime", "allowed_hours"]) {
+      if (patch[key]) patch[key] = diff(state.config[key], next[key]);
+      if (patch[key] && Object.keys(patch[key]).length === 0) delete patch[key];
+    }
     if (Object.keys(patch).length === 0) return message("Nothing changed", true);
     renderConfig(await api("PATCH", `/users/${encode(state.user)}/config`, patch));
     message("Saved", true);

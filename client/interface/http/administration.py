@@ -113,6 +113,7 @@ class timekprAdminHttpConnector(object):
         try:
             self._request("GET", "/health")
             self._connected = True
+            self._initFailed = False
         except (OSError, ValueError) as ex:
             self._connected = False
             self._initFailed = True

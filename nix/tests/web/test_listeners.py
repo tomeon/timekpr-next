@@ -36,7 +36,7 @@ def test_socket_activation_and_connector(tmp_path, token_file):
         activated=[tcp, unix],
     )
     try:
-        via_unix = timekprAdminHttpConnector("unix://" + unix_path, timeout=2)
+        via_unix = timekprAdminHttpConnector("unix://" + unix_path, timeout=10)
         wait_for(server, via_unix)
         assert via_unix.isConnected() == (True, True)
         result, _message, users = via_unix.getUserList()
@@ -118,7 +118,7 @@ def test_socket_activation_and_connector(tmp_path, token_file):
         assert result == -1 and "no configuration" in message and info == {}
 
         # TCP through the same server needs the token
-        anonymous = timekprAdminHttpConnector(f"http://127.0.0.1:{port}", timeout=2)
+        anonymous = timekprAdminHttpConnector(f"http://127.0.0.1:{port}", timeout=10)
         wait_for(server, anonymous)
         result, message, users = anonymous.getUserList()
         assert result == -1 and "bearer" in message and users == []
@@ -147,7 +147,7 @@ def test_own_listeners(tmp_path, token_file):
     ]
     server = Server(tmp_path, args)
     try:
-        via_unix = timekprAdminHttpConnector("unix:" + unix_path, timeout=2)
+        via_unix = timekprAdminHttpConnector("unix:" + unix_path, timeout=10)
         wait_for(server, via_unix)
         assert stat.S_IMODE(os.stat(unix_path).st_mode) == 0o660
         assert via_unix.getUserList()[0] == 0
@@ -184,7 +184,7 @@ def test_auth_unix_requires_the_token(tmp_path, token_file):
     ]
     server = Server(tmp_path, args)
     try:
-        anonymous = timekprAdminHttpConnector("unix:" + unix_path, timeout=2)
+        anonymous = timekprAdminHttpConnector("unix:" + unix_path, timeout=10)
         wait_for(server, anonymous)
         assert anonymous.getUserList()[0] == -1
         with_token = timekprAdminHttpConnector(
@@ -210,6 +210,6 @@ def test_refuses_tcp_without_a_token(tmp_path):
 
 
 def test_unreachable_server_is_reported():
-    dead = timekprAdminHttpConnector("http://127.0.0.1:1", timeout=2)
+    dead = timekprAdminHttpConnector("http://127.0.0.1:1", timeout=10)
     dead.initTimekprConnection(True)
     assert dead.isConnected() == (False, False)

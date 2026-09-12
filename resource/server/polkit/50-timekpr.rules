@@ -1,0 +1,12 @@
+/* Members of the "timekpr" group may administer Timekpr-nExT without
+ * authenticating.  Site rules that sort before this file (for example
+ * /etc/polkit-1/rules.d/10-*.rules) take precedence; see polkit(8) and
+ * com.timekpr.server.policy for the actions and their details.
+ * polkit 0.105 and earlier ignore rules files; timekpr.pkla says the
+ * same for their Local Authority. */
+polkit.addRule(function(action, subject) {
+    if (action.id.indexOf("com.timekpr.server.") == 0 &&
+        subject.isInGroup("timekpr")) {
+        return polkit.Result.YES;
+    }
+});

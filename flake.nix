@@ -39,7 +39,7 @@
         ...
       }: {
         packages = {
-          timekpr = pkgs.timekpr.overrideAttrs (_: {
+          timekpr = pkgs.timekpr.overrideAttrs (old: {
             src = pkgs.lib.fileset.toSource {
               root = ./.;
               fileset = pkgs.lib.fileset.difference ./. (pkgs.lib.fileset.unions [
@@ -51,6 +51,10 @@
                 ./scripts
               ]);
             };
+            # nixpkgs rewrites /usr/bin/timekpr in every .policy file and
+            # fails on one that does not mention it.  Only the pkexec policy
+            # does; the polkit actions for the D-Bus interface do not.
+            postPatch = builtins.replaceStrings ["**/*.policy"] ["**/*.pkexec.policy"] old.postPatch;
           });
 
           default = config.packages.timekpr;

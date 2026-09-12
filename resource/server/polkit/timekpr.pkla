@@ -1,0 +1,10 @@
+# Members of the "timekpr" group may administer Timekpr-nExT without
+# authenticating, for polkit 0.105 and earlier (see pklocalauthority(8));
+# polkit 0.106 and later read 50-timekpr.rules instead.  Entries in
+# /etc/polkit-1/localauthority take precedence over this directory.
+[Timekpr-nExT administration by the timekpr group]
+Identity=unix-group:timekpr
+Action=com.timekpr.server.*
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes

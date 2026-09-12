@@ -27,10 +27,15 @@
   # Kanidm enforces a minimum length and quality for UNIX passwords.
   bobPassword = "Nk7rP2xW9qL4mZ8vT3bH";
   idmAdminPassword = "idm-admin-password";
+  # Users for the authorization checks: carol has no privileges, dave
+  # is in the timekpr group, erin is scoped by the polkit rule below.
+  carol = "carol";
+  dave = "dave";
+  erin = "erin";
 
   # Values the test script needs; see the top of timekpr.py.
   testConfig = {
-    inherit alice alicePassword bobPassword idmAdminPassword;
+    inherit alice alicePassword bobPassword idmAdminPassword carol dave erin;
     bob = "${bob}@${idmDomain}";
     timekprPackage = "${timekpr}";
   };
@@ -103,12 +108,31 @@
     services.timekpr = {
       enable = true;
       package = timekpr;
+      # Members of the timekpr group are authorized by the rule the
+      # package ships.
+      adminUsers = [dave];
     };
     environment.etc.timekpr.source = lib.mkForce timekprEtc;
 
-    users.users.${alice} = {
-      isNormalUser = true;
-      password = alicePassword;
+    # A site rule scoping erin to a single action for a single user.
+    security.polkit.extraConfig = ''
+      polkit.addRule(function(action, subject) {
+        if (action.id == "com.timekpr.server.user.admin.time-left" &&
+            subject.user == "${erin}" &&
+            action.lookup("user") == "${alice}") {
+          return polkit.Result.YES;
+        }
+      });
+    '';
+
+    users.users = {
+      ${alice} = {
+        isNormalUser = true;
+        password = alicePassword;
+      };
+      ${carol}.isNormalUser = true;
+      ${dave}.isNormalUser = true;
+      ${erin}.isNormalUser = true;
     };
 
     services.openssh = {

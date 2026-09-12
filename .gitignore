@@ -3,3 +3,6 @@
 *.py[cod]
 **/.ropeproject/
 **/runtime.tmp/
+# Nix build outputs
+/result
+/result-*

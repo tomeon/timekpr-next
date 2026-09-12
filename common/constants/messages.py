@@ -274,6 +274,8 @@ def initMessages():
     _messages["TK_MSG_UNEXPECTED_ERROR"] = {"s": _("UNEXPECTED ERROR: %%s")}
     _messages["TK_MSG_PARSE_ERROR"] = {"s": _("PARAMETER PARSE ERROR (please check parameter validity): %%s")}
     _messages["TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED"] = {"s": _("Command FAILED: access denied")}
+    _messages["TK_MSG_DBUS_NOT_AUTHORIZED"] = {"s": _("Not authorized for action \"%%s\"")}
+    _messages["TK_MSG_DBUS_NOT_OWN_USER"] = {"s": _("Only user \"%%s\" or the superuser may call this method")}
     _messages["TK_MSG_DBUS_COMMUNICATION_COMMAND_NOT_ACCEPTED"] = {"s": _("Command FAILED: communication was not accepted")}
     _messages["TK_MSG_TRANSLATION_NOTFOUND"] = {"s": _("n/a")}
     _messages["TK_MSG_TRANSLATOR_CREDITS"] = {"s": "please-enter-translator-credits"}  # special case

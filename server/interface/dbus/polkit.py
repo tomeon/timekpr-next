@@ -19,13 +19,14 @@ so administration keeps working when polkit is unavailable.
 # imports
 import inspect
 import pwd
+
 import dbus
 import dbus.service
 
 # timekpr imports
 from timekpr.common.constants import constants as cons
-from timekpr.common.log import log
 from timekpr.common.constants import messages as msg
+from timekpr.common.log import log
 
 # the D-Bus error clients get when they are not allowed to call a method (the same one the bus itself uses)
 _ACCESS_DENIED = "org.freedesktop.DBus.Error.AccessDenied"
@@ -44,7 +45,7 @@ def accessDenied(pMessage):
     return dbus.exceptions.DBusException(pMessage, name=_ACCESS_DENIED)
 
 
-class timekprPolkitAuthority(object):
+class timekprPolkitAuthority:
     """Answers who may call what on the server"""
 
     def __init__(self, pBus):
@@ -81,8 +82,13 @@ class timekprPolkitAuthority(object):
             except KeyError:
                 userUid = None
         if senderUid != userUid:
-            log.log(cons.TK_LOG_LEVEL_INFO, "ACCESS DENIED: uid %i (%s) called a method about user \"%s\"" % (senderUid, pSender, pUserName))
-            raise accessDenied(msg.getTranslation("TK_MSG_DBUS_NOT_OWN_USER") % (pUserName))
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f'ACCESS DENIED: uid {int(senderUid)} ({pSender}) called a method about user "{pUserName}"',
+            )
+            raise accessDenied(
+                msg.getTranslation("TK_MSG_DBUS_NOT_OWN_USER") % (pUserName)
+            )
 
     # --------------- polkit --------------- #
 
@@ -98,13 +104,23 @@ class timekprPolkitAuthority(object):
             pAuthorized()
             return
         if self._isDevelopmentBus:
-            log.log(cons.TK_LOG_LEVEL_INFO, "polkit: development bus, allowing %s without asking" % (pActionId))
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"polkit: development bus, allowing {pActionId} without asking",
+            )
             pAuthorized()
             return
 
         def _deny(pReason):
-            log.log(cons.TK_LOG_LEVEL_INFO, "polkit: NOT AUTHORIZED %s for %s (%s)%s" % (pActionId, pSender, self._formatDetails(pDetails), pReason))
-            pDenied(accessDenied(msg.getTranslation("TK_MSG_DBUS_NOT_AUTHORIZED") % (pActionId)))
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"polkit: NOT AUTHORIZED {pActionId} for {pSender} ({self._formatDetails(pDetails)}){pReason}",
+            )
+            pDenied(
+                accessDenied(
+                    msg.getTranslation("TK_MSG_DBUS_NOT_AUTHORIZED") % (pActionId)
+                )
+            )
 
         def _replyHandler(pResult):
             # the caller must get an answer whatever happens here
@@ -112,17 +128,23 @@ class timekprPolkitAuthority(object):
                 # AuthorizationResult is one struct: (is_authorized, is_challenge, details)
                 isAuthorized, isChallenge, _resultDetails = pResult
             except Exception as unexpectedException:
-                _deny(", unexpected reply from polkit: %s" % (str(unexpectedException)))
+                _deny(f", unexpected reply from polkit: {unexpectedException!s}")
                 return
             if isAuthorized:
-                log.log(cons.TK_LOG_LEVEL_INFO, "polkit: AUTHORIZED %s for %s (%s)" % (pActionId, pSender, self._formatDetails(pDetails)))
+                log.log(
+                    cons.TK_LOG_LEVEL_INFO,
+                    f"polkit: AUTHORIZED {pActionId} for {pSender} ({self._formatDetails(pDetails)})",
+                )
                 pAuthorized()
             else:
                 _deny(", authentication was required" if isChallenge else "")
 
         def _errorHandler(pException):
             # when we stop waiting, polkit should stop asking too (else the agent keeps prompting)
-            if isinstance(pException, dbus.exceptions.DBusException) and pException.get_dbus_name() == _NO_REPLY:
+            if (
+                isinstance(pException, dbus.exceptions.DBusException)
+                and pException.get_dbus_name() == _NO_REPLY
+            ):
                 self._bus.call_async(
                     cons.TK_POLKIT_BUS_NAME,
                     cons.TK_POLKIT_PATH,
@@ -131,34 +153,45 @@ class timekprPolkitAuthority(object):
                     "s",
                     (cancellationId,),
                     None,
-                    None
+                    None,
                 )
-            _deny(", error asking polkit: %s" % (str(pException)))
+            _deny(f", error asking polkit: {pException!s}")
 
         # unique per pending check from this connection
         self._checkCount += 1
-        cancellationId = "timekpr-%i" % (self._checkCount)
+        cancellationId = f"timekpr-{int(self._checkCount)}"
         # org.freedesktop.PolicyKit1.Authority.CheckAuthorization(Subject subject, String action_id, Dict<String,String> details, CheckAuthorizationFlags flags, String cancellation_id) -> AuthorizationResult
-        subject = dbus.Struct(("system-bus-name", dbus.Dictionary({"name": pSender}, signature="sv")), signature="sa{sv}")
+        subject = dbus.Struct(
+            ("system-bus-name", dbus.Dictionary({"name": pSender}, signature="sv")),
+            signature="sa{sv}",
+        )
         self._bus.call_async(
             cons.TK_POLKIT_BUS_NAME,
             cons.TK_POLKIT_PATH,
             cons.TK_POLKIT_AUTHORITY_INTERFACE,
             "CheckAuthorization",
             "(sa{sv})sa{ss}us",
-            (subject, pActionId, dbus.Dictionary(pDetails, signature="ss"), dbus.UInt32(_ALLOW_USER_INTERACTION), cancellationId),
+            (
+                subject,
+                pActionId,
+                dbus.Dictionary(pDetails, signature="ss"),
+                dbus.UInt32(_ALLOW_USER_INTERACTION),
+                cancellationId,
+            ),
             _replyHandler,
             _errorHandler,
-            timeout=cons.TK_POLKIT_TIMEOUT
+            timeout=cons.TK_POLKIT_TIMEOUT,
         )
 
     @staticmethod
     def _formatDetails(pDetails):
         """Format details for the log"""
-        return ", ".join("%s=%s" % (rKey, pDetails[rKey]) for rKey in sorted(pDetails))
+        return ", ".join(f"{rKey}={pDetails[rKey]}" for rKey in sorted(pDetails))
 
 
-def timekprAuthorizedMethod(pDbusInterface, pInSignature, pOutSignature, pActionId, pUserNameArg=None):
+def timekprAuthorizedMethod(
+    pDbusInterface, pInSignature, pOutSignature, pActionId, pUserNameArg=None
+):
     """Export a method on D-Bus, subject to polkit authorization
 
     A replacement for dbus.service.method: the method is only run once
@@ -170,10 +203,11 @@ def timekprAuthorizedMethod(pDbusInterface, pInSignature, pOutSignature, pAction
 
     The object the method belongs to must have a timekprPolkitAuthority
     in its _timekprPolkitAuthority attribute."""
+
     def decorator(pMethod):
         argNames = inspect.getfullargspec(pMethod).args[1:]
         if pUserNameArg is not None and pUserNameArg not in argNames:
-            raise ValueError("%s has no argument %s" % (pMethod.__name__, pUserNameArg))
+            raise ValueError(f"{pMethod.__name__} has no argument {pUserNameArg}")
         userNameIdx = argNames.index(pUserNameArg) if pUserNameArg is not None else None
         # how many values the reply carries, which decides how the return value is sent
         #   (iterating a Signature yields its complete types; len() would count characters)
@@ -200,7 +234,9 @@ def timekprAuthorizedMethod(pDbusInterface, pInSignature, pOutSignature, pAction
             details = {cons.TK_POLKIT_DETAIL_METHOD: pMethod.__name__}
             if userNameIdx is not None:
                 details[cons.TK_POLKIT_DETAIL_USER] = str(pArgs[userNameIdx])
-            self._timekprPolkitAuthority.checkAuthorization(sender, pActionId, details, _authorized, error)
+            self._timekprPolkitAuthority.checkAuthorization(
+                sender, pActionId, details, _authorized, error
+            )
 
         # dbus.service.method derives the D-Bus arguments from the argument
         # names, so give the wrapper the original signature plus the keywords
@@ -208,15 +244,23 @@ def timekprAuthorizedMethod(pDbusInterface, pInSignature, pOutSignature, pAction
         wrapper.__doc__ = pMethod.__doc__
         wrapper.__signature__ = inspect.Signature(
             [inspect.Parameter("self", inspect.Parameter.POSITIONAL_OR_KEYWORD)]
-            + [inspect.Parameter(rName, inspect.Parameter.POSITIONAL_OR_KEYWORD) for rName in argNames]
-            + [inspect.Parameter(rName, inspect.Parameter.POSITIONAL_OR_KEYWORD, default=None) for rName in (_SENDER_KW, _REPLY_KW, _ERROR_KW)]
+            + [
+                inspect.Parameter(rName, inspect.Parameter.POSITIONAL_OR_KEYWORD)
+                for rName in argNames
+            ]
+            + [
+                inspect.Parameter(
+                    rName, inspect.Parameter.POSITIONAL_OR_KEYWORD, default=None
+                )
+                for rName in (_SENDER_KW, _REPLY_KW, _ERROR_KW)
+            ]
         )
         return dbus.service.method(
             pDbusInterface,
             in_signature=pInSignature,
             out_signature=pOutSignature,
             sender_keyword=_SENDER_KW,
-            async_callbacks=(_REPLY_KW, _ERROR_KW)
+            async_callbacks=(_REPLY_KW, _ERROR_KW),
         )(wrapper)
 
     return decorator

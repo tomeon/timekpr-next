@@ -5,13 +5,13 @@ Created on Aug 28, 2018
 """
 
 # timekpr imports
-from timekpr.common.constants import messages as msg
+import gettext
+import locale
+from datetime import datetime
 
 # imports
 import dbus
-import locale
-import gettext
-from datetime import datetime
+from timekpr.common.constants import messages as msg
 
 # ## constants ##
 # version (in case config is corrupt or smth like that)
@@ -49,8 +49,10 @@ TK_LOG_AUTO_FLUSH_EVT_CNT = 42
 TK_CL_NOTIF_MAX = 60
 TK_CL_NOTIF_TMO = 3
 TK_CL_NOTIF_CRIT_TMO = 10
-TK_CL_NOTIF_SND_TYPE="sound-name"  # can be sound-name or sound-file
-TK_CL_NOTIF_SND_FILE_WARN = "/usr/share/sounds/freedesktop/stereo/dialog-information.oga"
+TK_CL_NOTIF_SND_TYPE = "sound-name"  # can be sound-name or sound-file
+TK_CL_NOTIF_SND_FILE_WARN = (
+    "/usr/share/sounds/freedesktop/stereo/dialog-information.oga"
+)
 TK_CL_NOTIF_SND_FILE_CRITICAL = "/usr/share/sounds/freedesktop/stereo/dialog-error.oga"
 TK_CL_NOTIF_SND_NAME_WARNING = "bell-window-system"
 TK_CL_NOTIF_SND_NAME_IMPORTANT = "dialog-warning"
@@ -61,7 +63,7 @@ TK_CL_INF_RT = "R"
 # ## files and locations ##
 # users and login configuration
 TK_USERS_FILE = "/etc/passwd"
-TK_USER_LIMITS_FILE = [ "/etc/login.defs", "/usr/etc/login.defs" ]
+TK_USER_LIMITS_FILE = ["/etc/login.defs", "/usr/etc/login.defs"]
 # backup extension
 TK_BACK_EXT = ".prev"
 # log files
@@ -140,10 +142,18 @@ TK_POLKIT_AUTHORITY_INTERFACE = "org.freedesktop.PolicyKit1.Authority"
 #   (declared in resource/server/polkit/com.timekpr.server.policy)
 #   polkit remembers an "auth_admin_keep" authentication per action, so everything
 #   read-only is one action: the admin GUI then asks once when it opens
-TK_POLKIT_ACTION_READ = "com.timekpr.server.admin.read"  # user list, user information, server configuration
-TK_POLKIT_ACTION_USER_TIME_LEFT = "com.timekpr.server.user.admin.time-left"  # time / PlayTime left for today
-TK_POLKIT_ACTION_USER_CONFIGURE = "com.timekpr.server.user.admin.configure"  # everything else about a user
-TK_POLKIT_ACTION_SERVER_CONFIGURE = "com.timekpr.server.admin.configure"  # timekpr's own configuration
+TK_POLKIT_ACTION_READ = (
+    "com.timekpr.server.admin.read"  # user list, user information, server configuration
+)
+TK_POLKIT_ACTION_USER_TIME_LEFT = (
+    "com.timekpr.server.user.admin.time-left"  # time / PlayTime left for today
+)
+TK_POLKIT_ACTION_USER_CONFIGURE = (
+    "com.timekpr.server.user.admin.configure"  # everything else about a user
+)
+TK_POLKIT_ACTION_SERVER_CONFIGURE = (
+    "com.timekpr.server.admin.configure"  # timekpr's own configuration
+)
 # detail keys passed along with the action (available as action.lookup(key) in polkit rules)
 TK_POLKIT_DETAIL_USER = "user"  # the user the call is about, if any
 TK_POLKIT_DETAIL_METHOD = "method"  # the D-Bus method being called
@@ -158,26 +168,28 @@ TK_CTRL_SCR_K = "scrs:key"
 TK_CTRL_SCR_R = "scrs:retr"
 
 # WORKAROUNDS section for use in Gnome and similar (almost everyone makes their own screensaver dbus interface these days, KDE (of the biggest players) is not)
-TK_SCR_XDGCD_OVERRIDE = [
-    ["unity", "gnome"],
-    ["kde", "freedesktop"]]
+TK_SCR_XDGCD_OVERRIDE = [["unity", "gnome"], ["kde", "freedesktop"]]
 
 # DBUS performance measurement
 TK_DBUS_ANSWER_TIME = 3
 
 # user and their restriction constants
-TK_CTRL_UID = "UID"      # user id
+TK_CTRL_UID = "UID"  # user id
 TK_CTRL_UNAME = "UNAME"  # user name
 TK_CTRL_UPATH = "UPATH"  # user path on dbus
 TK_CTRL_FCNTD = "FCNTD"  # final countdown
-TK_CTRL_RESTY = "RESTY"  # restricton type: lock, suspend, suspendwake, terminate, kill, shutdown
+TK_CTRL_RESTY = (
+    "RESTY"  # restricton type: lock, suspend, suspendwake, terminate, kill, shutdown
+)
 TK_CTRL_RTDEL = "RTDEL"  # retry delay before next attempt to enforce restrictions
 TK_CTRL_RTDEA = "RTDEA"  # retry delay (additional delay for lock in case of suspend)
 TK_CTRL_USACT = "USACT"  # whether user is active
 TK_CTRL_USLCK = "USLCK"  # whether user screen is locked
 TK_CTRL_USWKU = "USWKU"  # wake up time for computer if one is specified
-TK_CTRL_LCDEL = 1        # lock cycle delay (how many ticks happen before repetitive lock)
-TK_CTRL_SCDEL = 20       # suspend cycle delay (how many ticks happen before repetitive suspend)
+TK_CTRL_LCDEL = 1  # lock cycle delay (how many ticks happen before repetitive lock)
+TK_CTRL_SCDEL = (
+    20  # suspend cycle delay (how many ticks happen before repetitive suspend)
+)
 # restriction / lockout types
 TK_CTRL_RES_L = "lock"
 TK_CTRL_RES_S = "suspend"
@@ -195,43 +207,43 @@ TK_CTRL_DBUS_SESS_PROP_IF = "SESSION_PROPERTIES_INTERFACE"
 TK_CTRL_DBUS_SESS_PROP = "SESSION_STATIC_PROPERTIES"
 
 # limit configuration
-TK_CTRL_NDAY = "NEXTDAY"     # next day idx
-TK_CTRL_PDAY = "PREVDAY"     # previous day idx
-TK_CTRL_LIMITD = "LIMITD"    # limit idx / today
-TK_CTRL_LEFTD = "LEFTD"      # time left today idx
-TK_CTRL_LEFT = "LEFT"        # time left idx (continously)
-TK_CTRL_LEFTW = "LEFTW"      # time left for week
-TK_CTRL_LEFTM = "LEFTM"      # time left for month
-TK_CTRL_LCHECK = "LCHK"      # last checked idx
-TK_CTRL_LSAVE = "LSAVE"      # last saved idx
-TK_CTRL_LMOD = "LMOD"        # file modification idx (control)
-TK_CTRL_LCMOD = "LMCOD"      # file modification idx (config)
-TK_CTRL_LIMITW = "LIMITW"    # left per week idx
-TK_CTRL_LIMITM = "LIMITM"    # left per month idx
-TK_CTRL_ACT = "ACTIVE"       # is hour enabled
-TK_CTRL_UACC = "UACC"        # is hour unaccounted
-TK_CTRL_SLEEP = "SLEEP"      # time spent in "inactive"
-TK_CTRL_SPENT = "SPENT"      # time spent in this session
+TK_CTRL_NDAY = "NEXTDAY"  # next day idx
+TK_CTRL_PDAY = "PREVDAY"  # previous day idx
+TK_CTRL_LIMITD = "LIMITD"  # limit idx / today
+TK_CTRL_LEFTD = "LEFTD"  # time left today idx
+TK_CTRL_LEFT = "LEFT"  # time left idx (continously)
+TK_CTRL_LEFTW = "LEFTW"  # time left for week
+TK_CTRL_LEFTM = "LEFTM"  # time left for month
+TK_CTRL_LCHECK = "LCHK"  # last checked idx
+TK_CTRL_LSAVE = "LSAVE"  # last saved idx
+TK_CTRL_LMOD = "LMOD"  # file modification idx (control)
+TK_CTRL_LCMOD = "LMCOD"  # file modification idx (config)
+TK_CTRL_LIMITW = "LIMITW"  # left per week idx
+TK_CTRL_LIMITM = "LIMITM"  # left per month idx
+TK_CTRL_ACT = "ACTIVE"  # is hour enabled
+TK_CTRL_UACC = "UACC"  # is hour unaccounted
+TK_CTRL_SLEEP = "SLEEP"  # time spent in "inactive"
+TK_CTRL_SPENT = "SPENT"  # time spent in this session
 TK_CTRL_SPENTBD = "SPENTBD"  # time balance spent in this day
-TK_CTRL_SPENTH = "SPENTH"    # time spent in this hour
-TK_CTRL_SPENTD = "SPENTD"    # time spent in this day
-TK_CTRL_SPENTW = "SPENTW"    # time spent for week
-TK_CTRL_SPENTM = "SPENTM"    # time spent for month
-TK_CTRL_SMIN = "STARTMIN"    # start minute in this hour
-TK_CTRL_EMIN = "ENDMIN"      # end minute in this hour
-TK_CTRL_INT = "INTERVALS"    # intervals of time available to user
-TK_CTRL_TRACK = "TRACKI"     # whether to track inactive sessions
-TK_CTRL_HIDEI = "HIDEI"      # whether to hide timekpr icon
-TK_CTRL_TNL = "TNL"          # time not limited
-TK_CTRL_PTTLE = "PTTLE"      # PlayTime enabled
-TK_CTRL_PTCNT = "PTCNT"      # PlayTime counters
-TK_CTRL_PTSPD = "PTSPD"      # time spent for PlayTime
-TK_CTRL_PTLPD = "PTLPD"      # time left for PlayTime
-TK_CTRL_PTTLO = "PTTLO"      # PlayTime limit override
-TK_CTRL_PTAUH = "PTAUH"      # PlayTime allowed during unaccounted intervals
-TK_CTRL_PTLMT = "PTLMT"      # time limits for each day for PlayTime
-TK_CTRL_PTLST = "PTLST"      # process list for PlayTime
-TK_CTRL_PTLSTC = "PTLSTC"    # process list count for PlayTime
+TK_CTRL_SPENTH = "SPENTH"  # time spent in this hour
+TK_CTRL_SPENTD = "SPENTD"  # time spent in this day
+TK_CTRL_SPENTW = "SPENTW"  # time spent for week
+TK_CTRL_SPENTM = "SPENTM"  # time spent for month
+TK_CTRL_SMIN = "STARTMIN"  # start minute in this hour
+TK_CTRL_EMIN = "ENDMIN"  # end minute in this hour
+TK_CTRL_INT = "INTERVALS"  # intervals of time available to user
+TK_CTRL_TRACK = "TRACKI"  # whether to track inactive sessions
+TK_CTRL_HIDEI = "HIDEI"  # whether to hide timekpr icon
+TK_CTRL_TNL = "TNL"  # time not limited
+TK_CTRL_PTTLE = "PTTLE"  # PlayTime enabled
+TK_CTRL_PTCNT = "PTCNT"  # PlayTime counters
+TK_CTRL_PTSPD = "PTSPD"  # time spent for PlayTime
+TK_CTRL_PTLPD = "PTLPD"  # time left for PlayTime
+TK_CTRL_PTTLO = "PTTLO"  # PlayTime limit override
+TK_CTRL_PTAUH = "PTAUH"  # PlayTime allowed during unaccounted intervals
+TK_CTRL_PTLMT = "PTLMT"  # time limits for each day for PlayTime
+TK_CTRL_PTLST = "PTLST"  # process list for PlayTime
+TK_CTRL_PTLSTC = "PTLSTC"  # process list count for PlayTime
 
 # notificaton limits
 TK_NOTIF_LEFT = "LEFT"
@@ -251,7 +263,7 @@ TK_SESSION_TYPES_EXCL = "tty;unspecified"
 # exclude users (test user for timekpr and all known login managers)
 TK_USERS_TEST = "testtimekpr"
 TK_USERS_LOGIN_MANAGERS = "gdm;gdm3;kdm;lightdm;mdm;lxdm;xdm;sddm;cdm"
-TK_USERS_EXCL = "%s;%s" % (TK_USERS_TEST, TK_USERS_LOGIN_MANAGERS)
+TK_USERS_EXCL = f"{TK_USERS_TEST};{TK_USERS_LOGIN_MANAGERS}"
 
 # ## user defaults ##
 # default value for allowed hours
@@ -265,11 +277,11 @@ TK_LIMIT_PER_HOUR = 3600
 # default value for limit per day
 TK_LIMIT_PER_DAY = 86400
 # default value for limit per week
-TK_LIMIT_PER_WEEK = TK_LIMIT_PER_DAY*7
+TK_LIMIT_PER_WEEK = TK_LIMIT_PER_DAY * 7
 # default value for limit per month
-TK_LIMIT_PER_MONTH = TK_LIMIT_PER_DAY*31
+TK_LIMIT_PER_MONTH = TK_LIMIT_PER_DAY * 31
 # default value for limit per every weekday
-TK_LIMITS_PER_WEEKDAYS = "%s;%s;%s;%s;%s;%s;%s" % (TK_LIMIT_PER_DAY, TK_LIMIT_PER_DAY, TK_LIMIT_PER_DAY, TK_LIMIT_PER_DAY, TK_LIMIT_PER_DAY, TK_LIMIT_PER_DAY, TK_LIMIT_PER_DAY)
+TK_LIMITS_PER_WEEKDAYS = f"{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY}"
 # default value for nitification levels
 TK_NOTIFICATION_LEVELS = "3600[3];1800[2];600[1];300[0]"
 TK_PT_NOTIFICATION_LEVELS = "180[1]"
@@ -303,7 +315,9 @@ TK_HIDE_TRAY_ICON = False
 # config
 TK_MAIN_CONFIG_FILE = "timekpr.conf"
 TK_USER_CONFIG_FILE = "timekpr.%s.conf"
-TK_UNAME_SRCH_LN_LMT = 10  # this defines line count for verifying username in first n lines
+TK_UNAME_SRCH_LN_LMT = (
+    10  # this defines line count for verifying username in first n lines
+)
 
 # ## timekpr notification config ##
 # priorites
@@ -315,28 +329,82 @@ TK_PRIO_CRITICAL = "critical"
 TK_PRIO_IMPORTANT_INFO = "important_info"
 TK_PRIO_UACC = "unaccounted"
 # notification levels mapping from / to codes
-TK_PRIO_LVL_MAP = {"4": TK_PRIO_UACC, "3": TK_PRIO_LOW, "2": TK_PRIO_WARNING, "1": TK_PRIO_IMPORTANT, "0": TK_PRIO_CRITICAL,
-    TK_PRIO_UACC: "4", TK_PRIO_LOW: "3", TK_PRIO_WARNING: "2", TK_PRIO_IMPORTANT: "1", TK_PRIO_CRITICAL: "0"}
+TK_PRIO_LVL_MAP = {
+    "4": TK_PRIO_UACC,
+    "3": TK_PRIO_LOW,
+    "2": TK_PRIO_WARNING,
+    "1": TK_PRIO_IMPORTANT,
+    "0": TK_PRIO_CRITICAL,
+    TK_PRIO_UACC: "4",
+    TK_PRIO_LOW: "3",
+    TK_PRIO_WARNING: "2",
+    TK_PRIO_IMPORTANT: "1",
+    TK_PRIO_CRITICAL: "0",
+}
 
 # config
 TK_PRIO_CONF = {}
-TK_PRIO_CONF["logo"] = {TK_ICON_STAT: "timekpr-logo.svg", TK_ICON_NOTIF: "dialog-information", TK_DBUS_PRIO: dbus.Byte(0, variant_level=1)}
-TK_PRIO_CONF["client-logo"] = {TK_ICON_STAT: "timekpr-client-logo.svg", TK_ICON_NOTIF: "dialog-information", TK_DBUS_PRIO: dbus.Byte(0, variant_level=1)}
-TK_PRIO_CONF["unlimited"] = {TK_ICON_STAT: "timekpr-padlock-unlimited-green.svg", TK_ICON_NOTIF: "dialog-information", TK_DBUS_PRIO: dbus.Byte(0, variant_level=1)}
-TK_PRIO_CONF[TK_PRIO_LOW] = {TK_ICON_STAT: "timekpr-padlock-limited-green.svg", TK_ICON_NOTIF: "dialog-information", TK_DBUS_PRIO: dbus.Byte(0, variant_level=1)}
-TK_PRIO_CONF[TK_PRIO_NORMAL] = {TK_ICON_STAT: "timekpr-padlock-limited-green.svg", TK_ICON_NOTIF: "dialog-information", TK_DBUS_PRIO: dbus.Byte(1, variant_level=1)}
-TK_PRIO_CONF[TK_PRIO_WARNING] = {TK_ICON_STAT: "timekpr-padlock-limited-yellow.svg", TK_ICON_NOTIF: "dialog-warning", TK_DBUS_PRIO: dbus.Byte(1, variant_level=1)}
-TK_PRIO_CONF[TK_PRIO_IMPORTANT] = {TK_ICON_STAT: "timekpr-padlock-limited-red.svg", TK_ICON_NOTIF: "dialog-warning", TK_DBUS_PRIO: dbus.Byte(1, variant_level=1)}
-TK_PRIO_CONF[TK_PRIO_CRITICAL] = {TK_ICON_STAT: "timekpr-padlock-limited-red.svg", TK_ICON_NOTIF: "dialog-error", TK_DBUS_PRIO: dbus.Byte(2, variant_level=1)}
-TK_PRIO_CONF[TK_PRIO_IMPORTANT_INFO] = {TK_ICON_STAT: "timekpr-padlock-limited-yellow.svg", TK_ICON_NOTIF: "dialog-information", TK_DBUS_PRIO: dbus.Byte(1, variant_level=1)}
-TK_PRIO_CONF[TK_PRIO_UACC] = {TK_ICON_STAT: "timekpr-padlock-limited-uacc.svg", TK_ICON_NOTIF: "dialog-warning", TK_DBUS_PRIO: dbus.Byte(1, variant_level=1)}
+TK_PRIO_CONF["logo"] = {
+    TK_ICON_STAT: "timekpr-logo.svg",
+    TK_ICON_NOTIF: "dialog-information",
+    TK_DBUS_PRIO: dbus.Byte(0, variant_level=1),
+}
+TK_PRIO_CONF["client-logo"] = {
+    TK_ICON_STAT: "timekpr-client-logo.svg",
+    TK_ICON_NOTIF: "dialog-information",
+    TK_DBUS_PRIO: dbus.Byte(0, variant_level=1),
+}
+TK_PRIO_CONF["unlimited"] = {
+    TK_ICON_STAT: "timekpr-padlock-unlimited-green.svg",
+    TK_ICON_NOTIF: "dialog-information",
+    TK_DBUS_PRIO: dbus.Byte(0, variant_level=1),
+}
+TK_PRIO_CONF[TK_PRIO_LOW] = {
+    TK_ICON_STAT: "timekpr-padlock-limited-green.svg",
+    TK_ICON_NOTIF: "dialog-information",
+    TK_DBUS_PRIO: dbus.Byte(0, variant_level=1),
+}
+TK_PRIO_CONF[TK_PRIO_NORMAL] = {
+    TK_ICON_STAT: "timekpr-padlock-limited-green.svg",
+    TK_ICON_NOTIF: "dialog-information",
+    TK_DBUS_PRIO: dbus.Byte(1, variant_level=1),
+}
+TK_PRIO_CONF[TK_PRIO_WARNING] = {
+    TK_ICON_STAT: "timekpr-padlock-limited-yellow.svg",
+    TK_ICON_NOTIF: "dialog-warning",
+    TK_DBUS_PRIO: dbus.Byte(1, variant_level=1),
+}
+TK_PRIO_CONF[TK_PRIO_IMPORTANT] = {
+    TK_ICON_STAT: "timekpr-padlock-limited-red.svg",
+    TK_ICON_NOTIF: "dialog-warning",
+    TK_DBUS_PRIO: dbus.Byte(1, variant_level=1),
+}
+TK_PRIO_CONF[TK_PRIO_CRITICAL] = {
+    TK_ICON_STAT: "timekpr-padlock-limited-red.svg",
+    TK_ICON_NOTIF: "dialog-error",
+    TK_DBUS_PRIO: dbus.Byte(2, variant_level=1),
+}
+TK_PRIO_CONF[TK_PRIO_IMPORTANT_INFO] = {
+    TK_ICON_STAT: "timekpr-padlock-limited-yellow.svg",
+    TK_ICON_NOTIF: "dialog-information",
+    TK_DBUS_PRIO: dbus.Byte(1, variant_level=1),
+}
+TK_PRIO_CONF[TK_PRIO_UACC] = {
+    TK_ICON_STAT: "timekpr-padlock-limited-uacc.svg",
+    TK_ICON_NOTIF: "dialog-warning",
+    TK_DBUS_PRIO: dbus.Byte(1, variant_level=1),
+}
 
 # ## timekpr notification config ##
 # init python gettext
-gettext.bindtextdomain("timekpr", TK_LOCALIZATION_DIR if not TK_DEV_ACTIVE else TK_LOCALIZATION_DIR_DEV)
+gettext.bindtextdomain(
+    "timekpr", TK_LOCALIZATION_DIR if not TK_DEV_ACTIVE else TK_LOCALIZATION_DIR_DEV
+)
 gettext.textdomain("timekpr")
 # init actual libc gettext
-locale.bindtextdomain("timekpr", TK_LOCALIZATION_DIR if not TK_DEV_ACTIVE else TK_LOCALIZATION_DIR_DEV)
+locale.bindtextdomain(
+    "timekpr", TK_LOCALIZATION_DIR if not TK_DEV_ACTIVE else TK_LOCALIZATION_DIR_DEV
+)
 locale.textdomain("timekpr")
 
 # define admin commands
@@ -353,26 +421,85 @@ TK_ADMIN_COMMANDS = {
 }
 # define user admin commands
 TK_USER_ADMIN_COMMANDS = {
-    "--help"                                : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_HELP"), "timekpra --help\n    timekpra -h"),
-    "--userlist"                            : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERLIST"), "timekpra --userlist"),
-    "--userinfo"                            : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERCONFIG"), "timekpra --userinfo 'testuser'"),
-    "--userinfort"                          : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERCONFIGRT"), "timekpra --userinfort 'testuser'"),
-    "--setalloweddays"                      : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETALLOWEDDAYS"), "timekpra --setalloweddays 'testuser' '1;2;3;4;5'"),
-    "--setallowedhours"                     : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETALLOWEDHOURS"), "timekpra --setallowedhours 'testuser' 'ALL' '7;8;9;10;11[00-30];!14;!15;17;18;19;20[00-45]'"),
-    "--settimelimits"                       : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITS"), "timekpra --settimelimits 'testuser' '7200;7200;7200;7200;10800'"),
-    "--settimelimitweek"                    : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITWK"), "timekpra --settimelimitweek 'testuser' '50000'"),
-    "--settimelimitmonth"                   : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITMON"), "timekpra --settimelimitmonth 'testuser' '200000'"),
-    "--settrackinactive"                    : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTRACKINACTIVE"), "timekpra --settrackinactive 'testuser' 'false'"),
-    "--sethidetrayicon"                     : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETHIDETRAYICON"), "timekpra --sethidetrayicon 'testuser' 'false'"),
-    "--setlockouttype"                      : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETLOCKOUTTYPE"), "timekpra --setlockouttype 'testuser' 'terminate'\n    timekpra --setlockouttype 'testuser' 'suspendwake;7;18'"),
-    "--settimeleft"                         : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELEFT"), "timekpra --settimeleft 'testuser' '+' 3600"),
-    "--setplaytimeenabled"                  : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEENABLED"), "timekpra --setplaytimeenabled 'testuser' 'false'"),
-    "--setplaytimelimitoverride"            : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELIMITOVERRIDE"), "timekpra --setplaytimelimitoverride 'testuser' 'false'"),
-    "--setplaytimeunaccountedintervalsflag" : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEUNACCOUNTEDINTARVALSFLAG"), "timekpra --setplaytimeunaccountedintervalsflag 'testuser' 'false'"),
-    "--setplaytimealloweddays"              : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEALLOWEDDAYS"), "timekpra --setplaytimealloweddays 'testuser' '1;2;3;4;5'"),
-    "--setplaytimelimits"                   : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELIMITS"), "timekpra --setplaytimelimits 'testuser' '1800;1800;1800;1800;3600'"),
-    "--setplaytimeactivities"               : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEACTIVITIES"), "timekpra --setplaytimeactivities 'testuser' 'DOOMEternalx64vk.exe[Doom Eternal];csgo_linux[CS: GO];firefox[Firefox browser]'"),
-    "--setplaytimeleft"                     : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELEFT"), "timekpra --setplaytimeleft 'testuser' '+' 3600")
+    "--help": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_HELP"),
+        "timekpra --help\n    timekpra -h",
+    ),
+    "--userlist": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERLIST"), "timekpra --userlist"
+    ),
+    "--userinfo": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERCONFIG"),
+        "timekpra --userinfo 'testuser'",
+    ),
+    "--userinfort": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERCONFIGRT"),
+        "timekpra --userinfort 'testuser'",
+    ),
+    "--setalloweddays": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETALLOWEDDAYS"),
+        "timekpra --setalloweddays 'testuser' '1;2;3;4;5'",
+    ),
+    "--setallowedhours": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETALLOWEDHOURS"),
+        "timekpra --setallowedhours 'testuser' 'ALL' '7;8;9;10;11[00-30];!14;!15;17;18;19;20[00-45]'",
+    ),
+    "--settimelimits": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITS"),
+        "timekpra --settimelimits 'testuser' '7200;7200;7200;7200;10800'",
+    ),
+    "--settimelimitweek": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITWK"),
+        "timekpra --settimelimitweek 'testuser' '50000'",
+    ),
+    "--settimelimitmonth": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITMON"),
+        "timekpra --settimelimitmonth 'testuser' '200000'",
+    ),
+    "--settrackinactive": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTRACKINACTIVE"),
+        "timekpra --settrackinactive 'testuser' 'false'",
+    ),
+    "--sethidetrayicon": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETHIDETRAYICON"),
+        "timekpra --sethidetrayicon 'testuser' 'false'",
+    ),
+    "--setlockouttype": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETLOCKOUTTYPE"),
+        "timekpra --setlockouttype 'testuser' 'terminate'\n    timekpra --setlockouttype 'testuser' 'suspendwake;7;18'",
+    ),
+    "--settimeleft": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELEFT"),
+        "timekpra --settimeleft 'testuser' '+' 3600",
+    ),
+    "--setplaytimeenabled": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEENABLED"),
+        "timekpra --setplaytimeenabled 'testuser' 'false'",
+    ),
+    "--setplaytimelimitoverride": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELIMITOVERRIDE"),
+        "timekpra --setplaytimelimitoverride 'testuser' 'false'",
+    ),
+    "--setplaytimeunaccountedintervalsflag": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEUNACCOUNTEDINTARVALSFLAG"),
+        "timekpra --setplaytimeunaccountedintervalsflag 'testuser' 'false'",
+    ),
+    "--setplaytimealloweddays": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEALLOWEDDAYS"),
+        "timekpra --setplaytimealloweddays 'testuser' '1;2;3;4;5'",
+    ),
+    "--setplaytimelimits": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELIMITS"),
+        "timekpra --setplaytimelimits 'testuser' '1800;1800;1800;1800;3600'",
+    ),
+    "--setplaytimeactivities": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEACTIVITIES"),
+        "timekpra --setplaytimeactivities 'testuser' 'DOOMEternalx64vk.exe[Doom Eternal];csgo_linux[CS: GO];firefox[Firefox browser]'",
+    ),
+    "--setplaytimeleft": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELEFT"),
+        "timekpra --setplaytimeleft 'testuser' '+' 3600",
+    ),
 }
 
 

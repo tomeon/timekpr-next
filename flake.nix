@@ -48,6 +48,7 @@
                 ./flake.nix
                 ./flake.lock
                 ./nix
+                ./ruff.toml
                 ./scripts
               ]);
             };
@@ -87,8 +88,9 @@
             "scripts/lib.sh"
             "scripts/run-nixos-test"
           ];
-          # Only Python written for this flake; timekpr's own sources are
-          # left as upstream formats them.
+          # Python written for this flake.  timekpr's own sources come in
+          # through the default includes; these are listed because one of
+          # them has no .py extension.
           pythonScripts = [
             "nix/tests/timekpr.py"
             "scripts/flake-inputs-via-git"

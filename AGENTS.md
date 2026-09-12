@@ -2,28 +2,28 @@
 
 This is timekpr-next (a screen time manager) with a Nix flake bolted on.
 Upstream code lives in `bin/`, `client/`, `common/`, `server/`,
-`resource/` and `debian/`.  Everything Nix-related was added on top:
+`resource/` and `debian/`. Everything Nix-related was added on top:
 `flake.nix`, `flake.lock`, `nix/`, `scripts/`, `.github/`, `.actrc`.
 
 ## Flake layout
 
 - `flake.nix` uses flake-parts, the numtide devshell flake module, and
-  the treefmt-nix flake module.  Supported systems: x86_64-linux,
-  aarch64-linux, aarch64-darwin.  nixpkgs unstable has dropped
+  the treefmt-nix flake module. Supported systems: x86_64-linux,
+  aarch64-linux, aarch64-darwin. nixpkgs unstable has dropped
   x86_64-darwin, so do not add it back.
 - `packages.timekpr` is nixpkgs' `timekpr` derivation with `src`
   overridden to this checkout (a fileset that excludes the Nix, script,
   and CI files so editing them does not rebuild the package).
-  `packages.default` is the same derivation.  The nixpkgs derivation
+  `packages.default` is the same derivation. The nixpkgs derivation
   hardcodes `version = "0.5.8"` inside a `rec` attribute set, so
   overriding `version` alone does not propagate into its generated
   `setup.py`.
 - `checks.<system>.timekpr` is a `pkgs.testers.nixosTest` defined in
   `nix/tests/timekpr.nix` (machine configuration) and
-  `nix/tests/timekpr.py` (test script).  `checks.<system>.treefmt`
+  `nix/tests/timekpr.py` (test script). `checks.<system>.treefmt`
   comes from treefmt-nix.
 - `legacyPackages.<system>.tests.timekpr-container` is the same test on
-  the systemd-nspawn backend (`backend = "container"`).  It is not a
+  the systemd-nspawn backend (`backend = "container"`). It is not a
   check because it needs a cgroup v2 host and a Nix daemon configured
   with `auto-allocate-uids`, the `uid-range` system feature, and the
   `auto-allocate-uids` and `cgroups` experimental features.
@@ -32,28 +32,44 @@ Upstream code lives in `bin/`, `client/`, `common/`, `server/`,
 
 ## Conventions
 
-- Run `nix fmt` after every change to Nix, shell, or Python files and
-  fix anything a formatter reports but cannot fix itself.  treefmt runs
-  alejandra (Nix), shellcheck and shfmt (the listed shell scripts), and
-  ruff-check and ruff-format (the listed Python files).
-- The Python formatters must only ever apply to Python written for the
-  flake (`nix/tests/timekpr.py`, `scripts/flake-inputs-via-git`).
-  Never reformat timekpr's own Python sources.  The scripts have no
-  file extensions, so every new shell or Python script must be added to
-  the `shellScripts` or `pythonScripts` list in `flake.nix`.
+- Run `nix fmt` after every change to Nix, shell, Python, Markdown,
+  YAML or XML files and fix anything a formatter reports but cannot fix
+  itself. treefmt runs alejandra (Nix), shellcheck and shfmt (shell),
+  prettier (Markdown, YAML, JSON, ...), ruff-check and ruff-format
+  (Python) and xmllint (XML and SVG).
+- Every formatter targets its default file patterns plus the extra
+  paths listed in `flake.nix`, so timekpr's own sources are formatted
+  and linted too, not just the Python written for the flake. The helper
+  scripts have no file extensions, so every new shell or Python script
+  must be added to the `shellScripts` or `pythonScripts` list in
+  `flake.nix`.
+- `ruff.toml` holds the lint settings for the whole checkout: a
+  `target-version` of `py39`, because Debian 11 and Ubuntu 22.04 still
+  ship Python 3.9 and no automatic fix may rewrite timekpr's sources
+  past it (`nix/` and `scripts/` get a `per-file-target-version` of
+  `py314` instead, since they only ever run on the interpreter Nix
+  provides), and two per-file ignores for `client/`, `common/` and
+  `server/`. `BLE001`
+  (blind `except Exception`) and the `DTZ` rules (naive datetimes) both
+  describe deliberate upstream design: the daemon must survive a
+  malformed config or a D-Bus hiccup, and it accounts wall-clock time
+  in local time, comparing `datetime.now()` with naive datetimes read
+  back from its own files. The flake's own Python stays on the full
+  rule set. `ruff.toml` is excluded from the package source, like the
+  other tooling files.
 - Shell scripts: a script that is POSIX sh compatible uses
   `#!/bin/sh`; anything needing bash features uses `#!/usr/bin/env bash`
-  and bash idioms throughout (`[[ ]]`, arrays, `(( ))`).  Write
+  and bash idioms throughout (`[[ ]]`, arrays, `(( ))`). Write
   conditionals as `if cmd; then ...; fi` and `if ! cmd; then ...; fi`
   rather than `cmd && thing` or `cmd || thing`, unless the chaining is
   the point (for example `(umask 077 && ...)`).
-- Prefer an existing library function over hand-rolled code.  Example:
+- Prefer an existing library function over hand-rolled code. Example:
   D-Bus object path escaping of user names uses
   `Gio.dbus_escape_object_path`, which is lossless, instead of
   stripping characters.
-- Keep the NixOS test's Python in its own file.  `timekpr.nix` passes
+- Keep the NixOS test's Python in its own file. `timekpr.nix` passes
   values to it by prepending a `CONFIG` dict (JSON) to the script; the
-  driver injects `machine` and `subtest`.  The test script carries
+  driver injects `machine` and `subtest`. The test script carries
   `# ruff: noqa: F821` for those names.
 - Every task ends with the relevant success commands exiting 0, and
   with the work committed and pushed to the designated branch.
@@ -73,9 +89,9 @@ act                     # or scripts/act-sandboxed in a restricted sandbox
 ```
 
 `nix flake check` and `act` each take roughly 10 minutes without KVM,
-because the NixOS test then runs under QEMU software emulation.  Run
+because the NixOS test then runs under QEMU software emulation. Run
 them detached and follow the log rather than waiting on a foreground
-command with a timeout.  `nix flake check` reuses an already-built test
+command with a timeout. `nix flake check` reuses an already-built test
 derivation when nothing in the package source or test changed, so a
 fast pass may not have re-executed the VM; `scripts/run-nixos-test`
 always re-executes it.
@@ -85,23 +101,23 @@ always re-executes it.
 They exist because the development sandbox has these restrictions;
 each one degrades to the plain command on an ordinary machine.
 
-| Restriction | Tool |
-| --- | --- |
-| Nix is installed but not on `PATH` (it lives in `/nix/var/nix/profiles/default/bin`) | `scripts/lib.sh` `ensure_nix_on_path` |
-| GitHub's API and tarball endpoints return 403 for repositories outside the session, while anonymous `git` access works; so `github:` flake inputs cannot be fetched or updated by Nix | `scripts/flake-inputs-via-git` (fetches locked inputs over git; `--update` replaces `nix flake update`) |
-| No `/dev/kvm`, so Nix refuses the NixOS test for lack of the `kvm` feature | `scripts/flake-check` (adds `--option extra-system-features kvm`) |
-| Iterating on the NixOS test inside the sandbox is slow and opaque | `scripts/run-nixos-test` (builds the driver, runs it outside the sandbox, logs under `$XDG_CACHE_HOME/timekpr-next`) |
-| Internet only via a loopback HTTPS proxy (`HTTPS_PROXY`) with a private CA (`SSL_CERT_FILE` etc.); no Docker daemon running; act's job container cannot reach either | `scripts/act-sandboxed` (host networking, CA mount, signed `file://` cache of the flake inputs, starts `dockerd`) |
-| Looking up the latest release of a GitHub project | `scripts/github-latest-tags` |
+| Restriction                                                                                                                                                                           | Tool                                                                                                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| Nix is installed but not on `PATH` (it lives in `/nix/var/nix/profiles/default/bin`)                                                                                                  | `scripts/lib.sh` `ensure_nix_on_path`                                                                                |
+| GitHub's API and tarball endpoints return 403 for repositories outside the session, while anonymous `git` access works; so `github:` flake inputs cannot be fetched or updated by Nix | `scripts/flake-inputs-via-git` (fetches locked inputs over git; `--update` replaces `nix flake update`)              |
+| No `/dev/kvm`, so Nix refuses the NixOS test for lack of the `kvm` feature                                                                                                            | `scripts/flake-check` (adds `--option extra-system-features kvm`)                                                    |
+| Iterating on the NixOS test inside the sandbox is slow and opaque                                                                                                                     | `scripts/run-nixos-test` (builds the driver, runs it outside the sandbox, logs under `$XDG_CACHE_HOME/timekpr-next`) |
+| Internet only via a loopback HTTPS proxy (`HTTPS_PROXY`) with a private CA (`SSL_CERT_FILE` etc.); no Docker daemon running; act's job container cannot reach either                  | `scripts/act-sandboxed` (host networking, CA mount, signed `file://` cache of the flake inputs, starts `dockerd`)    |
+| Looking up the latest release of a GitHub project                                                                                                                                     | `scripts/github-latest-tags`                                                                                         |
 
 Other facts about the sandbox worth knowing before trying something:
 
 - The kernel has no IPv6, so services in tests bind `127.0.0.1`, not
   `[::]`, and `networking.hosts` entries use IPv4 only.
 - The host uses the legacy cgroup v1 hierarchy, so systemd-nspawn
-  refuses to start containers.  The container test backend cannot be
+  refuses to start containers. The container test backend cannot be
   exercised here at all.
-- Nix runs in single-user mode as root.  `--option` settings on the
+- Nix runs in single-user mode as root. `--option` settings on the
   command line are honoured.
 - The proxy's port changes between sessions; always read it from the
   environment.
@@ -109,16 +125,16 @@ Other facts about the sandbox worth knowing before trying something:
 ## Things learned about timekpr and the test
 
 - timekpr enforces limits by terminating logind sessions, not by
-  blocking PAM.  It polls every 3 seconds and terminates an over-limit
+  blocking PAM. It polls every 3 seconds and terminates an over-limit
   session after a 15 second countdown (`TIMEKPR_TERMINATION_TIME`), so
   "login fails" in the test means the SSH session is killed within about
   30 seconds, and "login succeeds" means it survives a 45 second hold.
 - By default it only tracks `x11;wayland;mir` sessions and explicitly
-  ignores `tty`.  SSH logins are `tty` sessions, so the test ships a
+  ignores `tty`. SSH logins are `tty` sessions, so the test ships a
   modified `/etc/timekpr/timekpr.conf` (via `environment.etc.timekpr`)
   that tracks `tty`.
 - "Forbid login" is expressed as `timekpra --settimelimits USER
-  '0;0;0;0;0;0;0'`; an exemption is `timekpra --settimeleft USER + 300`.
+'0;0;0;0;0;0;0'`; an exemption is `timekpra --settimeleft USER + 300`.
   A user must have a config file before `timekpra` accepts settings;
   the daemon creates one on the user's first login, which is why the
   test logs each user in once unrestricted first.
@@ -130,36 +146,36 @@ Other facts about the sandbox worth knowing before trying something:
   D-Bus object paths were built by stripping characters from the user
   name, which broke domain users such as `bob@idm.nixos.test`.
 - Access to the daemon's D-Bus interface is decided by the daemon, not
-  the bus policy (which now lets anyone send).  Methods on the two
+  the bus policy (which now lets anyone send). Methods on the two
   admin interfaces are declared with `timekprAuthorizedMethod` from
   `server/interface/dbus/polkit.py`, which asks polkit for one of the
   actions in `resource/server/polkit/com.timekpr.server.policy` (with
   `user` and `method` details for rules) and replies asynchronously
   once polkit answers, so an authentication prompt does not block the
-  main loop.  Every method on those interfaces must use it.  The
-  per-user interfaces only accept calls from that user or root.  Root
+  main loop. Every method on those interfaces must use it. The
+  per-user interfaces only accept calls from that user or root. Root
   is always authorized (polkit does the same), which is why `timekpra`
-  as root in the test needs no rule.  `50-timekpr.rules` reproduces
+  as root in the test needs no rule. `50-timekpr.rules` reproduces
   the old `timekpr` group grant; site rules sorting earlier win.
   `timekpr.pkla` says the same for polkit 0.105 and earlier (Ubuntu
   22.04, Debian 11), which ignore `.rules` files; polkit 0.106 and
-  later ignore `.pkla` files, so both ship.  polkit remembers an
+  later ignore `.pkla` files, so both ship. polkit remembers an
   `auth_admin_keep` authentication per action id, which is why all
   read-only methods share one action and the configuring actions keep
   too: the admin GUI reads on open and applies a page as several calls.
 - `timekpra` always exits 0; the test detects refused commands by the
   "access denied" text in its output and by checking that nothing
-  changed.  Polkit refuses non-root callers that have no agent to
+  changed. Polkit refuses non-root callers that have no agent to
   authenticate with, so denial is immediate in the test.
 - `-h` and `--help` are answered by all three commands before any other
   work: the check is the first thing each entry script does, ahead of its
   own timekpr imports, so no self-running check, configuration, log file,
   D-Bus, GTK or daemon is involved and help works for anyone who may
   execute the command, in any state of the system (`env -i`, no bus, no
-  `/etc/timekpr`).  The texts live in `common/utils/cmdhelp.py`, which
+  `/etc/timekpr`). The texts live in `common/utils/cmdhelp.py`, which
   imports nothing until help is actually printed; it then pulls in
   `constants` (and with it the `dbus` python module, for the version and
-  timekpr's own command list) and nothing else.  Keep it that way when
+  timekpr's own command list) and nothing else. Keep it that way when
   adding start-up work, and keep the check ahead of the imports: loading
   GTK for a help message is what made `timeout 3s timekprc --help` fail.
   Every other `timekpra` command still needs the daemon; the connector
@@ -172,14 +188,14 @@ Other facts about the sandbox worth knowing before trying something:
   `kanidm_1_11.withSecretProvisioning`; `services.kanidm.provision`
   cannot set POSIX attributes or passwords, so the test does that with
   the CLI, which only reads passwords from a terminal (the
-  `answer-password` pexpect helper handles that).  Kanidm enforces a
-  minimum UNIX password quality.  The UNIX daemon exposes users under
+  `answer-password` pexpect helper handles that). Kanidm enforces a
+  minimum UNIX password quality. The UNIX daemon exposes users under
   their SPN (`bob@idm.nixos.test`).
 
 ## Communication
 
 - Be polite but not fawning; get to the point.
-- Do not put words in the user's mouth.  When something they said
+- Do not put words in the user's mouth. When something they said
   seems wrong, consider first that the misunderstanding may be yours.
 - Apply the principle of charity; pick no nits.
 - Provide citations and links for sources.

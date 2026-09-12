@@ -1,0 +1,31 @@
+# Ruff settings for the whole checkout.  `nix fmt` runs ruff-check and
+# ruff-format over every Python file, timekpr's own sources included.
+
+# Debian 11 and Ubuntu 22.04 still ship Python 3.9, so no automatic fix
+# may rewrite timekpr's sources into syntax they cannot parse.
+target-version = "py39"
+
+[per-file-target-version]
+# The flake's own Python only ever runs on the interpreter Nix provides.
+"nix/**" = "py314"
+"scripts/**" = "py314"
+
+[lint.per-file-ignores]
+# Two upstream design decisions pervade timekpr's own sources
+# (client/, common/, server/) and are deliberate rather than oversights.
+# The flake's own Python (nix/, scripts/) stays on the full rule set.
+"{client,common,server}/**" = [
+  # The daemon and the GUI catch everything around config parsing, D-Bus
+  # calls and process handling on purpose: a malformed config file or a
+  # bus hiccup must not take the service down.  Narrowing the ~160
+  # handlers would mean guessing what each guarded block can raise.
+  "BLE001",
+  # timekpr accounts wall-clock time in the machine's local timezone and
+  # compares datetime.now() against naive datetimes read back from its
+  # config and control files.  Making those aware would change the very
+  # arithmetic the limits are built on.
+  "DTZ001",
+  "DTZ005",
+  "DTZ006",
+  "DTZ007",
+]

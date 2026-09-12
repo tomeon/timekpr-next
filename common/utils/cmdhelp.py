@@ -36,7 +36,7 @@ Usage:
   timekprd -h|--help  print this help and exit
 
 The daemon is normally started by systemd (timekpr.service).
-Time limits are administered with timekpra."""
+Time limits are administered with timekpra.""",
 }
 
 
@@ -55,6 +55,7 @@ def printHelp(pCommand):
         # imported here, so that asking for help loads nothing else
         from timekpr.common.constants import constants as cons
         from timekpr.common.log import log
+
         # print to console
         log.consoleOut(_TK_USAGE[pCommand] % (cons.TK_VERSION))
 
@@ -67,14 +68,16 @@ def printAdminHelp():
     from timekpr.common.log import log
 
     # log notice
-    log.consoleOut("%s\n*) %s\n*) %s\n*) %s\n" % (
-        msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_HEAD"),
-        msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_TIME"),
-        msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_HOURS"),
-        msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_DAYS"))
+    log.consoleOut(
+        "{}\n*) {}\n*) {}\n*) {}\n".format(
+            msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_HEAD"),
+            msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_TIME"),
+            msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_HOURS"),
+            msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_DAYS"),
+        )
     )
     # log usage notes text
-    log.consoleOut("%s\n" % (msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTES")))
+    log.consoleOut("{}\n".format(msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTES")))
     # initial order
     cmds = ["--help", "--userlist", "--userinfo"]
     # print initial commands as first

@@ -35,6 +35,21 @@ TIMEKPR_LOG = "/var/log/timekpr.log"
 # always exits 0, so this text is the only signal.
 DENIED = "access denied"
 TIMEKPR_BUS = "com.timekpr.server /com/timekpr/server"
+# A bus address nothing listens on, to prove that help needs no daemon.
+NO_BUS = "unix:path=/nonexistent"
+# The options every command must answer.
+HELP_OPTIONS = ("-h", "--help")
+# Each command's help output must mention this.
+HELP_NEEDLES = {
+    "timekpra": "--settimelimits",
+    "timekprc": "start the user client",
+    "timekprd": "start the timekpr daemon",
+}
+# Help is answered before any other work, so it takes about as long as
+# starting an interpreter.  Generous, so that it does not flake under
+# emulation, and still short enough to catch a command that loads its whole
+# stack first: doing that took timekprc more than twenty seconds here.
+HELP_TIMEOUT = 30
 LIMITS_INTERFACE = "com.timekpr.server.user.limits"
 SESSION_ATTRIBUTES_INTERFACE = "com.timekpr.server.user.sessionattributes"
 POLKIT_READ = "com.timekpr.server.admin.read"
@@ -143,6 +158,33 @@ def exercise(user, password):
         expect_login_survives(user, password)
 
 
+def exercise_help():
+    """Help must work for whoever may execute the command, whatever the
+    state of the system: no root, no timekpr group, no daemon, no bus, no
+    environment at all.  It must also be answered before any other work,
+    which is what keeps it inside HELP_TIMEOUT."""
+    for command, needle in HELP_NEEDLES.items():
+        for option in HELP_OPTIONS:
+            with subtest(f"{command} {option}: help for an unprivileged user"):
+                # env -i: no PATH, no HOME, no XDG_*, no DISPLAY, and a bus
+                # address nothing listens on, so nothing can be relied upon
+                out = machine.succeed(
+                    f"timeout {HELP_TIMEOUT}"
+                    f" runuser -u {shlex.quote(CAROL)} -- env -i"
+                    f" DBUS_SYSTEM_BUS_ADDRESS={shlex.quote(NO_BUS)}"
+                    f" {TIMEKPR_PACKAGE}/bin/{command} {option}"
+                )
+                assert needle in out, out
+
+    with subtest("help writes nothing"):
+        # help comes before the self-running check and before logging is set
+        # up, so the pid and log files of the commands a user runs are not
+        # created (timekprd's own /tmp/timekprd.pid belongs to the daemon)
+        for command in ("timekpra", "timekprc"):
+            machine.succeed(f"test ! -e /tmp/{command}.{CAROL}.pid")
+            machine.succeed(f"test ! -e /tmp/{command}.{CAROL}.log")
+
+
 def exercise_authorization():
     """The daemon decides who may call what: the admin interfaces go
     through polkit, the per-user interfaces are limited to the user in
@@ -216,6 +258,7 @@ def main():
             "systemctl show -p ExecStart --value timekpr.service"
         )
 
+    exercise_help()
     exercise(ALICE, ALICE_PASSWORD)
     exercise_authorization()
 

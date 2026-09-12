@@ -29,8 +29,8 @@ class timekprAdminConnector(object):
         self._retryCountLeft = 5
         self._initFailed = False
 
-        # dbus (timekpr)
-        self._timekprBus = (dbus.SessionBus() if (cons.TK_DEV_ACTIVE and cons.TK_DEV_BUS == "ses") else dbus.SystemBus())
+        # dbus (timekpr), the bus itself is connected to lazily, so that constructing this does not need a running bus
+        self._timekprBus = None
         self._timekprObject = None
         self._timekprUserAdminDbusInterface = None
         self._timekprAdminDbusInterface = None
@@ -51,6 +51,9 @@ class timekprAdminConnector(object):
             try:
                 # dbus performance measurement
                 misc.measureDBUSTimeElapsed(pStart=True)
+                # connect to the bus, if that is not done yet
+                if self._timekprBus is None:
+                    self._timekprBus = (dbus.SessionBus() if (cons.TK_DEV_ACTIVE and cons.TK_DEV_BUS == "ses") else dbus.SystemBus())
                 # timekpr connection stuff
                 self._timekprObject = self._timekprBus.get_object(cons.TK_DBUS_BUS_NAME, cons.TK_DBUS_SERVER_PATH)
                 # measurement logging

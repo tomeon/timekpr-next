@@ -12,6 +12,16 @@ import signal
 if "/usr/lib/python3/dist-packages" not in sys.path:
     sys.path.append("/usr/lib/python3/dist-packages")
 
+# timekpr imports (help only, the rest is imported after help is dealt with)
+from timekpr.common.utils import cmdhelp
+
+# help is answered before any other work is done: no self-running check, no
+# configuration, no log file, no D-Bus, no GTK and no tray icon
+if __name__ == "__main__" and cmdhelp.isHelpRequested(sys.argv[1:]):
+    # print help and get out
+    cmdhelp.printHelp(cmdhelp.TK_CMD_CLIENT)
+    sys.exit(0)
+
 # timekpr imports
 from timekpr.client.interface.dbus.daemon import timekprClient
 from timekpr.common.utils import misc

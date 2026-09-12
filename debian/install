@@ -53,6 +53,7 @@ common/constants/__init__.py usr/lib/python3/dist-packages/timekpr/common/consta
 common/constants/messages.py usr/lib/python3/dist-packages/timekpr/common/constants/
 common/log/__init__.py usr/lib/python3/dist-packages/timekpr/common/log/
 common/log/log.py usr/lib/python3/dist-packages/timekpr/common/log/
+common/utils/cmdhelp.py usr/lib/python3/dist-packages/timekpr/common/utils/
 common/utils/config.py usr/lib/python3/dist-packages/timekpr/common/utils/
 common/utils/__init__.py usr/lib/python3/dist-packages/timekpr/common/utils/
 common/utils/misc.py usr/lib/python3/dist-packages/timekpr/common/utils/

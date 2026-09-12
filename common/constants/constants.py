@@ -353,7 +353,7 @@ TK_ADMIN_COMMANDS = {
 }
 # define user admin commands
 TK_USER_ADMIN_COMMANDS = {
-    "--help"                                : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_HELP"), "timekpra --help"),
+    "--help"                                : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_HELP"), "timekpra --help\n    timekpra -h"),
     "--userlist"                            : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERLIST"), "timekpra --userlist"),
     "--userinfo"                            : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERCONFIG"), "timekpra --userinfo 'testuser'"),
     "--userinfort"                          : "%s:\n    %s" % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERCONFIGRT"), "timekpra --userinfort 'testuser'"),

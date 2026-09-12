@@ -128,7 +128,8 @@ def user_config_to_daemon(config):
     """The inverse of user_config_from_daemon, in the daemon's key order"""
     days = config["allowed_days"]
     playtime = config["playtime"]
-    info = {"ALLOWED_HOURS_%s" % day: hours_to_daemon(config["allowed_hours"][str(day)]) for day in WEEKDAYS}
+    hours = config["allowed_hours"]
+    info = {"ALLOWED_HOURS_%s" % day: hours_to_daemon(hours.get(str(day), hours.get(day, []))) for day in WEEKDAYS}
     info["ALLOWED_WEEKDAYS"] = [str(day) for day in days]
     info["LIMITS_PER_WEEKDAYS"] = limits_list(days, config["limits_per_day"])
     info["TRACK_INACTIVE"] = config["track_inactive"]

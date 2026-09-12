@@ -44,17 +44,40 @@ listener is then not bound.
 
 ### Authentication
 
-A connection over a UNIX domain socket is trusted: being allowed to
-open the socket (root, or the `timekpr` group, the same rule as the
-daemon's D-Bus policy) is the access control.  On TCP every endpoint
+A connection over a UNIX domain socket `timekprw` bound, inherited or
+received from systemd is trusted: being allowed to open the socket
+(root, or the `timekpr` group, the same rule as the daemon's D-Bus
+policy) is the access control.  This means a reverse proxy pointed at
+the socket (`proxy_pass http://unix:/run/timekprw/timekprw.sock;`)
+gets full, unauthenticated access; either let the proxy do the
+authentication, or run `timekprw --auth-unix` (or
+`TIMEKPRW_AUTH_UNIX=true`) to require the token on UNIX sockets too.
+Trust is decided per socket when it is bound; a request whose
+connection the server cannot attribute to one of those sockets is
+not trusted.  On TCP every endpoint
 except `/health` requires a bearer token (`Authorization: Bearer
 <token>`), read from, in order: the file named by `--token-file`, the
 systemd credential `token` (a drop-in with
 `LoadCredential=token:/path/to/file`), or `/etc/timekpr/timekprw.token`.
-With a TCP listener and no token file the service refuses to start
-unless `--no-auth` is given, which is only appropriate behind a
-reverse proxy that authenticates, or on loopback.  TLS is left to a
+The token file must be readable by the service, which runs as a
+dynamic user in the `timekpr` group, and should be readable by nobody
+else: `0640 root:timekpr`, or hand it over as the systemd credential
+`token` as the NixOS test does.  `timekprw` refuses to start when it
+cannot read the file and warns when the file is world readable.  With
+a TCP listener and no token file the service refuses
+to start unless `--no-auth` is given, which is only appropriate behind
+a reverse proxy that authenticates, or on loopback.  TLS is left to a
 reverse proxy; `--root-path` is the prefix such a proxy strips.
+
+On TCP the `Host` header must name `localhost`, `127.0.0.1`, `::1`,
+an address given to `--listen`, or a host given to `--allowed-host`
+(repeatable, or `TIMEKPRW_ALLOWED_HOSTS`); other requests get `421`.
+This stops DNS rebinding, where a web page points a name it controls
+at the loopback address to reach the service from a browser: the
+browser still sends the attacker's name as `Host`.  Behind a reverse
+proxy, or when listening on a wildcard address, add the public name
+with `--allowed-host`.  `/health` needs no token; its answer is cached
+for five seconds so that it cannot be used to flood the daemon.
 
 ### `timekpra` over HTTP
 
@@ -252,10 +275,9 @@ names follow the daemon's keys (`ACTUAL_*` from
 `operation` is `add`, `subtract` or `set`, mapping to the daemon's
 `+`, `-` and `=` (`checkAndSetTimeLeft` in
 `server/config/configprocessor.py`).  The response is `200` with the
-`status` resource.  Because `add` and `subtract` are not idempotent, a
-client that retries after a network failure should send an
-`Idempotency-Key` header and the backend should replay the stored
-response for a repeated key.  `playtime-left` is identical and maps to
+`status` resource.  `add` and `subtract` are not idempotent, so a
+client that retries after a network failure may grant time twice; see
+"Later additions".  `playtime-left` is identical and maps to
 `setPlayTimeLeft`.
 
 The two operations used by the NixOS test are compositions, not
@@ -274,6 +296,9 @@ token is entered once per browser tab.
 
 ### Later additions
 
+- An `Idempotency-Key` header on the two `POST` endpoints, with the
+  backend replaying the stored response for a repeated key, so that
+  a retried `add` cannot grant time twice.
 - The GTK administration tool talking to this API (it still uses
   D-Bus only).
 

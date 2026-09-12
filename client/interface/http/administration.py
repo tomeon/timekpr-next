@@ -57,11 +57,11 @@ class timekprAdminHttpConnector(object):
         self._initFailed = False
 
     def _readToken(self, tokenFile):
-        """A UNIX socket is trusted by timekprw; TCP needs the bearer token"""
-        if self._scheme == "unix":
-            return None
+        """An explicitly given token file is always used; otherwise the
+        default one, if it exists, for TCP (timekprw trusts its UNIX
+        sockets unless run with --auth-unix)"""
         path = tokenFile if tokenFile is not None else cons.TK_WEB_TOKEN_FILE
-        if tokenFile is None and not os.path.exists(path):
+        if tokenFile is None and (self._scheme == "unix" or not os.path.exists(path)):
             return None
         with open(path, "r") as tokenFileHandle:
             return tokenFileHandle.read().strip()
@@ -75,9 +75,9 @@ class timekprAdminHttpConnector(object):
             return http.client.HTTPSConnection(self._netloc, timeout=self._timeout)
         return http.client.HTTPConnection(self._netloc, timeout=self._timeout)
 
-    def _request(self, method, path, body=None):
+    def _request(self, method, path, body=None, headers=None):
         """Return (HTTP status, decoded JSON body or None); raises OSError / ValueError"""
-        headers = {"Accept": "application/json"}
+        headers = dict(headers or {}, Accept="application/json")
         if self._token is not None:
             headers["Authorization"] = "Bearer %s" % (self._token)
         if body is not None:

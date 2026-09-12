@@ -79,17 +79,26 @@ API reference and is installed with the package.
   the daemon cannot save daemon-wide settings there (it writes
   `timekpr.conf` and `timekpr.conf.prev` in place); the test expects
   a `500` from `PATCH /api/v1/config` for that reason.
+- `checks.<system>.web` runs the pytest suite in `nix/tests/web/`
+  (no VM, a minute or so): the API through FastAPI's `TestClient`,
+  the conversions, and the listeners, socket activation and HTTP
+  connector against a real uvicorn started through `timekprw.main()`
+  with a fake connector (`fake.py`; `Bridge(connector)` takes any
+  object with the connector's method names, and `main()` takes a
+  `bridge`).  `LISTEN_PID` cannot be set from a `preexec_fn`; the
+  tests wrap the child in `sh -c 'LISTEN_PID=$$ ... exec ...'`.  The
+  suite is flake Python, so ruff formats it.
 - The NixOS test runs `timekprw` socket activated (the package's
   socket unit plus a TCP `listenStreams` drop-in), drives one user
   through `timekpra` over D-Bus and the other through `timekpra
   --server unix://...`, compares `--userlist`/`--userinfo` output of
-  all three transports, and checks the API directly with `curl`.  For
-  quick iteration without a VM, build a Python environment with the
-  dependencies from the pinned nixpkgs and run the app against a fake
-  connector with FastAPI's `TestClient`; `Bridge(connector)` takes any
-  object with the connector's method names.  `LISTEN_PID` cannot be
-  set from a `preexec_fn`; wrap the child in `sh -c 'LISTEN_PID=$$
-  ... exec ...'` to simulate activation.
+  all three transports, and checks the API directly with `curl`.
+- The daemon answers failures with `-1` and a message in its own
+  locale; `bridge.py` recognizes the failure messages in every
+  installed locale (`daemon_failure_texts`) rather than assuming the
+  two processes share one.  Requests on TCP must carry a `Host` header
+  naming an address `timekprw` serves (DNS rebinding); trust of UNIX
+  sockets is decided per socket at bind time and fails closed.
 
 ## Conventions
 

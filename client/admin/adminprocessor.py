@@ -6,6 +6,7 @@ Created on Aug 28, 2018
 
 # imports
 import os
+import sys
 import getpass
 import shutil
 import subprocess
@@ -43,7 +44,10 @@ class timekprAdminClient(object):
         value = pDefault
         idx = 0
         while idx < len(args):
-            if args[idx] == pOption and idx + 1 < len(args):
+            if args[idx] == pOption:
+                if idx + 1 >= len(args):
+                    log.consoleOut("%s needs a value" % (pOption))
+                    sys.exit(1)
                 value = args[idx+1]
                 del args[idx:idx+2]
             elif args[idx].startswith(pOption + "="):

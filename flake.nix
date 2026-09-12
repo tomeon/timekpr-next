@@ -68,11 +68,37 @@
           default = config.packages.timekpr;
         };
 
-        checks = pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
-          timekpr = pkgs.testers.nixosTest (import ./nix/tests/timekpr.nix {
-            inherit (config.packages) timekpr;
-          });
-        };
+        checks =
+          {
+            # Unit tests for the web front end and timekpra's HTTP connector,
+            # run against a fake daemon connector (no D-Bus, no VM).
+            web =
+              pkgs.runCommand "timekpr-web-tests" {
+                nativeBuildInputs = [
+                  (pkgs.python3.withPackages (ps:
+                    with ps; [
+                      dbus-python
+                      fastapi
+                      httpx
+                      psutil
+                      pygobject3
+                      pytest
+                      uvicorn
+                    ]))
+                ];
+              } ''
+                mkdir pkg
+                ln -s ${config.packages.timekpr.src} pkg/timekpr
+                export PYTHONPATH="$PWD/pkg"
+                pytest -p no:cacheprovider --basetemp="$TMPDIR/pytest" ${./nix/tests/web}
+                touch "$out"
+              '';
+          }
+          // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
+            timekpr = pkgs.testers.nixosTest (import ./nix/tests/timekpr.nix {
+              inherit (config.packages) timekpr;
+            });
+          };
 
         # The same test on a systemd-nspawn container instead of a QEMU VM.
         # Not a flake check because it needs the Nix daemon configured with
@@ -99,6 +125,7 @@
           # left as upstream formats them.
           pythonScripts = [
             "nix/tests/timekpr.py"
+            "nix/tests/web/*.py"
             "scripts/flake-inputs-via-git"
           ];
         in {

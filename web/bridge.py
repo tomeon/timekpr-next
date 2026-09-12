@@ -8,7 +8,10 @@ timekpr.common.utils.webapi (shared with timekpra's HTTP connector);
 this module adds the Pydantic models, the daemon's error conventions,
 and the order in which a PATCH is applied.
 """
+import gettext
+import os
 import threading
+import time
 
 import dbus
 
@@ -27,6 +30,30 @@ _DAEMON_FAILURES = (
     "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR",
     "TK_MSG_CONFIG_LOADER_SAVECONTROL_UNEXPECTED_ERROR",
 )
+_daemon_failure_texts = None
+
+
+def daemon_failure_texts():
+    """The daemon's failure messages in every locale timekpr ships.  The
+    daemon only reports -1 and a message translated in its own locale, which
+    need not be ours, so all translations are recognized."""
+    global _daemon_failure_texts
+    if _daemon_failure_texts is None:
+        texts = set()
+        try:
+            languages = os.listdir(cons.TK_LOCALIZATION_DIR)
+        except OSError:
+            languages = []
+        for key in _DAEMON_FAILURES:
+            source = msg._messages[key]["s"]
+            texts.update({source, msg.getTranslation(key)})
+            for language in languages:
+                try:
+                    texts.add(gettext.translation("timekpr", cons.TK_LOCALIZATION_DIR, languages=[language]).gettext(source))
+                except OSError:
+                    pass
+        _daemon_failure_texts = texts
+    return _daemon_failure_texts
 
 
 class DaemonError(Exception):
@@ -60,9 +87,14 @@ def plain(value):
 class Bridge(object):
     """Serialized access to the daemon through timekprAdminConnector"""
 
+    # /health needs no token, so its daemon round trip is rate limited by
+    # remembering the answer for this long
+    HEALTH_CACHE_SECONDS = 5
+
     def __init__(self, connector=None):
         self._connector = connector
         self._lock = threading.Lock()
+        self._health = (0, None)
 
     def _connect(self):
         """Return a connected connector or raise DaemonError"""
@@ -90,9 +122,10 @@ class Bridge(object):
         if code == _RESULT_NOT_READY or (code != 0 and not connected):
             raise DaemonError(503, message)
         if code != 0 and message == msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED"):
-            # the daemon's D-Bus policy refused us: timekprw is not root or in the timekpr group
+            # the daemon's D-Bus policy refused us: timekprw is not root or in
+            # the timekpr group (this message is the connector's own, in our locale)
             raise DaemonError(502, message)
-        if code != 0 and message in [msg.getTranslation(key) for key in _DAEMON_FAILURES]:
+        if code != 0 and message in daemon_failure_texts():
             # the daemon could not apply a valid request (its log has the reason,
             # a read-only /etc/timekpr for example)
             raise DaemonError(500, message)
@@ -103,11 +136,15 @@ class Bridge(object):
     # ## service ##
 
     def health(self):
-        try:
-            self._call("getUserList")
-            return models.Health(daemon="ok", timekpr_version=cons.TK_VERSION)
-        except DaemonError:
-            return models.Health(daemon="unreachable", timekpr_version=cons.TK_VERSION)
+        checked, result = self._health
+        if result is None or time.monotonic() - checked > self.HEALTH_CACHE_SECONDS:
+            try:
+                self._call("getUserList")
+                result = models.Health(daemon="ok", timekpr_version=cons.TK_VERSION)
+            except DaemonError:
+                result = models.Health(daemon="unreachable", timekpr_version=cons.TK_VERSION)
+            self._health = (time.monotonic(), result)
+        return result
 
     def get_server_config(self):
         return models.ServerConfig(**webapi.server_config_from_daemon(self._call("getTimekprConfiguration")))

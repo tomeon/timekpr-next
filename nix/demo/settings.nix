@@ -15,6 +15,9 @@
   carol = "carol";
   dave = "dave";
   erin = "erin";
+  # A group with a timekpr policy: alice is a member locally, bob through
+  # a Kanidm POSIX group of the same name.
+  kids = "kids";
 
   # The web front end: the bearer token clients on TCP must present,
   # the TCP port, and the UNIX socket of the package's timekprw.socket.

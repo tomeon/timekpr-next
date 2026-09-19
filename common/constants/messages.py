@@ -67,6 +67,27 @@ def initMessages():
     _messages["TK_MSG_USER_ADMIN_CMD_SETHIDETRAYICON"] = {
         "s": _("==> set whether to hide tray icon and prevent notifications, example")
     }
+    _messages["TK_MSG_USER_ADMIN_CMD_GROUPLIST"] = {
+        "s": _("==> get the list of groups with a policy from the server, example")
+    }
+    _messages["TK_MSG_USER_ADMIN_CMD_GROUPCONFIG"] = {
+        "s": _("==> get the policy of a group from the server, example")
+    }
+    _messages["TK_MSG_USER_ADMIN_CMD_SETOVERRIDES"] = {
+        "s": _(
+            "==> set which group policies this group's policy takes precedence over for users in both, example"
+        )
+    }
+    _messages["TK_MSG_USER_ADMIN_CMD_DELETEPOLICY"] = {
+        "s": _(
+            "==> delete the policy of a user (group policies apply again) or of a group, examples"
+        )
+    }
+    _messages["TK_MSG_USER_ADMIN_CMD_MIGRATEPOLICIES"] = {
+        "s": _(
+            '==> delete user policies that restrict nothing (left over from versions that created one per user), "dry-run" only lists them, examples'
+        )
+    }
     _messages["TK_MSG_USER_ADMIN_CMD_SETTIMELEFT"] = {
         "s": _(
             '==> set time left for the user at the current moment of time: "+" (add time), "-" (subtract time), "=" (set exact time available), example (add one hour)'
@@ -272,6 +293,23 @@ def initMessages():
     }
     _messages["TK_MSG_CONFIG_LOADER_USERCONFIG_NOTFOUND"] = {
         "s": _('User "%%s" configuration is not found')
+    }
+    _messages["TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND"] = {
+        "s": _('Group "%%s" has no policy')
+    }
+    _messages["TK_MSG_CONFIG_LOADER_POLICY_NOTFOUND"] = {
+        "s": _('There is no policy for "%%s" to delete')
+    }
+    _messages["TK_MSG_USER_ADMIN_CHK_GROUP_NOT_USER"] = {
+        "s": _('"%%s" is a group, this setting applies to users only')
+    }
+    _messages["TK_MSG_USER_ADMIN_CHK_USER_NOT_GROUP"] = {
+        "s": _('"%%s" is a user, this setting applies to groups only')
+    }
+    _messages["TK_MSG_USER_ADMIN_CHK_OVERRIDES_INVALID"] = {
+        "s": _(
+            'Overrides for group "%%s" are invalid (names must be groups other than itself)'
+        )
     }
     _messages["TK_MSG_CONFIG_LOADER_USERCONTROL_NOTFOUND"] = {
         "s": _('User "%%s" control file is not found')

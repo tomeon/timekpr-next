@@ -16,7 +16,17 @@ from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
 from timekpr.common.utils.config import timekprUserConfig, timekprUserControl
 from timekpr.common.utils.notifications import timekprNotificationManager
+from timekpr.server.config.policy import timekprPolicyStore
 from timekpr.server.interface.dbus.logind.user import timekprUserManager
+
+
+def _formatModified(pDatetime):
+    """A modification time for the log, or "none" for a missing file"""
+    return (
+        pDatetime.strftime(cons.TK_LOG_DATETIME_FORMAT)
+        if pDatetime is not None
+        else "none"
+    )
 
 
 class timekprUser:
@@ -46,11 +56,16 @@ class timekprUser:
             self._timekprUserData[cons.TK_CTRL_UNAME],
             self._timekprUserData[cons.TK_CTRL_UPATH],
         )
-        # user config
+        # the policies (the user's own, their groups', or the defaults)
+        self._timekprPolicyStore = timekprPolicyStore(
+            self._timekprConfig.getTimekprConfigDir()
+        )
+        # the effective policy (resolved in adjustLimitsFromConfig, defaults until then)
         self._timekprUserConfig = timekprUserConfig(
             self._timekprConfig.getTimekprConfigDir(),
             self._timekprUserData[cons.TK_CTRL_UNAME],
         )
+        self._timekprPolicySource = ""
         # user control
         self._timekprUserControl = timekprUserControl(
             self._timekprConfig.getTimekprWorkDir(),
@@ -350,8 +365,16 @@ class timekprUser:
         """Adjust limits as per loaded configuration"""
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "start adjustLimitsFromConfig")
 
-        # load config
-        self._timekprUserConfig.loadUserConfiguration()
+        # resolve the effective policy: the user's own, their groups', or the defaults
+        resolution = self._timekprPolicyStore.resolve(self.getUserName())
+        self._timekprUserConfig = resolution.config
+        self._timekprPolicySource = resolution.getSourceDescription()
+        # remember what it was resolved from, to notice changes
+        self._timekprUserData[cons.TK_CTRL_LCMOD] = resolution.fingerprint
+        log.log(
+            cons.TK_LOG_LEVEL_INFO,
+            f'user "{self.getUserName()}" policy comes from: {self._timekprPolicySource}',
+        )
         # log config
         self._timekprUserConfig.logUserConfiguration()
 
@@ -426,11 +449,6 @@ class timekprUser:
 
                 # set up in structure
                 self._timekprUserData[rDay][str(rHour)][cons.TK_CTRL_ACT] = hourAllowed
-
-        # set up last config mod time
-        self._timekprUserData[cons.TK_CTRL_LCMOD] = (
-            self._timekprUserConfig.getUserConfigLastModified()
-        )
 
         # debug
         if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
@@ -801,40 +819,22 @@ class timekprUser:
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "start saveSpent")
 
         # initial config loaded
-        userConfigLastModified = self._timekprUserConfig.getUserConfigLastModified()
         userControlLastModified = self._timekprUserControl.getUserControlLastModified()
 
-        # check whether we need to reload file (if externally modified)
-        if self._timekprUserData[cons.TK_CTRL_LCMOD] != userConfigLastModified:
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                'user "{}" config changed, prev/now: {} / {}'.format(
-                    self.getUserName(),
-                    self._timekprUserData[cons.TK_CTRL_LCMOD].strftime(
-                        cons.TK_LOG_DATETIME_FORMAT
-                    ),
-                    userConfigLastModified.strftime(cons.TK_LOG_DATETIME_FORMAT),
-                ),
-            )
-            # load config
-            self.adjustLimitsFromConfig(pSilent=False)
+        # check whether the policy needs to be resolved again (a policy file
+        # was written, created or deleted, or the user's groups changed)
+        policyChanged = self.refreshPolicyIfChanged(pSilent=False)
 
         # check whether we need to reload file (if externally modified)
         if (
             self._timekprUserData[cons.TK_CTRL_LMOD] != userControlLastModified
-            or self._timekprUserData[cons.TK_CTRL_LCMOD] != userConfigLastModified
+            or policyChanged
         ):
             # log the change
             if self._timekprUserData[cons.TK_CTRL_LMOD] != userControlLastModified:
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    'user "{}" control changed, prev/now: {} / {}'.format(
-                        self.getUserName(),
-                        self._timekprUserData[cons.TK_CTRL_LMOD].strftime(
-                            cons.TK_LOG_DATETIME_FORMAT
-                        ),
-                        userControlLastModified.strftime(cons.TK_LOG_DATETIME_FORMAT),
-                    ),
+                    f'user "{self.getUserName()}" control changed, prev/now: {_formatModified(self._timekprUserData[cons.TK_CTRL_LMOD])} / {_formatModified(userControlLastModified)}',
                 )
             # load config
             self.adjustTimeSpentFromControl(pSilent=False, pPreserveSpent=True)
@@ -1073,6 +1073,20 @@ class timekprUser:
 
             # reset retries
             self._timekprUserData[cons.TK_CTRL_SCR_R] = 0
+
+    def refreshPolicyIfChanged(self, pSilent=True):
+        """Resolve the policy again if anything it depends on changed; True if it did"""
+        fingerprint = self._timekprPolicyStore.fingerprint(self.getUserName())
+        if fingerprint == self._timekprUserData[cons.TK_CTRL_LCMOD]:
+            return False
+        log.log(cons.TK_LOG_LEVEL_INFO, f'user "{self.getUserName()}" policy changed')
+        # load config
+        self.adjustLimitsFromConfig(pSilent=pSilent)
+        return True
+
+    def getPolicySource(self):
+        """Where the effective policy comes from (user, group:..., default)"""
+        return self._timekprPolicySource
 
     def getUserId(self):
         """Return user id"""

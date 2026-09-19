@@ -281,6 +281,14 @@ TK_HIDE_TRAY_ICON = False
 # config
 TK_MAIN_CONFIG_FILE = "timekpr.conf"
 TK_USER_CONFIG_FILE = "timekpr.%s.conf"
+# the sample user policy file installed next to the real ones (not a policy)
+TK_USER_CONFIG_SAMPLE = "timekpr.USER.conf"
+# group policies live in this subdirectory of the configuration directory,
+# named like user policies (timekpr.<group>.conf); a group is addressed as
+# "@<group>" wherever a user name is accepted
+TK_GROUP_TARGET_PREFIX = "@"
+TK_GROUP_CONFIG_DIR = "groups"
+TK_GROUP_CONFIG_SAMPLE = "timekpr.GROUP.conf"
 TK_UNAME_SRCH_LN_LMT = (
     10  # this defines line count for verifying username in first n lines
 )
@@ -433,6 +441,25 @@ TK_USER_ADMIN_COMMANDS = {
     "--settimeleft": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELEFT"),
         "timekpra --settimeleft 'testuser' '+' 3600",
+    ),
+    "--grouplist": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_GROUPLIST"), "timekpra --grouplist"
+    ),
+    "--groupinfo": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_GROUPCONFIG"),
+        "timekpra --groupinfo 'kids'",
+    ),
+    "--setoverrides": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETOVERRIDES"),
+        "timekpra --setoverrides '@teens' 'kids;guests'",
+    ),
+    "--deletepolicy": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_DELETEPOLICY"),
+        "timekpra --deletepolicy 'testuser'\n    timekpra --deletepolicy '@kids'",
+    ),
+    "--migratepolicies": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_MIGRATEPOLICIES"),
+        "timekpra --migratepolicies 'dry-run'\n    timekpra --migratepolicies 'delete'",
     ),
 }
 

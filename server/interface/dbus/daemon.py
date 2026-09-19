@@ -26,6 +26,7 @@ from timekpr.server.config.configprocessor import (
     timekprConfigurationProcessor,
     timekprUserConfigurationProcessor,
 )
+from timekpr.server.config.policy import isGroupTarget, timekprPolicyStore
 from timekpr.server.config.userhelper import timekprUserStore
 from timekpr.server.interface.dbus.logind import manager as l1_manager
 from timekpr.server.interface.dbus.polkit import (
@@ -99,6 +100,13 @@ class timekprDaemon(dbus.service.Object):
             cons.TK_LOG_OWNER_SRV,
             "",
         )
+
+        # the policies
+        self._timekprPolicyStore = timekprPolicyStore(
+            self._timekprConfig.getTimekprConfigDir()
+        )
+        # user policies left over from versions that created one per user
+        self._timekprPolicyStore.warnAboutDefaultPolicies()
 
         # in case we are dealing with logind
         if self._timekprLoginManagerName == "L1":
@@ -677,7 +685,167 @@ class timekprDaemon(dbus.service.Object):
         # result
         return result, message, userConfigurationStore
 
+    # --------------- policy helpers --------------- #
+
+    def _refreshPolicies(self, pTarget):
+        """After a policy changed, make the logged-in users it may concern
+        resolve theirs again: the one user for a user target, everyone for a
+        group target (membership decides whom it touches)"""
+        if isGroupTarget(pTarget):
+            for rUser in self._timekprUserList.values():
+                rUser.refreshPolicyIfChanged(pSilent=False)
+        elif pTarget in self._timekprUserList:
+            self._timekprUserList[pTarget].adjustLimitsFromConfig(False)
+
     # --------------- user admin methods accessible by privileged users (root and all in timekpr group) --------------- #
+
+    @timekprAuthorizedMethod(
+        cons.TK_DBUS_USER_ADMIN_INTERFACE, "", "isaas", cons.TK_POLKIT_ACTION_READ
+    )
+    def getGroupList(self):
+        """Get the groups with a policy: [group, overrides, known members]"""
+        # result
+        result = 0
+        message = ""
+        groupList = []
+
+        try:
+            # init store
+            timekprUStore = timekprUserStore()
+            # the groups
+            groupList = timekprUStore.getSavedGroupList(
+                self._timekprConfig.getTimekprConfigDir()
+            )
+        except Exception as unexpectedException:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
+            )
+
+            # result
+            result = -1
+            message = msg.getTranslation(
+                "TK_MSG_CONFIG_LOADER_USERLIST_UNEXPECTED_ERROR"
+            )
+
+        # result
+        return result, message, groupList
+
+    @timekprAuthorizedMethod(
+        cons.TK_DBUS_USER_ADMIN_INTERFACE,
+        "sas",
+        "is",
+        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
+        pUserNameArg="pUserName",
+    )
+    def setOverrides(self, pUserName, pOverrides):
+        """Set the groups a group's policy takes precedence over (for users in both)"""
+        try:
+            # check the group and its configuration
+            userConfigProcessor = timekprUserConfigurationProcessor(
+                pUserName, self._timekprConfig
+            )
+
+            # load config
+            result, message = userConfigProcessor.checkAndSetOverrides(pOverrides)
+
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
+        except Exception as unexpectedException:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
+            )
+
+            # result
+            result = -1
+            message = msg.getTranslation(
+                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
+            )
+
+        # result
+        return result, message
+
+    @timekprAuthorizedMethod(
+        cons.TK_DBUS_USER_ADMIN_INTERFACE,
+        "s",
+        "is",
+        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
+        pUserNameArg="pUserName",
+    )
+    def deletePolicy(self, pUserName):
+        """Delete the policy of a user (their group policies apply again) or of a group"""
+        try:
+            # check the target and its configuration
+            userConfigProcessor = timekprUserConfigurationProcessor(
+                pUserName, self._timekprConfig
+            )
+
+            # delete
+            result, message = userConfigProcessor.deletePolicy()
+
+            # inform the users concerned immediately (a deleted group
+            # policy may change anyone's effective policy)
+            self._refreshPolicies(pUserName)
+        except Exception as unexpectedException:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
+            )
+
+            # result
+            result = -1
+            message = msg.getTranslation(
+                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
+            )
+
+        # result
+        return result, message
+
+    @timekprAuthorizedMethod(
+        cons.TK_DBUS_USER_ADMIN_INTERFACE,
+        "b",
+        "isas",
+        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
+    )
+    def migratePolicies(self, pDryRun):
+        """Delete (or with pDryRun only list) the user policies that restrict nothing,
+        left over from versions that created a policy for every user"""
+        # result
+        users = []
+        try:
+            # the store
+            userConfigProcessor = timekprUserConfigurationProcessor(
+                "", self._timekprConfig
+            )
+
+            # migrate
+            result, message, users = userConfigProcessor.migratePolicies(bool(pDryRun))
+
+            # inform the users concerned immediately
+            if not pDryRun:
+                for rUser in users:
+                    self._refreshPolicies(rUser)
+        except Exception as unexpectedException:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
+            )
+
+            # result
+            result = -1
+            message = msg.getTranslation(
+                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
+            )
+
+        # result
+        return result, message, users
+
+    # --------------- user admin set methods accessible by privileged users (root and all in timekpr group) --------------- #
 
     @timekprAuthorizedMethod(
         cons.TK_DBUS_USER_ADMIN_INTERFACE,
@@ -699,10 +867,8 @@ class timekprDaemon(dbus.service.Object):
             # load config
             result, message = userConfigProcessor.checkAndSetAllowedDays(pDayList)
 
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
         except Exception as unexpectedException:
             # logging
             log.log(
@@ -743,10 +909,8 @@ class timekprDaemon(dbus.service.Object):
                 pDayNumber, pHourList
             )
 
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
         except Exception as unexpectedException:
             # logging
             log.log(
@@ -785,10 +949,8 @@ class timekprDaemon(dbus.service.Object):
                 pDayLimits
             )
 
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
         except Exception as unexpectedException:
             # logging
             log.log(
@@ -828,10 +990,8 @@ class timekprDaemon(dbus.service.Object):
                 bool(pTrackInactive)
             )
 
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
         except Exception as unexpectedException:
             # logging
             log.log(
@@ -871,10 +1031,8 @@ class timekprDaemon(dbus.service.Object):
                 bool(pHideTrayIcon)
             )
 
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
         except Exception as unexpectedException:
             # logging
             log.log(
@@ -911,10 +1069,8 @@ class timekprDaemon(dbus.service.Object):
                 pTimeLimitWeek
             )
 
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
         except Exception as unexpectedException:
             # logging
             log.log(
@@ -951,10 +1107,8 @@ class timekprDaemon(dbus.service.Object):
                 pTimeLimitMonth
             )
 
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
         except Exception as unexpectedException:
             # logging
             log.log(

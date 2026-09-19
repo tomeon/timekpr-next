@@ -927,11 +927,14 @@ class timekprUserConfig:
         )
 
         # initialize class variables
-        self._configFile = os.path.join(
-            pDirectory, cons.TK_USER_CONFIG_FILE % (pUserName)
-        )
+        #   a policy is a user's ("alice") or a group's ("@kids"); the group
+        #   ones live in their own subdirectory, the section is the target
+        self._configFile = self.getPolicyFile(pDirectory, pUserName)
         self._userName = pUserName
+        self._isGroup = self.isGroupTarget(pUserName)
         self._timekprUserConfig = {}
+        # whether the policy file exists (set when loading)
+        self._present = False
 
         # parser
         self._timekprUserConfigParser = configparser.ConfigParser(allow_no_value=True)
@@ -943,31 +946,60 @@ class timekprUserConfig:
         """De-initialize config"""
         log.log(cons.TK_LOG_LEVEL_INFO, "de-init user configuration manager")
 
+    @staticmethod
+    def isGroupTarget(pTarget):
+        """Whether a policy target names a group ("@group") rather than a user"""
+        return len(pTarget) > 1 and pTarget.startswith(cons.TK_GROUP_TARGET_PREFIX)
+
+    @staticmethod
+    def getPolicyFile(pDirectory, pTarget):
+        """The policy file of a user or a group target, whether or not it exists"""
+        if timekprUserConfig.isGroupTarget(pTarget):
+            return os.path.join(
+                pDirectory,
+                cons.TK_GROUP_CONFIG_DIR,
+                cons.TK_USER_CONFIG_FILE
+                % (pTarget[len(cons.TK_GROUP_TARGET_PREFIX) :]),
+            )
+        return os.path.join(pDirectory, cons.TK_USER_CONFIG_FILE % (pTarget))
+
+    def getPolicyTarget(self):
+        """The user ("alice") or group ("@kids") this policy is for"""
+        return self._userName
+
+    def isGroupPolicy(self):
+        """Whether this is a group's policy"""
+        return self._isGroup
+
+    def isPolicyPresent(self):
+        """Whether the policy file exists (after loading)"""
+        return self._present
+
     def loadUserConfiguration(self, pValidateOnly=False):
         """Read user timekpr config file"""
         log.log(cons.TK_LOG_LEVEL_DEBUG, "start load user configuration")
 
         # user config section
         section = self._userName
-        # try to load config file
+        # try to load config file; a missing (or unreadable, see
+        # _loadAndPrepareConfigFile) file means "no policy": the defaults
+        # are used in memory and nothing is written, policies are only ever
+        # created by administrators (pValidateOnly is kept for callers)
         result = _loadAndPrepareConfigFile(
             self._timekprUserConfigParser, self._configFile
         )
+        self._present = result
         # value read result
         resultValue = True
-        # if we still are fine (and not just checking)
-        if not pValidateOnly or (pValidateOnly and result):
-            # read config failed, we need to initialize
+        # read the values (the defaults, when there is no file)
+        if True:
+            # no policy
             if not result:
                 # logging
                 log.log(
-                    cons.TK_LOG_LEVEL_INFO,
-                    f"ERROR: could not parse the main configuration file ({self._configFile}) properly, will use default values",
+                    cons.TK_LOG_LEVEL_DEBUG,
+                    f"no policy file ({self._configFile}), defaults apply",
                 )
-                # init config
-                self.initUserConfiguration()
-                # re-read the file
-                self._timekprUserConfigParser.read(self._configFile)
 
             # read
             param = "ALLOWED_HOURS"
@@ -1048,8 +1080,24 @@ class timekprUserConfig:
                 pCheckValue=None,
                 pOverallSuccess=resultValue,
             )
+            # read (group policies only: the groups this one takes precedence over)
+            param = "OVERRIDES"
+            if self._isGroup:
+                resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+                    self._timekprUserConfigParser.get,
+                    section,
+                    param,
+                    pDefaultValue="",
+                    pCheckValue=None,
+                    pOverallSuccess=resultValue,
+                )
+                self._timekprUserConfig[param] = _cleanupValue(
+                    self._timekprUserConfig[param]
+                )
+            else:
+                self._timekprUserConfig[param] = ""
             # if we could not read some values, save what we could + defaults
-            if not resultValue:
+            if result and not resultValue:
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
@@ -1078,16 +1126,21 @@ class timekprUserConfig:
 
         # clear parser
         self._timekprUserConfigParser.clear()
+        # group policies live in their own directory
+        os.makedirs(os.path.dirname(self._configFile), exist_ok=True)
 
         # save default config
         section = "DOCUMENTATION"
         self._timekprUserConfigParser.add_section(section)
         self._timekprUserConfigParser.set(
-            section, "#### this is the user configuration file for timekpr-next"
+            section,
+            "#### this is the {} policy file for timekpr-next".format(
+                "group" if self._isGroup else "user"
+            ),
         )
         self._timekprUserConfigParser.set(
             section,
-            "#### if this file cannot be read properly, it will be overwritten with defaults",
+            "#### if this file cannot be read properly, it is set aside and no policy applies",
         )
         self._timekprUserConfigParser.set(
             section, "#### all numeric time values are specified in seconds"
@@ -1196,9 +1249,27 @@ class timekprUserConfig:
             if pReuseValues
             else str(cons.TK_HIDE_TRAY_ICON),
         )
+        # set up param (group policies only)
+        if self._isGroup:
+            param = "OVERRIDES"
+            self._timekprUserConfigParser.set(
+                section,
+                "# this defines which other groups' policies this policy takes precedence over for users in both (names separated by ;),",
+            )
+            self._timekprUserConfigParser.set(
+                section,
+                "#   the policies of groups that are not overridden are merged, the most restrictive value of every setting wins",
+            )
+            self._timekprUserConfigParser.set(
+                section,
+                f"{param}",
+                self._timekprUserConfig[param] if pReuseValues else "",
+            )
         # save the file
         with open(self._configFile, "w") as fp:
             self._timekprUserConfigParser.write(fp)
+        # the policy exists now
+        self._present = True
 
         # clear parser
         self._timekprUserConfigParser.clear()
@@ -1237,6 +1308,9 @@ class timekprUserConfig:
         # try icon
         param = "HIDE_TRAY_ICON"
         values[param] = str(self._timekprUserConfig[param])
+        # overrides (only group policy files have the key, others ignore it)
+        param = "OVERRIDES"
+        values[param] = self._timekprUserConfig[param]
         # edit client config file (using alternate method because configparser looses comments in the process)
         _saveConfigFile(self._configFile, values)
 
@@ -1362,10 +1436,126 @@ class timekprUserConfig:
         # result
         return self._timekprUserConfig["HIDE_TRAY_ICON"]
 
-    def getUserConfigLastModified(self):
-        """Get last file modification time for user"""
+    def getUserOverrides(self):
+        """Get the groups this (group) policy takes precedence over"""
+        # param
+        param = "OVERRIDES"
         # result
-        return datetime.fromtimestamp(os.path.getmtime(self._configFile))
+        return [
+            rVal.strip()
+            for rVal in self._timekprUserConfig[param].split(";")
+            if rVal.strip() != ""
+        ]
+
+    def getUserConfigLastModified(self):
+        """Get last file modification time for user (None without a file)"""
+        # result
+        try:
+            return datetime.fromtimestamp(os.path.getmtime(self._configFile))
+        except OSError:
+            return None
+
+    def isDefaultPolicy(self):
+        """Whether the policy restricts nothing: every setting has its default
+        value (such a file is a leftover of versions that created one per user)"""
+        defaults = timekprUserConfig.__new__(timekprUserConfig)
+        defaults._timekprUserConfig = {
+            **{
+                f"ALLOWED_HOURS_{rDay}": cons.TK_ALLOWED_HOURS
+                for rDay in range(1, 7 + 1)
+            },
+            "ALLOWED_WEEKDAYS": cons.TK_ALLOWED_WEEKDAYS,
+            "LIMITS_PER_WEEKDAYS": cons.TK_LIMITS_PER_WEEKDAYS,
+            "LIMIT_PER_WEEK": cons.TK_LIMIT_PER_WEEK,
+            "LIMIT_PER_MONTH": cons.TK_LIMIT_PER_MONTH,
+            "TRACK_INACTIVE": cons.TK_TRACK_INACTIVE,
+            "HIDE_TRAY_ICON": cons.TK_HIDE_TRAY_ICON,
+        }
+        # compare the parsed values, not the strings
+        return (
+            all(
+                self.getUserAllowedHours(str(rDay))
+                == defaults.getUserAllowedHours(str(rDay))
+                for rDay in range(1, 7 + 1)
+            )
+            and self.getUserAllowedWeekdays() == defaults.getUserAllowedWeekdays()
+            and self.getUserLimitsPerWeekdays() == defaults.getUserLimitsPerWeekdays()
+            and self.getUserWeekLimit() == defaults.getUserWeekLimit()
+            and self.getUserMonthLimit() == defaults.getUserMonthLimit()
+            and self.getUserTrackInactive() == defaults.getUserTrackInactive()
+            and self.getUserHideTrayIcon() == defaults.getUserHideTrayIcon()
+        )
+
+    def _getLimitsByDay(self):
+        """The per-day limits keyed by day (they are stored positionally
+        against the allowed days; a day without a limit has none)"""
+        days = self.getUserAllowedWeekdays()
+        limits = self.getUserLimitsPerWeekdays()
+        return {
+            rDay: (limits[rIdx] if rIdx < len(limits) else 0)
+            for rIdx, rDay in enumerate(days)
+        }
+
+    def mergeMostRestrictive(self, pConfigs):
+        """Replace the limit settings with the most restrictive merge of the
+        given (loaded) policies: fewer days, shorter hour intervals, smaller
+        limits, and idle time counted if any of them counts it.  The
+        user-specific settings (the tray icon) keep their own value."""
+        # days: only days every policy allows, with the smallest limit
+        limitsByDay = [rConfig._getLimitsByDay() for rConfig in pConfigs]
+        days = sorted(
+            set.intersection(*[set(rLimits) for rLimits in limitsByDay]), key=int
+        )
+        self.setUserAllowedWeekdays(days)
+        self.setUserLimitsPerWeekdays(
+            [min(rLimits[rDay] for rLimits in limitsByDay) for rDay in days]
+        )
+        # hours: only hours every policy allows, over the common part of the
+        # hour; an hour is unaccounted (free) only if it is free in all of them
+        allowedHours = {}
+        for rDay in range(1, 7 + 1):
+            day = str(rDay)
+            hoursByPolicy = [rConfig.getUserAllowedHours(day) for rConfig in pConfigs]
+            hours = {}
+            for rHour in set.intersection(*[set(rHours) for rHours in hoursByPolicy]):
+                startMin = max(
+                    rHours[rHour][cons.TK_CTRL_SMIN] for rHours in hoursByPolicy
+                )
+                endMin = min(
+                    rHours[rHour][cons.TK_CTRL_EMIN] for rHours in hoursByPolicy
+                )
+                # nothing left of the hour
+                if startMin >= endMin:
+                    continue
+                hours[rHour] = {
+                    cons.TK_CTRL_SMIN: startMin,
+                    cons.TK_CTRL_EMIN: endMin,
+                    cons.TK_CTRL_UACC: all(
+                        rHours[rHour][cons.TK_CTRL_UACC] for rHours in hoursByPolicy
+                    ),
+                }
+            allowedHours[day] = hours
+        self.setUserAllowedHours(allowedHours)
+        # totals: the smallest
+        self.setUserWeekLimit(min(rConfig.getUserWeekLimit() for rConfig in pConfigs))
+        self.setUserMonthLimit(min(rConfig.getUserMonthLimit() for rConfig in pConfigs))
+        # idle time counts if any policy counts it
+        self.setUserTrackInactive(
+            any(rConfig.getUserTrackInactive() for rConfig in pConfigs)
+        )
+
+    def deletePolicy(self):
+        """Remove the policy file (and its backup); True if there was one"""
+        existed = False
+        for rFile in (self._configFile, self._configFile + cons.TK_BACK_EXT):
+            try:
+                os.remove(rFile)
+                existed = existed or rFile == self._configFile
+            except FileNotFoundError:
+                pass
+        self._present = False
+        # result
+        return existed
 
     def setUserAllowedHours(self, pAllowedHours):
         """Set allowed hours"""
@@ -1432,6 +1622,13 @@ class timekprUserConfig:
         # result
         self._timekprUserConfig["HIDE_TRAY_ICON"] = bool(pHideTrayIcon)
 
+    def setUserOverrides(self, pOverrides):
+        """Set the groups this (group) policy takes precedence over"""
+        # result
+        self._timekprUserConfig["OVERRIDES"] = ";".join(
+            rGroup.strip() for rGroup in pOverrides if rGroup.strip() != ""
+        )
+
 
 class timekprUserControl:
     """Class will provide time spent file management functionality"""
@@ -1472,10 +1669,12 @@ class timekprUserControl:
         # value read result
         resultValue = True
 
-        # if we still are fine (and not just checking)
-        if not pValidateOnly or (pValidateOnly and result):
+        # the counters are created when a user is first tracked; when only
+        # checking (the administration tools), a missing file yields zeros
+        # in memory and is not created
+        if True:
             # read config failed, we need to initialize
-            if not result:
+            if not result and not pValidateOnly:
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
@@ -1485,6 +1684,8 @@ class timekprUserControl:
                 self.initUserControl()
                 # re-read the file
                 self._timekprUserControlParser.read(self._configFile)
+                # the file is there now
+                result = True
 
             # read
             param = "TIME_SPENT_BALANCE"
@@ -1538,7 +1739,7 @@ class timekprUserControl:
             )
 
             # if we could not read some values, save what we could + defaults
-            if not resultValue:
+            if result and not resultValue:
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
@@ -1746,9 +1947,16 @@ class timekprUserControl:
         return self._timekprUserControl["LAST_CHECKED"]
 
     def getUserControlLastModified(self):
-        """Get last file modification time for user"""
+        """Get last file modification time for user (None without a file)"""
         # result
-        return datetime.fromtimestamp(os.path.getmtime(self._configFile))
+        try:
+            return datetime.fromtimestamp(os.path.getmtime(self._configFile))
+        except OSError:
+            return None
+
+    def isControlPresent(self):
+        """Whether the counters file exists"""
+        return os.path.isfile(self._configFile)
 
     def setUserTimeSpentBalance(self, pTimeSpent):
         """Set time spent for day (including bonuses)"""

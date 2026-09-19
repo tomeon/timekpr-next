@@ -53,7 +53,6 @@ def test_socket_activation_and_connector(tmp_path, token_file):
             "LIMITS_PER_WEEKDAYS",
         ]
         assert info["ACTUAL_TIME_LEFT_DAY"] == 14 and info["TIME_SPENT_WEEK"] == 3
-        assert "WAKEUP_HOUR_INTERVAL" not in info
         _, _, realtime = via_unix.getUserConfigurationAndInformation(
             "alice", cons.TK_CL_INF_RT
         )
@@ -89,21 +88,8 @@ def test_socket_activation_and_connector(tmp_path, token_file):
             "7": {"STARTMIN": 0, "ENDMIN": 60, "UACC": 0},
             "11": {"STARTMIN": 0, "ENDMIN": 30, "UACC": 1},
         }
-        assert via_unix.setLockoutType("alice", "suspendwake", "7", "18") == (0, "")
-        assert (
-            via_unix.getUserConfigurationAndInformation("alice", "F")[2][
-                "WAKEUP_HOUR_INTERVAL"
-            ]
-            == "7;18"
-        )
         assert via_unix.setTimeLeft("alice", "+", 300) == (0, "")
-        assert via_unix.setPlayTimeLeft("alice", "=", 0) == (0, "")
         assert via_unix.setTrackInactive("alice", True) == (0, "")
-        assert via_unix.setPlayTimeEnabled("alice", True) == (0, "")
-        assert via_unix.setPlayTimeActivities("alice", [["a", "b"], ["c", ""]]) == (
-            0,
-            "",
-        )
         assert via_unix.setTimekprPollTime(9) == (0, "")
         result, _, config = via_unix.getTimekprConfiguration()
         assert result == 0 and config["TIMEKPR_POLLTIME"] == 9

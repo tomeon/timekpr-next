@@ -15,12 +15,6 @@ const SERVER_FIELDS = [
   ["session_types_tracked", "Session types tracked", "list"],
   ["session_types_excluded", "Session types excluded", "list"],
   ["users_excluded", "Users excluded", "list"],
-  ["playtime_enabled", "PlayTime enabled", "checkbox"],
-  [
-    "playtime_enhanced_activity_monitor",
-    "PlayTime enhanced activity monitor",
-    "checkbox",
-  ],
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -199,7 +193,6 @@ function renderStatus(status) {
     ["Spent today", hms(status.time_spent_day)],
     ["Spent this week", hms(status.time_spent_week)],
     ["Spent this month", hms(status.time_spent_month)],
-    ["PlayTime left today", hms(status.playtime_left_day)],
     ["Session", status.session_active ? "active" : "none"],
   ];
   $("#user-status").replaceChildren(
@@ -292,50 +285,15 @@ function renderConfig(config) {
   );
   const form = $("#config-form");
   renderDayTable("day-limits", "", config.allowed_days, config.limits_per_day);
-  renderDayTable(
-    "pt-day-limits",
-    "pt_",
-    config.playtime.allowed_days,
-    config.playtime.limits_per_day,
-  );
   renderHoursGrid();
   form.limit_per_week.value = hms(config.limit_per_week);
   form.limit_per_month.value = hms(config.limit_per_month);
-  form.lockout_type.value = config.lockout.type;
-  form.wake_from.value = config.lockout.wake_from ?? 0;
-  form.wake_to.value = config.lockout.wake_to ?? 23;
-  $("#wake-hours").hidden = config.lockout.type !== "suspendwake";
   form.track_inactive.checked = config.track_inactive;
   form.hide_tray_icon.checked = config.hide_tray_icon;
-  form.pt_enabled.checked = config.playtime.enabled;
-  form.pt_limit_override.checked = config.playtime.limit_override;
-  form.pt_allow_unaccounted_intervals.checked =
-    config.playtime.allow_unaccounted_intervals;
-  form.pt_activities.value = config.playtime.activities
-    .map((a) => (a.description ? `${a.process} = ${a.description}` : a.process))
-    .join("\n");
 }
 
 function readConfig() {
   const form = $("#config-form");
-  const lockout = {
-    type: form.lockout_type.value,
-    wake_from: null,
-    wake_to: null,
-  };
-  if (lockout.type === "suspendwake")
-    Object.assign(lockout, {
-      wake_from: Number(form.wake_from.value),
-      wake_to: Number(form.wake_to.value),
-    });
-  const activities = form.pt_activities.value
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [process, ...rest] = line.split("=");
-      return { process: process.trim(), description: rest.join("=").trim() };
-    });
   return {
     ...readDayTable(form, ""),
     allowed_hours: state.hours,
@@ -343,14 +301,6 @@ function readConfig() {
     limit_per_month: parseHms(form.limit_per_month.value),
     track_inactive: form.track_inactive.checked,
     hide_tray_icon: form.hide_tray_icon.checked,
-    lockout,
-    playtime: {
-      ...readDayTable(form, "pt_"),
-      enabled: form.pt_enabled.checked,
-      limit_override: form.pt_limit_override.checked,
-      allow_unaccounted_intervals: form.pt_allow_unaccounted_intervals.checked,
-      activities,
-    },
   };
 }
 
@@ -359,10 +309,14 @@ async function saveConfig(event) {
   try {
     const next = readConfig();
     const patch = diff(state.config, next);
-    // only the changed parts of the nested objects, and nothing when none changed
-    for (const key of ["playtime", "allowed_hours"]) {
-      if (patch[key]) patch[key] = diff(state.config[key], next[key]);
-      if (patch[key] && Object.keys(patch[key]).length === 0) delete patch[key];
+    // only the changed days of the hours, and nothing when none changed
+    if (patch.allowed_hours) {
+      patch.allowed_hours = diff(
+        state.config.allowed_hours,
+        next.allowed_hours,
+      );
+      if (Object.keys(patch.allowed_hours).length === 0)
+        delete patch.allowed_hours;
     }
     if (Object.keys(patch).length === 0)
       return message("Nothing changed", true);
@@ -384,9 +338,8 @@ async function applyTimeLeft(event) {
       operation: form.operation.value,
       seconds: parseHms(form.amount.value),
     };
-    const path = form.playtime.checked ? "playtime-left" : "time-left";
     renderStatus(
-      await api("POST", `/users/${encode(state.user)}/${path}`, body),
+      await api("POST", `/users/${encode(state.user)}/time-left`, body),
     );
     message("Applied", true);
     await loadUsers();
@@ -460,9 +413,6 @@ async function saveServer(event) {
 for (const name of ["users", "server", "token"])
   $(`#nav-${name}`).addEventListener("click", () => showPage(name));
 $("#config-form").addEventListener("submit", saveConfig);
-$("#config-form").lockout_type.addEventListener("change", (event) => {
-  $("#wake-hours").hidden = event.target.value !== "suspendwake";
-});
 $("#config-reload").addEventListener("click", () =>
   loadUser().catch((err) => message(err.message)),
 );

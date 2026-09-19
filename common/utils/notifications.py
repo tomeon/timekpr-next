@@ -132,13 +132,6 @@ class timekprNotificationManager(dbus.service.Object):
         timeLeft[cons.TK_CTRL_TRACK] = 1 if pTimeValues[cons.TK_CTRL_TRACK] else 0
         timeLeft[cons.TK_CTRL_HIDEI] = 1 if pTimeValues[cons.TK_CTRL_HIDEI] else 0
         timeLeft[cons.TK_CTRL_TNL] = pTimeValues[cons.TK_CTRL_TNL]
-        # include PlayTime (if enabled, check is done for couple of mandatory values)
-        if cons.TK_CTRL_PTTLO in pTimeValues and cons.TK_CTRL_PTSPD in pTimeValues:
-            timeLeft[cons.TK_CTRL_PTTLO] = 1 if pTimeValues[cons.TK_CTRL_PTTLO] else 0
-            timeLeft[cons.TK_CTRL_PTAUH] = 1 if pTimeValues[cons.TK_CTRL_PTAUH] else 0
-            timeLeft[cons.TK_CTRL_PTSPD] = int(pTimeValues[cons.TK_CTRL_PTSPD])
-            timeLeft[cons.TK_CTRL_PTLPD] = int(pTimeValues[cons.TK_CTRL_PTLPD])
-            timeLeft[cons.TK_CTRL_PTLSTC] = int(pTimeValues[cons.TK_CTRL_PTLSTC])
 
         # save calculated urgency (calculated may get overridden by uacc)
         notifUrgency = (
@@ -194,27 +187,10 @@ class timekprNotificationManager(dbus.service.Object):
         # convert this all to dbus
         for rKey, rValue in pTimeLimits.items():
             # weekly & monthly limits are set differently
-            if rKey in (cons.TK_CTRL_LIMITW, cons.TK_CTRL_LIMITM) or rKey in (
-                cons.TK_CTRL_PTTLO,
-                cons.TK_CTRL_PTAUH,
-                cons.TK_CTRL_PTTLE,
-            ):
+            if rKey in (cons.TK_CTRL_LIMITW, cons.TK_CTRL_LIMITM):
                 # this is to comply with standard limits structure
                 timeLimits[rKey] = dbus.Dictionary(signature="sv")
                 timeLimits[rKey][rKey] = dbus.Int32(rValue)
-            # PlayTime lists
-            elif rKey in (cons.TK_CTRL_PTLMT, cons.TK_CTRL_PTLST):
-                # dbus dict for holding days, limits and activities
-                timeLimits[rKey] = dbus.Dictionary(signature="sv")
-                timeLimits[rKey][rKey] = dbus.Array(signature="av")
-                # fill in limits or activities (both have 2 node arrays)
-                for rSubValue in rValue:
-                    timeLimits[rKey][rKey].append(
-                        dbus.Array(
-                            [rSubValue[0], rSubValue[1]],
-                            signature=("i" if rKey == cons.TK_CTRL_PTLMT else "s"),
-                        )
-                    )
             else:
                 # dbus dict for holding limits and intervals
                 timeLimits[rKey] = dbus.Dictionary(signature="sv")

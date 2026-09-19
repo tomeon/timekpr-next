@@ -45,10 +45,6 @@ until it's released or use `beta`._
 
   - latest prominent features introduced are:
 
-    - alternative restriction types [suspend / lock / shutdown](#restrictionlockouttypes)
-
-    - a way to limit applications / games from being used [PlayTime functionality](#playtimeconfiguration)
-
     - user can configure the notifications [user configurable notifications](#userconfigurablenotifications)
 
     - type of time interval where time is not accounted towards user's limit ["freeride" time periods](#freerideintervals)
@@ -278,8 +274,7 @@ This setting can be useful in case user has a special arrangement, such as onlin
 Please keep in mind that intervals themselves **cannot** overlap in any way, however it's possible to have intervals ending and starting continuously, for
 example, intervals 7:00-13:00 and 13:00-14:30 can coexist, but don't be surprised when adjacent intervals are merged into one.
 
-Be aware, that if there's a break in time periods, even just for one minute, user will face whatever restriction is set for him, for example, if user restriction
-is set to "terminate sessions", he will be logged out.
+Be aware, that if there's a break in time periods, even just for one minute, user's sessions will be terminated, that is, he will be logged out.
 
 Be aware that there's is a specific design choice in place which governs that one hour can not contain more than one time period. Time period, however, can
 fully fit within an hour, start in it or end there, i.e. time periods 7:15-9:15 and 9:45-14:30 cannot be entered, but time periods 7:15-9:00 and 9:45-14:30
@@ -309,140 +304,6 @@ By default whole week and month is allowed, which is the common use case, one do
 
 </br>
 
-<a name="playtimeconfiguration"></a>
-
-#### PlayTime configuration
-
-PlayTime is screen time limiting mode for applications / processes in the system, which in context of PlayTime, are called "activities".
-
-PlayTime extends time limit configuration and accounting by greater control over how long certain applications can run. In other words, this functionality
-works as a process monitor of sorts.
-
-PlayTime allows users to use certain applications for the configured period of time. If time allowance is used up, applications are terminated.
-Running them again will result in immediate termination.
-
-Please keep in mind that generally PlayTime is a special limit within a standard time limit, therefore all rules of standard time allowances and periods
-fully apply, except in "override" mode, which will be explained in the options section below.
-
-PlayTime was designed for games, hence the name, but a supervisor can define any application to be monitored, for example Web browser or calculator.
-
-_**Please note** that PlayTime will still account user's PlayTime even in time periods which are marked as free ("∞") in standard time configuration! Except
-in "override" mode, that is_
-
----
-
-##### PlayTime options
-
-This section provides controls for PlayTime enablement and so called PlayTime override mode.
-
-PlayTime has to be enabled for every user separately and if it's not enabled, obviously, PlayTime will not work for this user. Be sure to enable
-[PlayTime master switch](#playtimemasterswitch) to enable PlayTime accounting in the system, otherwise it will not work even if it's enabled for the user.
-
-By default, PlayTime is not enabled.
-
-</br>
-
-Before explaining how to configure PlayTime, here is the overview of PlayTime modes and behaviour.
-
-The standard mode is a restrictive mode which means that certain activities are allowed to be used for some time, after time is spent, they are terminated.
-For example if Steam is configured as an activity and the limit for PlayTime is one hour, after one hour Steam will be terminated and user will not be able
-to use it until the next day.
-
-In addition to standard mode, there's a special "override" mode for PlayTime already mentioned above.
-In this mode PlayTime allowance and limits are disabled and user's time spent at computer is only accounted when applications configured as activities are used.
-That means that unless user uses computer for configured activities, it's free time for him.
-With the same example of Steam, user can freely use computer however he wants unless he starts Steam, then the "clock starts ticking" and user can use Steam
-until the time limit is over, if user closes Steam just before time limit is spent, he can use computer freely according to the rest of the configuration.
-
-</br>
-
-Option "Allowed during "∞" intervals" controls whether PlayTime activities are allowed to run during unaccounted time intervals which are marked as "∞".
-If this option is disabled, user will not be able to run any of the configured activities regardless of whether "override" mode is enabled or not! With the
-example of Steam - user will not be able to run it.
-
-However, if this option is enabled, user can use any of the activities configured for him even in unaccounted time intervals. So with the example of Steam, user
-will be able to use Steam as usual and the time he uses Steam is counted towards PlayTime allowance.
-
-If "override" mode is enabled in unaccounted time intervals, it is all free for the user. So with the example of Steam, user will be able to use Steam with no
-restrictions, time spent using Steam will not be accounted towards any limit at all.
-
-As an example, this option can come handy, if time intervals marked as "∞" are used to attend mandatory education classes and supervisor does not want to
-allow a subordinate to run any of the configured activities during unaccounted time intervals, disable "Allowed during "∞" intervals" and you are set.
-
-"Override" mode is not really a straight-forward option, but once you get it, it might suite you if this kind of time accounting is needed.
-
-By default the option is enabled.
-
----
-
-##### PlayTime limits
-
-PlayTime limits are similar to standard time limits and allowances, configuration is the same, but these only apply to PlayTime.
-
-If certain day is disabled for PlayTime, user can not use any of configured activities - they will be terminated immediately.
-
-_**Please note** that PlayTime limits are not used when "override" mode is enabled._
-
----
-
-##### PlayTime activities
-
-This is the most important section for PlayTime. Here one configures what are the activities to be monitored, but please keep in mind that this list is not
-exactly as simple as an allowlist or denylist of applications.
-
-PlayTime functionality requires the supervisor to set up process masks for each activity he wants to limit. This may involve running process monitor from your
-favourite desktop environment, console / terminal or even remotely via SSH.
-
-The reason this is a bit complicated and requires process masks to be entered, is that Linux is user friendly and can run applications installed anywhere
-as any user.
-This in itself is great, but that means that any software can be installed anywhere even in multiple copies and even user itself can do it!
-Yes, games in Lutris, Herioc or Steam and so on are user installable and does not require any special permissions to do so.
-
-Installed software / games does not scream out load "hey, I'm a game!" or "hey, I am something supervisor is not happy about!", so it is rather
-impossible task in general to list all games ever in existance or to guess individual preferences and keep up with the list all the time.
-Supervisor has to determine which games or software is used by his subordinates and set up limits for it, if needed.
-
-</br>
-
-So here's a generic guide how to determine processes or their masks which can be used in activity configuration.
-
-At first, especially if you have not seen terminal, this may look scary, but you always can use graphical tools to achieve this. KDEs and Gnomes "System
-monitor" does this pretty well, look for process name or command or commandline columns, they are your best friends in this.
-You can always ask your favourite web search engine or community how to determine process executable name.
-
-Since process mask for PlayTime activity is basically a name of executable or full command line in case ["Enhanced activity monitor"](#playtimeenhancedactivitymonitor)
-is enabled (case sensitive!), a simple `top -c -d 1` in terminal usually will do the trick to find one.
-Games, when running, usually use most resources compared to anything else, so they will be on top.
-
-Watch for COMMAND column. If the process looks very much like activity you want to limit, take actual executable name, without path, and fill it in the process
-mask field. Here's the example for Discord Canary, in the process list I see `/opt/discord-canary/DiscordCanary --type=renderer ...`, only
-`DiscordCanary` is the part you need. It's located after last slash and before arguments.
-
-Some games on Linux behaves badly when Alt-Tabbing them, so connect to computer via SSH and determine a process name from there.
-
-You can enter the description of activity too, it will be shown to user instead of actual process mask. If description is not entered, the actual mask is shown
-to the user.
-
-</br>
-
-**Please note** that process masks can accept RegExp (not glob!) expressions, albeit with some restrictions, but keep in mind that this is an expert option!
-
-Please do verify that your RegExp is correct and it actually works, misusing them may end up killing unwanted user processes or may not match anything at all!
-
-If RegExp is not correct, it will be used as literal strings. For example, `*wine*` is **not** a correct RegExp, `.*wine.*` is. Failing to specify this
-correctly will end up searching processes which are literary `*wine*`, which obviously does not exist usually.
-
-Please note that RegExp will not work with any one of these symbols `[]` and one should not use one of these `^$` either.
-Consider your RegExp will always match the whole executable name or executable name and parameters in case "Enhanced process monitor" is enabled.
-The simple example is if one entered a process mask `.*wine.*` it will basically be converted to `^.*wine.*$` and `/.*wine.*$` internally.
-
-It's worth mentioning that PlayTime employs a smart caching algorithms and tries to get the process list in a very efficient way. Only processes that are run
-as particular user are monitored, accounted and terminated.
-
-In addition to that PlayTime logic works only when there are users that have PlayTime enabled and there are at least some activities configured.
-
-</br>
-
 #### Tab "Additional options"
 
 As the name suggests this section has additional per user configuration options.
@@ -453,66 +314,7 @@ care.
 Hide icon and notifications does exactly that, it hides Timekpr-nExT client icon and hides almost all notifications. Only critical notifications are shown.
 If you enable this to unrestricted user, he will not even notice Timekpr-nExT is there.
 
-</br>
-
-Restriction & lockout type governs what type of action will be executed when time for the user will run out.
-
-_**Note**: please be careful if choosing non-default option, think ahead and figure out whether other options are suited for your use case!_
-
----
-
-<a name="restrictionlockouttypes"></a>
-
-##### terminate sessions
-
-This is the default option and a restrictive one. It terminates user sessions, that is, user is forcibly logged out without asking any questions.
-
----
-
-##### kill sessions
-
-This is another restrictive option. It kills user sessions, that is, user is forcibly logged out without asking any questions. This option was added
-as an alternative to "terminate sessions", this option tries to soft-kill the sessions and the effect is largely the same as with "terminate sessions".
-
----
-
-##### shutdown computer
-
-This is another restrictive option, when time runs out, the computer will be shut down. Please use with caution, especially in multi-user environments!
-
----
-
-##### suspend computer
-
-This is lockout option. That is when time runs out computer is suspended.
-
-Option is more suited for self control rather than restrict computer usage, due to the fact that sessions aren't terminated.
-
-When computer is woken up at the moment when there is no time left, but user does not unlock the computer, it stays that way. If computer is unlocked, then
-instead of suspend, the screen is locked. This behaviour was put in place to avoid excessive turn on / off of computer for regular user, however if user
-unlocked computer a lot of times ~ 20, then it will be suspended.
-
----
-
-##### suspend / wakeup computer
-
-This is lockout option, very similar to plain suspend, but with a catch - computer will be woken up at next available time period for that day. It will be
-woken up only if Timekpr-nExT was the one who put it to sleep.
-
-Additionally you need to specify hour interval when computer may be woken up automatically. If next available time period is outside of configured interval,
-computer will NOT be woken up!
-
-**Please note** that wakeup time is dependent on BIOS / UEFI support for RTC wakeup. If there is no support for it or it is disabled, computer will NOT be
-woken up!
-
----
-
-##### lock screen
-
-This is lockout option. When time runs out, computer screen is locked. If computer is unlocked when there is still no time left, it will be locked again
-shortly. Simple as that.
-
-Option is more suited for self control rather than restrict computer usage.
+When time runs out, user's sessions are terminated, that is, user is forcibly logged out without asking any questions.
 
 </br>
 
@@ -541,7 +343,7 @@ enforcement.
 
 ##### Termination time
 
-This option specifies number of seconds left for user before enforcing the selected lockout / restriction on him. When this many seconds are left, user is
+This option specifies number of seconds left for user before his sessions are terminated. When this many seconds are left, user is
 added to the restriction list and will start to face them.
 
 This can be prevented by adding more time allowance or when user becomes inactive, so the scenario when user locks computer to go to supervisor to ask for more
@@ -551,7 +353,7 @@ time allowance is plausible.
 
 ##### Countdown time
 
-This option specifies number of seconds left for user before a countdown for the selected lockout / restriction starts. Countdown is continuous notification
+This option specifies number of seconds left for user before a countdown for the session termination starts. Countdown is continuous notification
 stream about very last seconds left.
 
 ---
@@ -615,37 +417,6 @@ used to log in directly, e.g. login managers.
 
 </br>
 
-<a name="playtimemasterswitch"></a>
-
-#### Additional options
-
-Currently there are couple of options, all related to PlayTime.
-
-</br>
-
-##### PlayTime enabled
-
-"PlayTime enabled" controls **master switch for PlayTime** functionality.
-I has to be turned on to enable PlayTime globally, if it's switched off, none of the users will have their activities accounted regardless of individual
-PlayTime setting!
-
-</br>
-
-<a name="playtimeenhancedactivitymonitor"></a>
-
-##### Enhanced activity monitor
-
-"Enhanced activity monitor" option controls whether PlayTime functionality will use first 512 characters of full process commandline, including process arguments,
-to match proccesses against registered activity / process masks for users. Without this setting process masks are checked against executable path and name only.
-
-This allows a supervisor to use advanced RegExp patterns to find not just a process name, but a great deal of arguments too. This option may be useful for
-situatuations when there are processes running interpreted language, such as python or java. The most common gaming example is Minecraft, which is a java
-application started from jar file, a process mask for it would be `.*java.*minecraft.*`.
-
-_**Note**: after changing this option, enhanced monitoring is applied to newly started processes only!_
-
-</br>
-
 <a name="clientapplication"></a>
 
 ### Client application
@@ -678,26 +449,12 @@ Additional limits show weekly and monthly limits set by supervisor as well as ti
 
 </br>
 
-#### PlayTime limits
-
-This tab shows time allowance and activity list for PlayTime. Description of PlayTime can be found in [PlayTime administration part](#playtimeconfiguration) of
-this guide. User is able to see what type of PlayTime mode is enabled and what are the limits for this day.
-
-Tab shows active PlayTime activity count too as well as description of activities that are being monitored / restricted.
-
-Please note that this tab is not available to user if supervisor has not enabled PlayTime for the user.
-
-</br>
-
 <a name="userconfigurablenotifications"></a>
 
 #### Notifications
 
 This is the first tab where user can make adjustments to tailor Timekpr-nExT behaviour to his needs. User can define a time left threshold when he'll be
 notified about how much time is left. He can assign a priority of notification as well.
-
-There is a separate section for standard time left and PlayTime left notification configuration. Please note that PlayTime notification configuration is not
-shown to user if supervisor has not enabled PlayTime for the user.
 
 More information can be found by viewing tool-tips of the configuration table.
 
@@ -1062,7 +819,7 @@ For this to work I have developed a logic that tries to detect where's the login
 upgrading Timekpr-nExT without rebooting while you have this issue, might end up in blinking cursor.
 
 Another case why this happens is unknown, but symptoms are the same. When timekpr asks to terminate sessions they are not fully terminated resulting in
-"black screen". So the option "kill sessions" was added to lockout and restriction types, please try using it, it should help.
+"black screen".
 
 ---
 
@@ -1127,8 +884,6 @@ As previously mentioned after user sessions should be terminated sometimes the s
 
 This is due to unknown issue in certain linux distributions and happens when timekpr asks systemd's `org.freedesktop.login1.Manager` to terminate user sessions,
 certain Desktop Environments does not automatically switch to login screen or just does not finish the logout properly.
-
-It can be mitigated by using "kill sessions" option, so far this workaround seems to work.
 
 </br>
 

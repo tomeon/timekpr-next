@@ -18,13 +18,6 @@ from datetime import datetime
 
 from gi.repository import Gio
 
-try:
-    import psutil
-
-    _PSUTIL = True
-except (ImportError, ValueError):
-    _PSUTIL = False
-
 # timekpr imports
 from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
@@ -183,113 +176,6 @@ def checkAndSetRunning(pAppName, pUserName=""):
 
     # return whether we are running
     return isAlreadyRunning
-
-
-def killLeftoverUserProcesses(pUserName, pTimekprConfig):
-    """Kill leftover processes for user"""
-    # if psutil is not available, do nothing
-    if not _PSUTIL:
-        return
-
-    # determine which sessions we are going to kill (either graphical or tty)
-    # this is somewhat interesting as for processes we cannot exactly tell whether it's graphical or not, but we check terminal sessions,
-    # if terminal is not set, then it's assumed graphical or so
-    killTty = False
-    killGUI = False
-    killedProcesses = 0
-    otherProcesses = 0
-
-    # build up killing session types
-    sessinTypesForKill = [
-        rSessionType
-        for rSessionType in pTimekprConfig.getTimekprSessionsCtrl()
-        if rSessionType not in pTimekprConfig.getTimekprSessionsExcl()
-    ]
-
-    # check for graphical
-    for sessionType in cons.TK_SESSION_TYPES_CTRL.split(";"):
-        # check for kill
-        if sessionType in sessinTypesForKill:
-            killGUI = True
-            break
-    # check for graphical
-    for sessionType in cons.TK_SESSION_TYPES_EXCL.split(";"):
-        # check for kill
-        if sessionType in sessinTypesForKill:
-            killTty = True
-            break
-
-    # get all processes for this user
-    for userProc in psutil.process_iter():
-        # process info
-        procInfo = userProc.as_dict(
-            attrs=["pid", "ppid", "name", "username", "terminal"]
-        )
-        # check for username and for processes that originates from init (the rest should be terminated along with the session)
-        if procInfo["username"] == pUserName:
-            # if originates from init
-            if procInfo["ppid"] in (0, 1):
-                # normalize terminal (only real terminals are considered terminals)
-                terminal = (
-                    procInfo["terminal"]
-                    if (
-                        procInfo["terminal"] is not None
-                        and "/dev/pts/" not in procInfo["terminal"]
-                    )
-                    else None
-                )
-                # logging
-                log.log(
-                    cons.TK_LOG_LEVEL_INFO,
-                    "INFO: got leftover process, pid: {}, ppid: {}, username: {}, name: {}, terminal: {}, effective terminal: {}".format(
-                        procInfo["pid"],
-                        procInfo["ppid"],
-                        procInfo["username"],
-                        procInfo["name"],
-                        procInfo["terminal"],
-                        terminal,
-                    ),
-                )
-                # kill processes if they are terminal and terminals are tracked or they are not terminal processes
-                if (terminal is not None and killTty) or (terminal is None and killGUI):
-                    try:
-                        # get process and kill it
-                        userPrc = psutil.Process(procInfo["pid"])
-                        # killing time
-                        if cons.TK_DEV_ACTIVE:
-                            log.log(
-                                cons.TK_LOG_LEVEL_INFO,
-                                "DEVELOPMENT ACTIVE, not killing my own processes, sorry...",
-                            )
-                        else:
-                            # asking process to terminate
-                            userPrc.terminate()
-                    except psutil.Error as psErr:
-                        log.log(
-                            cons.TK_LOG_LEVEL_INFO,
-                            "ERROR: killing {} failed ({})".format(
-                                procInfo["pid"], str(psErr)
-                            ),
-                        )
-                    else:
-                        # count killed processes
-                        killedProcesses += 1
-                else:
-                    # do not kill terminal sessions if ones are not tracked
-                    log.log(
-                        cons.TK_LOG_LEVEL_INFO,
-                        "INFO: NOT killing process {} as it's from sessions which are not being tracked".format(
-                            procInfo["pid"]
-                        ),
-                    )
-            else:
-                # count other processes
-                otherProcesses += 1
-    # log
-    log.log(
-        cons.TK_LOG_LEVEL_INFO,
-        f"INFO: {int(killedProcesses)} session related processes were killed, {int(otherProcesses)} other processes for user were not killed",
-    )
 
 
 def findHourStartEndMinutes(pStr):

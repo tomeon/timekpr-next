@@ -215,54 +215,10 @@ class timekprAdminHttpConnector:
             },
         )
 
-    def setLockoutType(self, pUserName, pLockoutType, pWakeFrom, pWakeTo):
-        lockout = {"type": pLockoutType}
-        if pLockoutType == cons.TK_CTRL_RES_W:
-            lockout.update(wake_from=int(pWakeFrom), wake_to=int(pWakeTo))
-        return self._patchUser(pUserName, {"lockout": lockout})
-
     def setTimeLeft(self, pUserName, pOperation, pTimeLeft):
         return self._call(
             "POST",
             user_path(pUserName, "/time-left"),
-            {"operation": DAEMON_OPERATIONS[pOperation], "seconds": int(pTimeLeft)},
-        )[:2]
-
-    def setPlayTimeAllowedDays(self, pUserName, pPlayTimeAllowedDays):
-        return self._patchUser(
-            pUserName,
-            {"playtime": {"allowed_days": [int(day) for day in pPlayTimeAllowedDays]}},
-        )
-
-    def setPlayTimeLimitsForDays(self, pUserName, pPlayTimeLimits):
-        result, message, config = self._userConfig(pUserName)
-        if result != 0:
-            return result, message
-        return self._patchUser(
-            pUserName,
-            {
-                "playtime": {
-                    "limits_per_day": webapi.limits_by_day(
-                        config["playtime"]["allowed_days"],
-                        [int(limit) for limit in pPlayTimeLimits],
-                    )
-                }
-            },
-        )
-
-    def setPlayTimeActivities(self, pUserName, pPlayTimeActivities):
-        activities = [
-            {"process": activity[0], "description": activity[1]}
-            for activity in pPlayTimeActivities
-        ]
-        return self._call(
-            "PUT", user_path(pUserName, "/config/playtime/activities"), activities
-        )[:2]
-
-    def setPlayTimeLeft(self, pUserName, pOperation, pTimeLeft):
-        return self._call(
-            "POST",
-            user_path(pUserName, "/playtime-left"),
             {"operation": DAEMON_OPERATIONS[pOperation], "seconds": int(pTimeLeft)},
         )[:2]
 
@@ -272,19 +228,11 @@ def _userSetter(field):
     return lambda self, pUserName, value: self._patchUser(pUserName, {field: value})
 
 
-def _playTimeSetter(field):
-    return lambda self, pUserName, value: self._patchUser(
-        pUserName, {"playtime": {field: value}}
-    )
-
-
 def _serverSetter(field):
     return lambda self, value: self._call("PATCH", "/config", {field: value})[:2]
 
 
 for _field, (_key, _setter) in webapi.USER_FIELDS.items():
     setattr(timekprAdminHttpConnector, _setter, _userSetter(_field))
-for _field, (_key, _setter) in webapi.PLAYTIME_FIELDS.items():
-    setattr(timekprAdminHttpConnector, _setter, _playTimeSetter(_field))
 for _field, (_key, _setter) in webapi.SERVER_FIELDS.items():
     setattr(timekprAdminHttpConnector, _setter, _serverSetter(_field))

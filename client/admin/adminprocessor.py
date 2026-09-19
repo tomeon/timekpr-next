@@ -20,10 +20,7 @@ from timekpr.common.constants import messages as msg
 from timekpr.common.log import log
 from timekpr.common.utils import cmdhelp
 from timekpr.common.utils.config import timekprConfig
-from timekpr.common.utils.misc import (
-    findHourStartEndMinutes,
-    splitConfigValueNameParam,
-)
+from timekpr.common.utils.misc import findHourStartEndMinutes
 
 
 class timekprAdminClient:
@@ -343,77 +340,6 @@ class timekprAdminClient:
             else:
                 # set days
                 self.processSetHideTrayIcon(args[paramIdx + 1], args[paramIdx + 2])
-        # this sets lockout type for the user
-        elif adminCmd == "--setlockouttype":
-            # check param len
-            if paramLen != paramIdx + 3:
-                # fail
-                adminCmdIncorrect = True
-            else:
-                # set days
-                self.processSetLockoutType(args[paramIdx + 1], args[paramIdx + 2])
-        # this sets whether PlayTime is enabled for user
-        elif adminCmd == "--setplaytimeenabled":
-            # check param len
-            if paramLen != paramIdx + 3:
-                # fail
-                adminCmdIncorrect = True
-            else:
-                # set days
-                self.processSetPlayTimeEnabled(args[paramIdx + 1], args[paramIdx + 2])
-        # this sets playtime override for user
-        elif adminCmd == "--setplaytimelimitoverride":
-            # check param len
-            if paramLen != paramIdx + 3:
-                # fail
-                adminCmdIncorrect = True
-            else:
-                # set days
-                self.processSetPlayTimeLimitOverride(
-                    args[paramIdx + 1], args[paramIdx + 2]
-                )
-        # this sets playtime allowed during unaccounted intervals for user
-        elif adminCmd == "--setplaytimeunaccountedintervalsflag":
-            # check param len
-            if paramLen != paramIdx + 3:
-                # fail
-                adminCmdIncorrect = True
-            else:
-                # set days
-                self.processSetPlayTimeUnaccountedIntervalsEnabled(
-                    args[paramIdx + 1], args[paramIdx + 2]
-                )
-        # this sets allowed days for PlayTime for the user
-        elif adminCmd == "--setplaytimealloweddays":
-            # check param len
-            if paramLen != paramIdx + 3:
-                # fail
-                adminCmdIncorrect = True
-            else:
-                # set days
-                self.processSetPlayTimeAllowedDays(
-                    args[paramIdx + 1], args[paramIdx + 2]
-                )
-        # this sets PlayTime limits for allowed days for the user
-        elif adminCmd == "--setplaytimelimits":
-            # check param len
-            if paramLen != paramIdx + 3:
-                # fail
-                adminCmdIncorrect = True
-            else:
-                # set days
-                self.processSetPlayTimeLimits(args[paramIdx + 1], args[paramIdx + 2])
-        # this sets PlayTime activities for the user
-        elif adminCmd == "--setplaytimeactivities":
-            # check param len
-            if paramLen != paramIdx + 3:
-                # fail
-                adminCmdIncorrect = True
-            else:
-                # set days
-                self.processSetPlayTimeActivities(
-                    args[paramIdx + 1], args[paramIdx + 2]
-                )
         # this sets time left for the user at current moment
         elif adminCmd == "--settimeleft":
             # check param len
@@ -423,17 +349,6 @@ class timekprAdminClient:
             else:
                 # set days
                 self.processSetTimeLeft(
-                    args[paramIdx + 1], args[paramIdx + 2], args[paramIdx + 3]
-                )
-        # this sets time left for the user at current moment
-        elif adminCmd == "--setplaytimeleft":
-            # check param len
-            if paramLen != paramIdx + 4:
-                # fail
-                adminCmdIncorrect = True
-            else:
-                # set days
-                self.processSetPlayTimeLeft(
                     args[paramIdx + 1], args[paramIdx + 2], args[paramIdx + 3]
                 )
         else:
@@ -477,12 +392,7 @@ class timekprAdminClient:
         # loop and print the same format as ppl will use to set that
         for rUserKey, rUserConfig in pPrintUserConfig.items():
             # join the lists
-            if rUserKey in (
-                "ALLOWED_WEEKDAYS",
-                "LIMITS_PER_WEEKDAYS",
-                "PLAYTIME_ALLOWED_WEEKDAYS",
-                "PLAYTIME_LIMITS_PER_WEEKDAYS",
-            ):
+            if rUserKey in ("ALLOWED_WEEKDAYS", "LIMITS_PER_WEEKDAYS"):
                 # print join
                 log.consoleOut(
                     "{}: {}".format(rUserKey, ";".join(list(map(str, rUserConfig))))
@@ -511,28 +421,8 @@ class timekprAdminClient:
                         # empty
                         hrs = f"{uacc}{hr}" if hrs == "" else f"{hrs};{uacc}{hr}"
                 log.consoleOut(f"{rUserKey}: {hrs}")
-            elif rUserKey in (
-                "TRACK_INACTIVE",
-                "HIDE_TRAY_ICON",
-                "PLAYTIME_ENABLED",
-                "PLAYTIME_LIMIT_OVERRIDE_ENABLED",
-                "PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED",
-            ):
+            elif rUserKey in ("TRACK_INACTIVE", "HIDE_TRAY_ICON"):
                 log.consoleOut(f"{rUserKey}: {bool(rUserConfig)}")
-            elif rUserKey in ("PLAYTIME_ACTIVITIES"):
-                # result
-                result = ""
-                # loop thorhough activities
-                for rActArr in rUserConfig:
-                    # activity
-                    act = (
-                        f"{rActArr[0]}[{rActArr[1]}]"
-                        if rActArr[1] != ""
-                        else f"{rActArr[0]}"
-                    )
-                    # gather activities
-                    result = f"{act}" if result == "" else f"{result};{act}"
-                log.consoleOut(f"{rUserKey}: {result}")
             else:
                 log.consoleOut(f"{rUserKey}: {rUserConfig!s}")
 
@@ -741,43 +631,6 @@ class timekprAdminClient:
             # log error
             log.consoleOut(message)
 
-    def processSetLockoutType(self, pUserName, pLockoutType):
-        """Process lockout type"""
-        # defaults
-        result = 0
-        # parse lockout
-        lockout = pLockoutType.split(";")
-        lockoutType = lockout[0]
-        lockoutWakeFrom = lockout[1] if len(lockout) == 3 else "0"
-        lockoutWakeTo = lockout[2] if len(lockout) == 3 else "23"
-
-        # check
-        if lockoutType not in (
-            cons.TK_CTRL_RES_L,
-            cons.TK_CTRL_RES_S,
-            cons.TK_CTRL_RES_W,
-            cons.TK_CTRL_RES_T,
-            cons.TK_CTRL_RES_K,
-            cons.TK_CTRL_RES_D,
-        ):
-            # fail
-            result = -1
-            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (
-                f"please specify one of these: {cons.TK_CTRL_RES_L}, {cons.TK_CTRL_RES_S}, {cons.TK_CTRL_RES_W}, {cons.TK_CTRL_RES_T}, {cons.TK_CTRL_RES_K}, {cons.TK_CTRL_RES_D}"
-            )
-
-        # preprocess successful
-        if result == 0:
-            # invoke
-            result, message = self._timekprAdminConnector.setLockoutType(
-                pUserName, lockoutType, lockoutWakeFrom, lockoutWakeTo
-            )
-
-        # process
-        if result != 0:
-            # log error
-            log.consoleOut(message)
-
     def processSetTimeLeft(self, pUserName, pOperation, pLimit):
         """Process time left"""
         # defaults
@@ -797,218 +650,6 @@ class timekprAdminClient:
         if result == 0:
             # invoke
             result, message = self._timekprAdminConnector.setTimeLeft(
-                pUserName, pOperation, limit
-            )
-
-        # process
-        if result != 0:
-            # log error
-            log.consoleOut(message)
-
-    # --------------- parameter execution methods for PlayTime --------------- #
-
-    def processSetPlayTimeEnabled(self, pUserName, pPlayTimeEnabled):
-        """Process PlayTime enabled flag"""
-        # defaults
-        isPlayTimeEnabled = None
-        result = 0
-
-        # check
-        if str(pPlayTimeEnabled).lower() not in ("true", "false"):
-            # fail
-            result = -1
-            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (
-                "please specify true or false"
-            )
-        else:
-            isPlayTimeEnabled = str(pPlayTimeEnabled).lower() == "true"
-
-        # preprocess successful
-        if result == 0:
-            # invoke
-            result, message = self._timekprAdminConnector.setPlayTimeEnabled(
-                pUserName, isPlayTimeEnabled
-            )
-
-        # process
-        if result != 0:
-            # log error
-            log.consoleOut(message)
-
-    def processSetPlayTimeLimitOverride(self, pUserName, pPlayTimeLimitOverride):
-        """Process PlayTime override flag"""
-        # defaults
-        isPlayTimeLimitOverride = None
-        result = 0
-
-        # check
-        if str(pPlayTimeLimitOverride).lower() not in ("true", "false"):
-            # fail
-            result = -1
-            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (
-                "please specify true or false"
-            )
-        else:
-            isPlayTimeLimitOverride = str(pPlayTimeLimitOverride).lower() == "true"
-
-        # preprocess successful
-        if result == 0:
-            # invoke
-            result, message = self._timekprAdminConnector.setPlayTimeLimitOverride(
-                pUserName, isPlayTimeLimitOverride
-            )
-
-        # process
-        if result != 0:
-            # log error
-            log.consoleOut(message)
-
-    def processSetPlayTimeUnaccountedIntervalsEnabled(
-        self, pUserName, pPlayTimeUnaccountedIntervalsEnabled
-    ):
-        """Process PlayTime allowed during unaccounted intervals flag"""
-        # defaults
-        isPlayTimeUnaccountedIntervalsEnabled = None
-        result = 0
-
-        # check
-        if str(pPlayTimeUnaccountedIntervalsEnabled).lower() not in ("true", "false"):
-            # fail
-            result = -1
-            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (
-                "please specify true or false"
-            )
-        else:
-            isPlayTimeUnaccountedIntervalsEnabled = (
-                str(pPlayTimeUnaccountedIntervalsEnabled).lower() == "true"
-            )
-
-        # preprocess successful
-        if result == 0:
-            # invoke
-            result, message = (
-                self._timekprAdminConnector.setPlayTimeUnaccountedIntervalsEnabled(
-                    pUserName, isPlayTimeUnaccountedIntervalsEnabled
-                )
-            )
-
-        # process
-        if result != 0:
-            # log error
-            log.consoleOut(message)
-
-    def processSetPlayTimeAllowedDays(self, pUserName, pPlayTimeDayList):
-        """Process allowed days for PlayTime"""
-        # defaults
-        dayMap = []
-        result = 0
-
-        # day map
-        try:
-            # try to parse parameters
-            dayMap = pPlayTimeDayList.split(";")
-        except Exception as ex:
-            # fail
-            result = -1
-            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (str(ex))
-
-        # preprocess successful
-        if result == 0:
-            # invoke
-            result, message = self._timekprAdminConnector.setPlayTimeAllowedDays(
-                pUserName, dayMap
-            )
-
-        # process
-        if result != 0:
-            # log error
-            log.consoleOut(message)
-
-    def processSetPlayTimeLimits(self, pUserName, pPlayTimeDayLimits):
-        """Process time limits for allowed days for PlayTime"""
-        # defaults
-        dayLimits = []
-        result = 0
-
-        # day limists
-        try:
-            # allow empty limits too
-            if pPlayTimeDayLimits != "":
-                # try to parse parameters
-                dayLimits = list(map(int, pPlayTimeDayLimits.split(";")))
-        except Exception as ex:
-            # fail
-            result = -1
-            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (str(ex))
-
-        # preprocess successful
-        if result == 0:
-            # invoke
-            result, message = self._timekprAdminConnector.setPlayTimeLimitsForDays(
-                pUserName, dayLimits
-            )
-
-        # process
-        if result != 0:
-            # log error
-            log.consoleOut(message)
-
-    def processSetPlayTimeActivities(self, pUserName, pPlayTimeActivities):
-        """Process PlayTime activities"""
-        # defaults
-        playTimeActivities = []
-        result = 0
-
-        # day limists
-        try:
-            # ## try to parse parameters ##
-            if pPlayTimeActivities != "":
-                # split activities
-                for rAct in pPlayTimeActivities.split(";"):
-                    # try parsing the names
-                    mask, description = splitConfigValueNameParam(rAct)
-                    # raise any error in case we can not get parsing right
-                    if mask is None:
-                        # raise
-                        raise ValueError("this does not compute")
-                    # set up activity list
-                    playTimeActivities.append([mask, description])
-        except Exception as ex:
-            # fail
-            result = -1
-            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (str(ex))
-
-        # preprocess successful
-        if result == 0:
-            # invoke
-            result, message = self._timekprAdminConnector.setPlayTimeActivities(
-                pUserName, playTimeActivities
-            )
-
-        # process
-        if result != 0:
-            # log error
-            log.consoleOut(message)
-
-    def processSetPlayTimeLeft(self, pUserName, pOperation, pLimit):
-        """Process time left"""
-        # defaults
-        limit = 0
-        result = 0
-
-        # limit
-        try:
-            # try to parse parameters
-            limit = int(pLimit)
-        except Exception as ex:
-            # fail
-            result = -1
-            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (str(ex))
-
-        # preprocess successful
-        if result == 0:
-            # invoke
-            result, message = self._timekprAdminConnector.setPlayTimeLeft(
                 pUserName, pOperation, limit
             )
 

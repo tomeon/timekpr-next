@@ -233,19 +233,6 @@ def create_app(
     ):
         return bridge.set_allowed_hours(username, day, entries)
 
-    @api.put(
-        "/users/{username}/config/playtime/activities",
-        response_model=models.UserConfig,
-        responses=user_responses,
-    )
-    def put_playtime_activities(username: Username, activities: list[models.Activity]):
-        return bridge.patch_user_config(
-            username,
-            models.UserConfigPatch(
-                playtime=models.PlayTimeConfigPatch(activities=activities)
-            ),
-        )
-
     @api.post(
         "/users/{username}/time-left",
         response_model=models.UserStatus,
@@ -253,14 +240,6 @@ def create_app(
     )
     def post_time_left(username: Username, request: models.TimeLeftRequest):
         return bridge.set_time_left(username, request)
-
-    @api.post(
-        "/users/{username}/playtime-left",
-        response_model=models.UserStatus,
-        responses=user_responses,
-    )
-    def post_playtime_left(username: Username, request: models.TimeLeftRequest):
-        return bridge.set_time_left(username, request, playtime=True)
 
     app.include_router(api)
 

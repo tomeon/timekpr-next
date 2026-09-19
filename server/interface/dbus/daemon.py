@@ -32,7 +32,6 @@ from timekpr.server.interface.dbus.polkit import (
     timekprAuthorizedMethod,
     timekprPolkitAuthority,
 )
-from timekpr.server.user.playtime import timekprPlayTimeConfig
 from timekpr.server.user.userdata import timekprUser
 
 # default dbus
@@ -85,8 +84,6 @@ class timekprDaemon(dbus.service.Object):
         self._timekprUserTerminationList = {}
         # this will hold collection of users who have restrictions to use computer
         self._timekprUserRestrictionList = {}
-        # PlayTime config
-        self._timekprPlayTimeConfig = None
 
         # ## initialization ##
         # configuration init
@@ -110,8 +107,6 @@ class timekprDaemon(dbus.service.Object):
         elif self._timekprLoginManagerName == "CK":
             self._timekprLoginManager = None
 
-        # PT config
-        self._timekprPlayTimeConfig = timekprPlayTimeConfig(self._timekprConfig)
         log.log(cons.TK_LOG_LEVEL_DEBUG, "finish init daemon data")
 
     def finishTimekpr(self, signal=None, frame=None):
@@ -230,11 +225,6 @@ class timekprDaemon(dbus.service.Object):
             # delete termination list as well
             self._timekprUserRestrictionList.clear()
 
-        # if global switch is enabled, we need to refresh processes at some iterval (method determines that by itself)
-        if self._timekprConfig.getTimekprPlayTimeEnabled():
-            # refresh PT process list
-            self._timekprPlayTimeConfig.processPlayTimeActivities()
-
         # add new users to track
         for rUserName, userDict in userList.items():
             # login manager is system user, we do these checks only for system users
@@ -272,7 +262,6 @@ class timekprDaemon(dbus.service.Object):
                     userDict[cons.TK_CTRL_UNAME],
                     userDict[cons.TK_CTRL_UPATH],
                     self._timekprConfig,
-                    self._timekprPlayTimeConfig,
                 )
 
                 # adjust config
@@ -321,39 +310,6 @@ class timekprDaemon(dbus.service.Object):
             timeLeftToday = timeLeftArray[0]
             timeLeftInARow = timeLeftArray[1]
             timeHourUnaccounted = timeLeftArray[6]
-            timePTActivityCnt = 0
-
-            # PlayTime left validation
-            if self._timekprConfig.getTimekprPlayTimeEnabled():
-                # get time left for PLayTime
-                timeLeftPT, isPTEnabled, isPTAccounted, isPTActive = (
-                    self._timekprUserList[rUserName].getPlayTimeLeft()
-                )
-                # enabled and active for user
-                if isPTEnabled and isPTActive:
-                    # if there is no time left (compare to almost ultimate answer)
-                    # or hour is unaccounted and PT is not allowed in those hours
-                    if (isPTAccounted and timeLeftPT < 0.0042) or (
-                        timeHourUnaccounted
-                        and not self._timekprUserList[
-                            rUserName
-                        ].getUserPlayTimeUnaccountedIntervalsEnabled()
-                    ):
-                        # killing processes
-                        self._timekprPlayTimeConfig.killPlayTimeProcesses(
-                            self._timekprUserList[rUserName].getUserId()
-                        )
-                    else:
-                        # active count
-                        timePTActivityCnt = (
-                            self._timekprPlayTimeConfig.getMatchedUserProcessCnt(
-                                self._timekprUserList[rUserName].getUserId()
-                            )
-                        )
-            # set process count (in case PT was disable in-flight or it has changed)
-            self._timekprUserList[rUserName].setPlayTimeActiveActivityCnt(
-                timePTActivityCnt
-            )
 
             # logging
             log.log(
@@ -365,93 +321,42 @@ class timekprDaemon(dbus.service.Object):
             if rUserName in self._timekprUserRestrictionList:
                 # (internal idle killing switch) + user is not active + there is a time available today (opposing to in a row)
                 if (
-                    (
-                        not userActiveActual
-                        and timeLeftToday
-                        > self._timekprConfig.getTimekprTerminationTime()
-                    )
-                    or timeHourUnaccounted
-                ) and self._timekprUserRestrictionList[rUserName][
-                    cons.TK_CTRL_RESTY
-                ] in (cons.TK_CTRL_RES_T, cons.TK_CTRL_RES_K, cons.TK_CTRL_RES_D):
+                    not userActiveActual
+                    and timeLeftToday > self._timekprConfig.getTimekprTerminationTime()
+                ) or timeHourUnaccounted:
                     log.log(
                         cons.TK_LOG_LEVEL_INFO,
-                        f'SAVING user "{rUserName}" from ending his sessions / shutdown',
+                        f'SAVING user "{rUserName}" from ending his sessions',
                     )
                     # remove from death list
                     self._timekprUserRestrictionList.pop(rUserName)
-                # if restricted time has passed for hard restrictions, we need to lift the restriction
+                # if restricted time has passed, we need to lift the restriction
                 elif (
                     timeLeftInARow > self._timekprConfig.getTimekprTerminationTime()
                     or timeHourUnaccounted
-                ) and self._timekprUserRestrictionList[rUserName][
-                    cons.TK_CTRL_RESTY
-                ] in (cons.TK_CTRL_RES_T, cons.TK_CTRL_RES_K, cons.TK_CTRL_RES_D):
+                ):
                     log.log(
                         cons.TK_LOG_LEVEL_INFO,
-                        f'RELEASING terminate / kill / shutdown from user "{rUserName}"',
-                    )
-                    # remove from restriction list
-                    self._timekprUserRestrictionList.pop(rUserName)
-                # if restricted time has passed for soft restrictions, we need to lift the restriction
-                elif (
-                    timeLeftInARow > self._timekprConfig.getTimekprTerminationTime()
-                    or timeHourUnaccounted
-                ) and self._timekprUserRestrictionList[rUserName][
-                    cons.TK_CTRL_RESTY
-                ] in (cons.TK_CTRL_RES_L, cons.TK_CTRL_RES_S, cons.TK_CTRL_RES_W):
-                    log.log(
-                        cons.TK_LOG_LEVEL_INFO,
-                        f'RELEASING lock / suspend from user "{rUserName}"',
+                        f'RELEASING terminate from user "{rUserName}"',
                     )
                     # remove from restriction list
                     self._timekprUserRestrictionList.pop(rUserName)
                 # update restriction stats
-                else:
-                    # update active states for restriction routines
-                    self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_USACT] = (
-                        userActiveActual
-                    )
-                    self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_USLCK] = (
-                        userScreenLocked
-                    )
-                    self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEA] = (
+                elif userActiveActual:
+                    # only if user is active
+                    self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEL] = (
                         max(
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RTDEA
-                            ]
-                            - 1,
-                            0,
-                        )
-                    )
-                    # only if user is active / screen is not locked
-                    if (
-                        userActiveActual
-                        and self._timekprUserRestrictionList[rUserName][
-                            cons.TK_CTRL_RESTY
-                        ]
-                        in (cons.TK_CTRL_RES_T, cons.TK_CTRL_RES_K, cons.TK_CTRL_RES_D)
-                    ) or (
-                        not userScreenLocked
-                        and self._timekprUserRestrictionList[rUserName][
-                            cons.TK_CTRL_RESTY
-                        ]
-                        in (cons.TK_CTRL_RES_S, cons.TK_CTRL_RES_L, cons.TK_CTRL_RES_W)
-                    ):
-                        # update active states for restriction routines
-                        self._timekprUserRestrictionList[rUserName][
-                            cons.TK_CTRL_RTDEL
-                        ] = max(
                             self._timekprUserRestrictionList[rUserName][
                                 cons.TK_CTRL_RTDEL
                             ]
                             - 1,
                             0,
                         )
+                    )
 
             # ## FILL IN USER RESTRICTIONS ##
 
-            # if user has very few time left, we need to enforce limits: Lock screen / Sleep computer / Shutdown computer / Terminate sessions
+            # if user has very few time left, we need to enforce limits: Terminate sessions
             if (
                 timeLeftInARow <= self._timekprConfig.getTimekprTerminationTime()
                 and not timeHourUnaccounted
@@ -470,20 +375,7 @@ class timekprDaemon(dbus.service.Object):
                     cons.TK_CTRL_FCNTD: max(
                         timeLeftInARow, self._timekprConfig.getTimekprTerminationTime()
                     ),  # final countdown
-                    cons.TK_CTRL_RESTY: self._timekprUserList[
-                        rUserName
-                    ].getUserLockoutType(),  # restricton type: lock, suspend, suspendwake, terminate, kill, shutdown
                     cons.TK_CTRL_RTDEL: 0,  # retry delay before next attempt to enforce restrictions
-                    cons.TK_CTRL_RTDEA: 0,  # retry delay (additional delay for lock in case of suspend)
-                    cons.TK_CTRL_USACT: userActiveActual,  # whether user is actually active
-                    cons.TK_CTRL_USLCK: userScreenLocked,  # whether user screen is locked
-                    cons.TK_CTRL_USWKU: self._timekprUserList[
-                        rUserName
-                    ].findNextAvailableIntervalStart()
-                    if self._timekprUserList[rUserName].getUserLockoutType()
-                    == cons.TK_CTRL_RES_W
-                    and timeLeftToday > timeLeftInARow
-                    else None,
                 }
                 # in case this is first restriction we need to initiate restriction process
                 if len(self._timekprUserRestrictionList) == 1:
@@ -513,343 +405,47 @@ class timekprDaemon(dbus.service.Object):
         for rUserName in self._timekprUserRestrictionList:
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                f'RESTRICTIONS, usr: "{rUserName}", cntd: {int(self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD])}, del: {int(self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEL])}, dea: {int(self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEA])}',
+                f'RESTRICTIONS, usr: "{rUserName}", cntd: {int(self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD])}, del: {int(self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEL])}',
             )
-            # ## check which restriction is needed ##
             # we are going to TERMINATE user sessions
-            if self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RESTY] in (
-                cons.TK_CTRL_RES_T,
-                cons.TK_CTRL_RES_K,
-                cons.TK_CTRL_RES_D,
-            ):
-                # log that we are going to terminate user sessions
-                if self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEL] <= 0:
-                    log.log(
-                        cons.TK_LOG_LEVEL_INFO,
-                        "{} approaching in {} secs".format(
-                            "TERMINATE"
-                            if self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RESTY
-                            ]
-                            == cons.TK_CTRL_RES_T
-                            else (
-                                "KILL"
-                                if self._timekprUserRestrictionList[rUserName][
-                                    cons.TK_CTRL_RESTY
-                                ]
-                                == cons.TK_CTRL_RES_K
-                                else "SHUTDOWN"
-                            ),
-                            str(
-                                self._timekprUserRestrictionList[rUserName][
-                                    cons.TK_CTRL_FCNTD
-                                ]
-                            ),
-                        ),
-                    )
-                    # send messages only when certain time is left
-                    if (
-                        self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD]
-                        <= self._timekprConfig.getTimekprFinalWarningTime()
-                    ):
-                        # final warning
-                        _processFinalWarning(
-                            rUserName,
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RESTY
-                            ],
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_FCNTD
-                            ],
-                        )
-                    # time to die
-                    if (
-                        self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD]
-                        <= 0
-                    ):
-                        # set restriction for repetitive kill
-                        self._timekprUserRestrictionList[rUserName][
-                            cons.TK_CTRL_RTDEL
-                        ] = cons.TK_CTRL_LCDEL * 5
-                        # save user before kill
-                        self._timekprUserList[rUserName].saveSpent()
-                        # terminate user sessions
-                        try:
-                            # term
-                            if self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RESTY
-                            ] in (cons.TK_CTRL_RES_T, cons.TK_CTRL_RES_K):
-                                # terminate
-                                self._timekprLoginManager.terminateUserSessions(
-                                    rUserName,
-                                    self._timekprUserRestrictionList[rUserName][
-                                        cons.TK_CTRL_UPATH
-                                    ],
-                                    self._timekprConfig,
-                                    self._timekprUserRestrictionList[rUserName][
-                                        cons.TK_CTRL_RESTY
-                                    ],
-                                )
-                            # shut
-                            elif (
-                                self._timekprUserRestrictionList[rUserName][
-                                    cons.TK_CTRL_RESTY
-                                ]
-                                == cons.TK_CTRL_RES_D
-                            ):
-                                # shutdown
-                                self._timekprLoginManager.shutdownComputer(rUserName)
-                        except Exception:
-                            log.log(
-                                cons.TK_LOG_LEVEL_INFO,
-                                f"ERROR killing sessions: {traceback.format_exc()}",
-                            )
-            # we are going to LOCK user sessions
-            elif (
-                self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RESTY]
-                == cons.TK_CTRL_RES_L
-            ):
-                # is user active
-                isUserInactive = (
-                    not self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_USACT]
-                    or self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_USLCK]
-                )
-                # check if user has locked the screen
-                if (
-                    isUserInactive
-                    and self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEA]
-                    <= 0
-                ):
-                    # we are going lock user sessions
-                    log.log(
-                        cons.TK_LOG_LEVEL_INFO,
-                        f'time is up, but user "{rUserName}" not active, not enforcing the lock',
-                    )
-                    # set restriction for repetitive lock
-                    self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEA] = (
-                        cons.TK_CTRL_LCDEL
-                    )
-                # lock must be enforced only if user is active
-                elif not isUserInactive:
-                    # continue if there is no delay
-                    if (
-                        self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEA]
-                        <= 0
-                    ):
-                        # log
-                        log.log(
-                            cons.TK_LOG_LEVEL_INFO,
-                            "LOCK approaching in {} secs".format(
-                                str(
-                                    self._timekprUserRestrictionList[rUserName][
-                                        cons.TK_CTRL_FCNTD
-                                    ]
-                                )
-                            ),
-                        )
-                        # send messages only when certain time is left
-                        if (
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_FCNTD
-                            ]
-                            <= self._timekprConfig.getTimekprFinalWarningTime()
-                        ):
-                            # final warning
-                            _processFinalWarning(
-                                rUserName,
-                                self._timekprUserRestrictionList[rUserName][
-                                    cons.TK_CTRL_RESTY
-                                ],
-                                self._timekprUserRestrictionList[rUserName][
-                                    cons.TK_CTRL_FCNTD
-                                ],
-                            )
-                        # time to lock
-                        if (
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_FCNTD
-                            ]
-                            <= 0
-                        ):
-                            # set restriction for repetitive lock
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RTDEA
-                            ] = cons.TK_CTRL_LCDEL
-                            # log lock
-                            log.log(
-                                cons.TK_LOG_LEVEL_INFO,
-                                f'time is up for user "{rUserName}", enforcing the LOCK',
-                            )
-                            # lock computer
-                            self._timekprUserList[rUserName].lockUserSessions()
-            # we are going to SUSPEND user sessions
-            elif self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RESTY] in (
-                cons.TK_CTRL_RES_S,
-                cons.TK_CTRL_RES_W,
-            ):
-                # is user active
-                isUserInactive = (
-                    not self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_USACT]
-                    or self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_USLCK]
-                )
-                # check if user has locked the screen
-                if (
-                    isUserInactive
-                    and self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEA]
-                    <= 0
-                ):
-                    # we are going lock user sessions
-                    log.log(
-                        cons.TK_LOG_LEVEL_INFO,
-                        f'time is up, but user "{rUserName}" not active, not enforcing the suspend',
-                    )
-                    # set restriction for repetitive lock when suspending
-                    self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEA] = (
-                        cons.TK_CTRL_LCDEL
-                    )
-                # suspend / lock must be enforced only if user is active
-                elif not isUserInactive:
-                    # continue if there is no delay
-                    if (
-                        self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEL]
-                        <= 0
-                    ):
-                        # log
-                        log.log(
-                            cons.TK_LOG_LEVEL_INFO,
-                            "SUSPEND approaching in {} secs".format(
-                                str(
-                                    self._timekprUserRestrictionList[rUserName][
-                                        cons.TK_CTRL_FCNTD
-                                    ]
-                                )
-                            ),
-                        )
-                        # send messages only when certain time is left
-                        if (
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_FCNTD
-                            ]
-                            <= self._timekprConfig.getTimekprFinalWarningTime()
-                        ):
-                            # final warning
-                            _processFinalWarning(
-                                rUserName,
-                                self._timekprUserRestrictionList[rUserName][
-                                    cons.TK_CTRL_RESTY
-                                ],
-                                self._timekprUserRestrictionList[rUserName][
-                                    cons.TK_CTRL_FCNTD
-                                ],
-                            )
-                    # time to suspend
-                    if (
-                        self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD]
-                        <= 0
-                    ):
-                        # check if we have a delay before initiating actions
-                        if (
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RTDEL
-                            ]
-                            <= 0
-                        ):
-                            # log suspend
-                            log.log(
-                                cons.TK_LOG_LEVEL_INFO,
-                                f'time is up for user "{rUserName}", enforcing the SUSPEND',
-                            )
-                            # set restriction for repetitive lock when suspending
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RTDEA
-                            ] = cons.TK_CTRL_LCDEL
-                            # set restriction for repetitive suspend
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RTDEL
-                            ] = cons.TK_CTRL_SCDEL
-                            # set up wake time if that was set
-                            if (
-                                self._timekprUserRestrictionList[rUserName][
-                                    cons.TK_CTRL_USWKU
-                                ]
-                                is not None
-                            ):
-                                # set up
-                                if userhelper.setWakeUpByRTC(
-                                    self._timekprUserRestrictionList[rUserName][
-                                        cons.TK_CTRL_USWKU
-                                    ]
-                                ):
-                                    log.log(
-                                        cons.TK_LOG_LEVEL_INFO,
-                                        'wake up time is SET at {} ({}) on behalf of user "{}"'.format(
-                                            int(
-                                                self._timekprUserRestrictionList[
-                                                    rUserName
-                                                ][cons.TK_CTRL_USWKU]
-                                            ),
-                                            datetime.fromtimestamp(
-                                                self._timekprUserRestrictionList[
-                                                    rUserName
-                                                ][cons.TK_CTRL_USWKU]
-                                            ).strftime(cons.TK_LOG_DATETIME_FORMAT),
-                                            rUserName,
-                                        ),
-                                    )
-                                else:
-                                    log.log(
-                                        cons.TK_LOG_LEVEL_INFO,
-                                        'wake up time at {} ({}) could NOT be set on behalf of user "{}"'.format(
-                                            int(
-                                                self._timekprUserRestrictionList[
-                                                    rUserName
-                                                ][cons.TK_CTRL_USWKU]
-                                            ),
-                                            datetime.fromtimestamp(
-                                                self._timekprUserRestrictionList[
-                                                    rUserName
-                                                ][cons.TK_CTRL_USWKU]
-                                            ).strftime(cons.TK_LOG_DATETIME_FORMAT),
-                                            rUserName,
-                                        ),
-                                    )
-                            # suspend computer
-                            self._timekprLoginManager.suspendComputer(rUserName)
-                        # do not enforce lock right away after suspend, wait a little
-                        elif (
-                            cons.TK_CTRL_SCDEL - cons.TK_CTRL_LCDEL
-                            > self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RTDEL
-                            ]
-                            > 0
-                            and self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RTDEA
-                            ]
-                            <= 0
-                        ):
-                            # log suspend lock
-                            log.log(
-                                cons.TK_LOG_LEVEL_INFO,
-                                'time is up for user "{}", enforcing the SUSPEND LOCK (SUSPEND in {} iterations)'.format(
-                                    rUserName,
-                                    int(
-                                        self._timekprUserRestrictionList[rUserName][
-                                            cons.TK_CTRL_RTDEL
-                                        ]
-                                    ),
-                                ),
-                            )
-                            # set restriction for repetitive lock when suspending
-                            self._timekprUserRestrictionList[rUserName][
-                                cons.TK_CTRL_RTDEA
-                            ] = cons.TK_CTRL_LCDEL
-                            # if delay is still in place, just lock the screen
-                            self._timekprUserList[rUserName].lockUserSessions()
-            else:
+            # log that we are going to terminate user sessions
+            if self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEL] <= 0:
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    f'WARN: unsupported restriction type "{self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RESTY]}"',
+                    f"TERMINATE approaching in {self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD]!s} secs",
                 )
+                # send messages only when certain time is left
+                if (
+                    self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD]
+                    <= self._timekprConfig.getTimekprFinalWarningTime()
+                ):
+                    # final warning
+                    _processFinalWarning(
+                        rUserName,
+                        cons.TK_CTRL_RES_T,
+                        self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD],
+                    )
+                # time to die
+                if self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD] <= 0:
+                    # set restriction for repetitive termination (ticks before next attempt)
+                    self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_RTDEL] = 5
+                    # save user before termination
+                    self._timekprUserList[rUserName].saveSpent()
+                    # terminate user sessions
+                    try:
+                        # terminate
+                        self._timekprLoginManager.terminateUserSessions(
+                            rUserName,
+                            self._timekprUserRestrictionList[rUserName][
+                                cons.TK_CTRL_UPATH
+                            ],
+                            self._timekprConfig,
+                        )
+                    except Exception:
+                        log.log(
+                            cons.TK_LOG_LEVEL_INFO,
+                            f"ERROR terminating sessions: {traceback.format_exc()}",
+                        )
 
             # decrease time for restrictions
             self._timekprUserRestrictionList[rUserName][cons.TK_CTRL_FCNTD] = max(
@@ -898,19 +494,6 @@ class timekprDaemon(dbus.service.Object):
             pUserConfigurationStore["ACTUAL_TIME_LEFT_DAY"] = int(timeLeftToday)
             # time left in a row
             pUserConfigurationStore["ACTUAL_TIME_LEFT_CONTINUOUS"] = int(timeLeftInARow)
-            # PlayTime
-            playTimeLeft, playTimeEnabled, playTimeAccounted, _unused = (
-                pTimekprUser.getPlayTimeLeft(pCheckActive=False)
-            )
-            playTimeLeft = (
-                max(playTimeLeft, 0) if playTimeEnabled and playTimeAccounted else 0
-            )
-            # PlayTime left today
-            pUserConfigurationStore["ACTUAL_PLAYTIME_LEFT_DAY"] = playTimeLeft
-            # active PlayTime activity count
-            pUserConfigurationStore["ACTUAL_ACTIVE_PLAYTIME_ACTIVITY_COUNT"] = (
-                pTimekprUser.getPlayTimeActiveActivityCnt()
-            )
 
     # ## --------------- DBUS / communication methods --------------- ## #
     # --------------- simple user time limits methods accessible by the user in question (and root) --------------- #
@@ -1310,51 +893,6 @@ class timekprDaemon(dbus.service.Object):
 
     @timekprAuthorizedMethod(
         cons.TK_DBUS_USER_ADMIN_INTERFACE,
-        "ssss",
-        "is",
-        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
-        pUserNameArg="pUserName",
-    )
-    def setLockoutType(self, pUserName, pLockoutType, pWakeFrom, pWakeTo):
-        """Set restriction / lockout type for the user"""
-        """Restricton / lockout types:
-            lock - lock the screen
-            suspend - suspend the computer
-            suspendwake - suspend the computer and set wakeup timer
-            terminate - terminate sessions (default)"""
-        try:
-            # check the user and it's configuration
-            userConfigProcessor = timekprUserConfigurationProcessor(
-                pUserName, self._timekprConfig
-            )
-
-            # load config
-            result, message = userConfigProcessor.checkAndSetLockoutType(
-                pLockoutType, pWakeFrom, pWakeTo
-            )
-
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_USER_ADMIN_INTERFACE,
         "si",
         "is",
         cons.TK_POLKIT_ACTION_USER_CONFIGURE,
@@ -1454,312 +992,6 @@ class timekprDaemon(dbus.service.Object):
 
             # load config
             result, message = userControlProcessor.checkAndSetTimeLeft(
-                pOperation, pTimeLeft
-            )
-
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustTimeSpentFromControl(
-                    pSilent=False, pPreserveSpent=(pOperation != "=")
-                )
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONTROL_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    # --------------- user PlayTime admin methods accessible by privileged users (root and all in timekpr group) --------------- #
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_USER_ADMIN_INTERFACE,
-        "sb",
-        "is",
-        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
-        pUserNameArg="pUserName",
-    )
-    def setPlayTimeEnabled(self, pUserName, pPlayTimeEnabled):
-        """Set whether PlayTime is enabled for the user"""
-        """PlayTime enablement flag
-            true - PlayTime is enabled
-            false - PlayTime is disabled"""
-        try:
-            # check the user and it's configuration
-            userConfigProcessor = timekprUserConfigurationProcessor(
-                pUserName, self._timekprConfig
-            )
-
-            # load config
-            result, message = userConfigProcessor.checkAndSetPlayTimeEnabled(
-                bool(pPlayTimeEnabled)
-            )
-
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_USER_ADMIN_INTERFACE,
-        "sb",
-        "is",
-        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
-        pUserNameArg="pUserName",
-    )
-    def setPlayTimeLimitOverride(self, pUserName, pPlayTimeLimitOverride):
-        """Set whether PlayTime override is enabled for the user"""
-        """PlayTime override enablement flag
-            true - PlayTime override is enabled
-            false - PlayTime override is disabled"""
-        try:
-            # check the user and it's configuration
-            userConfigProcessor = timekprUserConfigurationProcessor(
-                pUserName, self._timekprConfig
-            )
-
-            # load config
-            result, message = userConfigProcessor.checkAndSetPlayTimeLimitOverride(
-                bool(pPlayTimeLimitOverride)
-            )
-
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_USER_ADMIN_INTERFACE,
-        "sb",
-        "is",
-        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
-        pUserNameArg="pUserName",
-    )
-    def setPlayTimeUnaccountedIntervalsEnabled(
-        self, pUserName, pPlayTimeUnaccountedIntervalsEnabled
-    ):
-        """Set whether PlayTime activities are allowed during unaccounted intervals for the user"""
-        """PlayTime allowed during unaccounted intervals enablement flag
-            true - PlayTime allowed during unaccounted intervals is enabled
-            false - PlayTime allowed during unaccounted intervals is disabled"""
-        try:
-            # check the user and it's configuration
-            userConfigProcessor = timekprUserConfigurationProcessor(
-                pUserName, self._timekprConfig
-            )
-
-            # load config
-            result, message = (
-                userConfigProcessor.checkAndSetPlayTimeUnaccountedIntervalsEnabled(
-                    bool(pPlayTimeUnaccountedIntervalsEnabled)
-                )
-            )
-
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_USER_ADMIN_INTERFACE,
-        "sas",
-        "is",
-        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
-        pUserNameArg="pUserName",
-    )
-    def setPlayTimeAllowedDays(self, pUserName, pPlayTimeAllowedDays):
-        """Set up allowed PlayTime days for the user"""
-        """Sets allowed PlayTime days for the user
-            server expects only the days that are allowed, sorted in ascending order"""
-        try:
-            # check the user and it's configuration
-            userConfigProcessor = timekprUserConfigurationProcessor(
-                pUserName, self._timekprConfig
-            )
-
-            # load config
-            result, message = userConfigProcessor.checkAndSetPlayTimeAllowedDays(
-                pPlayTimeAllowedDays
-            )
-
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_USER_ADMIN_INTERFACE,
-        "sai",
-        "is",
-        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
-        pUserNameArg="pUserName",
-    )
-    def setPlayTimeLimitsForDays(self, pUserName, pPlayTimeLimits):
-        """Set up new PlayTime limits for each day for the user"""
-        """This sets allowable PlayTime limits to user
-            server always expects 7 limits, for each day of the week, in the list"""
-        try:
-            # check the user and it's configuration
-            userConfigProcessor = timekprUserConfigurationProcessor(
-                pUserName, self._timekprConfig
-            )
-
-            # load config
-            result, message = userConfigProcessor.checkAndSetPlayTimeLimitsForDays(
-                pPlayTimeLimits
-            )
-
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_USER_ADMIN_INTERFACE,
-        "saas",
-        "is",
-        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
-        pUserNameArg="pUserName",
-    )
-    def setPlayTimeActivities(self, pUserName, pPlayTimeActivities):
-        """Set up new PlayTime activities for the user"""
-        """This sets PlayTime activities (executable masks) for the user"""
-        try:
-            # check the user and it's configuration
-            userConfigProcessor = timekprUserConfigurationProcessor(
-                pUserName, self._timekprConfig
-            )
-
-            # load config
-            result, message = userConfigProcessor.checkAndSetPlayTimeActivities(
-                pPlayTimeActivities
-            )
-
-            # check if we have this user
-            if pUserName in self._timekprUserList:
-                # inform the user immediately
-                self._timekprUserList[pUserName].adjustLimitsFromConfig(False)
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_USER_ADMIN_INTERFACE,
-        "ssi",
-        "is",
-        cons.TK_POLKIT_ACTION_USER_TIME_LEFT,
-        pUserNameArg="pUserName",
-    )
-    def setPlayTimeLeft(self, pUserName, pOperation, pTimeLeft):
-        """Set time left for today for the user"""
-        """Sets time limits for user for this moment:
-            if pOperation is "+" - more time left is addeed
-            if pOperation is "-" time is subtracted
-            if pOperation is "=" or empty, the time is set as it is"""
-        try:
-            # check the user and it's configuration
-            userControlProcessor = timekprUserConfigurationProcessor(
-                pUserName, self._timekprConfig
-            )
-
-            # load config
-            result, message = userControlProcessor.checkAndSetPlayTimeLeft(
                 pOperation, pTimeLeft
             )
 
@@ -2165,100 +1397,3 @@ class timekprDaemon(dbus.service.Object):
 
         # result
         return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_ADMIN_INTERFACE, "b", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE
-    )
-    def setTimekprPlayTimeEnabled(self, pPlayTimeEnabled):
-        """Set whether PlayTime is enabled globally"""
-        try:
-            # check the configuration
-            mainConfigurationProcessor = timekprConfigurationProcessor()
-
-            # check and set config
-            result, message = (
-                mainConfigurationProcessor.checkAndSetTimekprPlayTimeEnabled(
-                    pPlayTimeEnabled
-                )
-            )
-
-            # set in memory as well
-            self._timekprConfig.setTimekprPlayTimeEnabled(pPlayTimeEnabled)
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_ADMIN_INTERFACE, "b", "is", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE
-    )
-    def setTimekprPlayTimeEnhancedActivityMonitorEnabled(
-        self, pPlayTimeAdvancedSearchEnabled
-    ):
-        """Set whether PlayTime is enabled globally"""
-        try:
-            # check the configuration
-            mainConfigurationProcessor = timekprConfigurationProcessor()
-
-            # check and set config
-            result, message = (
-                mainConfigurationProcessor.checkAndSetTimekprPlayTimeEnhancedActivityMonitorEnabled(
-                    pPlayTimeAdvancedSearchEnabled
-                )
-            )
-
-            # set in memory as well
-            self._timekprConfig.setTimekprPlayTimeEnhancedActivityMonitorEnabled(
-                pPlayTimeAdvancedSearchEnabled
-            )
-        except Exception as unexpectedException:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
-            )
-
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
-            )
-
-        # result
-        return result, message
-
-    # --------------- DBUS helper methods --------------- #
-
-    @timekprAuthorizedMethod(
-        cons.TK_DBUS_ADMIN_INTERFACE, "s", "", cons.TK_POLKIT_ACTION_SERVER_CONFIGURE
-    )
-    def logCachedProcesses(self, pUserId):
-        """Return cached PIDs and CMDLINEs"""
-        # set up logging
-        pids = self._timekprPlayTimeConfig.getCachedProcesses()
-        log.log(cons.TK_LOG_LEVEL_INFO, f"ALLPIDS ({len(pids)})")
-        log.log(cons.TK_LOG_LEVEL_INFO, "----------------------------------------")
-        for rPid in pids:
-            log.log(cons.TK_LOG_LEVEL_INFO, rPid)
-        pids = self._timekprPlayTimeConfig.getCachedUserProcesses(str(pUserId))
-        log.log(cons.TK_LOG_LEVEL_INFO, f"USERPIDS ({len(pids)})")
-        log.log(cons.TK_LOG_LEVEL_INFO, "----------------------------------------")
-        for rPid in pids:
-            log.log(cons.TK_LOG_LEVEL_INFO, rPid)
-        pids = self._timekprPlayTimeConfig.getMatchedUserProcesses(str(pUserId))
-        log.log(cons.TK_LOG_LEVEL_INFO, f"USERMATCHEDPIDS ({len(pids)})")
-        log.log(cons.TK_LOG_LEVEL_INFO, "----------------------------------------")
-        for rPid in pids:
-            log.log(cons.TK_LOG_LEVEL_INFO, rPid)
-        log.log(cons.TK_LOG_LEVEL_INFO, "----------------------------------------")

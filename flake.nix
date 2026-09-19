@@ -69,7 +69,7 @@
               fileset = pkgs.lib.fileset.difference ./. (pkgs.lib.fileset.unions [
                 ./.actrc
                 ./.github
-                ./docs
+                ./docs/proposals
                 ./flake.nix
                 ./flake.lock
                 ./nix

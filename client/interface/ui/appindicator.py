@@ -116,11 +116,11 @@ class timekprIndicator(timekprNotificationArea):
 
         log.log(cons.TK_LOG_LEVEL_INFO, "finish initTimekprIndicatorIcon")
 
-    def setTimeLeft(self, pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft=None):
+    def setTimeLeft(self, pPriority, pTimeLeft, pTimeNotLimited):
         """Set time left in the indicator"""
         # make strings to set
         timeLeftStr, icon = super().formatTimeLeft(
-            pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft
+            pPriority, pTimeLeft, pTimeNotLimited
         )
 
         # if we have smth to set

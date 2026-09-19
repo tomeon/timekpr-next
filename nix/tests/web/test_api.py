@@ -49,11 +49,6 @@ def test_user_shapes(client):
     assert alice["status"]["time_left_continuous"] == 15
     assert alice["config"]["limits_per_day"] == {str(day): 86400 for day in range(1, 8)}
     assert len(alice["config"]["allowed_hours"]["1"]) == 24
-    assert alice["config"]["lockout"] == {
-        "type": "terminate",
-        "wake_from": None,
-        "wake_to": None,
-    }
 
 
 def test_days_and_limits_are_positional(client, fake):
@@ -106,27 +101,6 @@ def test_allowed_hours(client, fake):
     assert r.status_code == 400 and "start_minute" in r.text
 
 
-def test_lockout(client, fake):
-    lockout = {"type": "suspendwake", "wake_from": 7, "wake_to": 18}
-    r = client.patch(
-        "/api/v1/users/alice/config", json={"lockout": lockout}, headers=AUTH
-    )
-    assert r.status_code == 200
-    assert fake.calls[-1] == ("setLockoutType", ("alice", "suspendwake", "7", "18"))
-    assert r.json()["lockout"] == lockout
-    r = client.patch(
-        "/api/v1/users/alice/config",
-        json={"lockout": {"type": "lock", "wake_from": 7}},
-        headers=AUTH,
-    )
-    assert r.status_code == 400
-    r = client.patch(
-        "/api/v1/users/alice/config", json={"lockout": {"type": "lock"}}, headers=AUTH
-    )
-    assert fake.calls[-1] == ("setLockoutType", ("alice", "lock", "0", "23"))
-    assert r.json()["lockout"] == {"type": "lock", "wake_from": None, "wake_to": None}
-
-
 def test_daemon_refusal_reports_applied_fields(client):
     body = {"track_inactive": True, "limit_per_week": 13, "hide_tray_icon": True}
     r = client.patch("/api/v1/users/alice/config", json=body, headers=AUTH)
@@ -144,33 +118,6 @@ def test_daemon_refusal_reports_applied_fields(client):
     assert r.status_code == 400 and r.json()["errors"][0]["field"] == "bogus"
 
 
-def test_playtime(client, fake):
-    fake.calls.clear()
-    patch = {
-        "playtime": {
-            "enabled": True,
-            "allowed_days": [1, 2, 3],
-            "activities": [{"process": "firefox"}],
-        }
-    }
-    assert (
-        client.patch("/api/v1/users/alice/config", json=patch, headers=AUTH).status_code
-        == 200
-    )
-    assert fake.calls == [
-        ("setPlayTimeAllowedDays", ("alice", ["1", "2", "3"])),
-        ("setPlayTimeLimitsForDays", ("alice", [1800, 1800, 0])),
-        ("setPlayTimeEnabled", ("alice", True)),
-        ("setPlayTimeActivities", ("alice", [["firefox", ""]])),
-    ]
-    activities = [{"process": "a", "description": "b"}]
-    r = client.put(
-        "/api/v1/users/alice/config/playtime/activities", json=activities, headers=AUTH
-    )
-    assert r.status_code == 200
-    assert fake.calls[-1] == ("setPlayTimeActivities", ("alice", [["a", "b"]]))
-
-
 def test_time_left(client, fake):
     r = client.post(
         "/api/v1/users/alice/time-left",
@@ -179,12 +126,6 @@ def test_time_left(client, fake):
     )
     assert r.status_code == 200 and r.json()["session_active"] is True
     assert fake.calls[-1] == ("setTimeLeft", ("alice", "+", 300))
-    client.post(
-        "/api/v1/users/alice/playtime-left",
-        json={"operation": "set", "seconds": 0},
-        headers=AUTH,
-    )
-    assert fake.calls[-1] == ("setPlayTimeLeft", ("alice", "=", 0))
     r = client.post(
         "/api/v1/users/alice/time-left",
         json={"operation": "give", "seconds": 1},

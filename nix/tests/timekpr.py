@@ -167,7 +167,7 @@ def config_lines(userinfo):
     return [
         line
         for line in userinfo.splitlines()
-        if not line.startswith(("TIME_", "PLAYTIME_LEFT", "PLAYTIME_SPENT", "ACTUAL_"))
+        if not line.startswith(("TIME_", "ACTUAL_"))
     ]
 
 
@@ -365,26 +365,17 @@ def check_web_api():
     with subtest("timekpra --server: settings arrive at the daemon"):
         UNIX.run("--setallowedhours", ALICE, "3", "7;11[0-30];!14")
         UNIX.run("--setalloweddays", ALICE, "2;4")
-        UNIX.run("--settimelimits", ALICE, "0;3600")
-        HTTP.run("--setlockouttype", ALICE, "suspendwake;7;18")
-        HTTP.run("--setplaytimeenabled", ALICE, "true")
-        HTTP.run("--setplaytimeactivities", ALICE, "firefox[Firefox]")
+        HTTP.run("--settimelimits", ALICE, "0;3600")
         info = DBUS.run("--userinfo", ALICE)
         for line in (
             "ALLOWED_HOURS_3: 7;11[0-30];!14",
             "ALLOWED_WEEKDAYS: 2;4",
             "LIMITS_PER_WEEKDAYS: 0;3600",
-            "LOCKOUT_TYPE: suspendwake",
-            "WAKEUP_HOUR_INTERVAL: 7;18",
-            "PLAYTIME_ENABLED: True",
-            "PLAYTIME_ACTIVITIES: firefox[Firefox]",
         ):
             assert line in info, f"{line!r} not in timekpra --userinfo:\n{info}"
         # back to the defaults (keeping "no time"), through D-Bus
         DBUS.run("--setalloweddays", ALICE, ";".join(map(str, ALL_DAYS)))
         DBUS.run("--settimelimits", ALICE, NO_TIME_ARG)
-        DBUS.run("--setlockouttype", ALICE, "terminate")
-        DBUS.run("--setplaytimeenabled", ALICE, "false")
         DBUS.run("--setallowedhours", ALICE, "ALL", ";".join(map(str, range(24))))
         assert config_lines(UNIX.run("--userinfo", ALICE)) == config_lines(
             DBUS.run("--userinfo", ALICE)
@@ -408,34 +399,21 @@ def check_web_api():
         patch = {
             "allowed_days": [4, 2],
             "limits_per_day": {"4": 3600},
-            "lockout": {"type": "suspendwake", "wake_from": 7, "wake_to": 18},
-            "playtime": {
-                "enabled": True,
-                "activities": [{"process": "firefox", "description": "Firefox"}],
-            },
         }
         config = expect("PATCH", config_path, patch)
         assert config["allowed_days"] == [2, 4], config
         assert config["limits_per_day"] == {"2": 0, "4": 3600}, config
-        assert config["lockout"] == patch["lockout"], config
-        assert config["playtime"]["activities"] == patch["playtime"]["activities"]
         info = timekpra("--userinfo", ALICE)
         for line in (
             "ALLOWED_HOURS_3: 7;11[0-30];!14",
             "ALLOWED_WEEKDAYS: 2;4",
             "LIMITS_PER_WEEKDAYS: 0;3600",
-            "LOCKOUT_TYPE: suspendwake",
-            "WAKEUP_HOUR_INTERVAL: 7;18",
-            "PLAYTIME_ENABLED: True",
-            "PLAYTIME_ACTIVITIES: firefox[Firefox]",
         ):
             assert line in info, f"{line!r} not in timekpra --userinfo:\n{info}"
         # restore the defaults, keeping the "no time" limits
         restore = {
             "allowed_days": ALL_DAYS,
             "limits_per_day": NO_TIME,
-            "lockout": {"type": "terminate"},
-            "playtime": {"enabled": False, "activities": []},
         }
         expect("PATCH", config_path, restore)
         all_hours = [{"hour": hour} for hour in range(24)]

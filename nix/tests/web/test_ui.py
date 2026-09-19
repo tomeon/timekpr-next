@@ -118,25 +118,17 @@ def test_user_page_and_config_save(page, server):
     cell.click()
     assert not cell.get_attribute("class")
     page.fill("[name=limit_1]", "2:30")
-    page.select_option("[name=lockout_type]", "suspendwake")
-    assert not page.is_hidden("#wake-hours")
-    page.fill("[name=wake_from]", "7")
-    page.fill("[name=wake_to]", "18")
     page.click("#config-form button[type=submit]")
     wait_message(page, "Saved")
 
     # the form shows what came back, and the daemon side got the change
     assert page.input_value("[name=limit_1]") == "2:30"
     assert page.locator("#hours-grid td.on").count() == 7 * 24 - 1
-    assert page.input_value("[name=lockout_type]") == "suspendwake"
     _result, _message, info = server.api.getUserConfigurationAndInformation(
         "bob@idm.nixos.test", "F"
     )
     assert info["LIMITS_PER_WEEKDAYS"][0] == 9000
     assert "0" not in info["ALLOWED_HOURS_1"] and "1" in info["ALLOWED_HOURS_1"]
-    assert (
-        info["LOCKOUT_TYPE"] == "suspendwake" and info["WAKEUP_HOUR_INTERVAL"] == "7;18"
-    )
 
     # saving again without changes does not call the API
     page.click("#config-form button[type=submit]")

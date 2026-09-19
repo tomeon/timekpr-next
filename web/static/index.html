@@ -47,10 +47,6 @@
                 aria-label="hours:minutes"
               />
               <button type="submit">Apply</button>
-              <label
-                ><input name="playtime" type="checkbox" /> PlayTime
-                instead</label
-              >
             </form>
           </div>
 
@@ -93,32 +89,6 @@
               <h3>Behaviour</h3>
               <p class="inline">
                 <label
-                  >When time is up
-                  <select name="lockout_type">
-                    <option value="terminate">terminate the session</option>
-                    <option value="lock">lock the screen</option>
-                    <option value="suspend">suspend the computer</option>
-                    <option value="suspendwake">
-                      suspend and wake up between
-                    </option>
-                    <option value="kill">kill the session</option>
-                    <option value="shutdown">shut down the computer</option>
-                  </select></label
-                >
-                <label id="wake-hours" hidden
-                  >hours
-                  <input
-                    name="wake_from"
-                    type="number"
-                    min="0"
-                    max="23"
-                    size="2" />
-                  –
-                  <input name="wake_to" type="number" min="0" max="23" size="2"
-                /></label>
-              </p>
-              <p class="inline">
-                <label
                   ><input name="track_inactive" type="checkbox" /> count
                   inactive (locked / switched away) sessions</label
                 >
@@ -127,41 +97,6 @@
                   icon</label
                 >
               </p>
-            </div>
-
-            <div class="card">
-              <h3>PlayTime</h3>
-              <p class="inline">
-                <label
-                  ><input name="pt_enabled" type="checkbox" /> enabled</label
-                >
-                <label
-                  ><input name="pt_limit_override" type="checkbox" /> PlayTime
-                  limit overrides the daily limit</label
-                >
-                <label
-                  ><input
-                    name="pt_allow_unaccounted_intervals"
-                    type="checkbox"
-                  />
-                  allowed during unaccounted hours</label
-                >
-              </p>
-              <table class="days" id="pt-day-limits">
-                <thead>
-                  <tr>
-                    <th>Day</th>
-                    <th>Allowed</th>
-                    <th>Limit (h:mm)</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-              <label
-                >Activities, one per line as
-                <code>process name = description</code>
-                <textarea name="pt_activities" rows="4"></textarea>
-              </label>
             </div>
 
             <p class="actions">

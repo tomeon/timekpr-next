@@ -13,7 +13,8 @@ Upstream code lives in `bin/`, `client/`, `common/`, `server/`,
   x86_64-darwin, so do not add it back.
 - `packages.timekpr` is nixpkgs' `timekpr` derivation with `src`
   overridden to this checkout (a fileset that excludes the Nix, script,
-  CI, and `docs/` files so editing them does not rebuild the package).
+  CI, and `docs/proposals/` files so editing them does not rebuild the
+  package; `docs/web-api.md` is installed, so the rest of `docs/` stays).
   `packages.default` is the same derivation. The nixpkgs derivation
   hardcodes `version = "0.5.8"` inside a `rec` attribute set, so
   overriding `version` alone does not propagate into its generated

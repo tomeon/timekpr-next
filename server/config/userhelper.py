@@ -89,25 +89,6 @@ def getTimekprLoginManagers():
     return _loginManagers
 
 
-def setWakeUpByRTC(pWkeUpTimeEpoch):
-    """Set wakeup time for computer"""
-    res = False
-    # first check that we can access rtc
-    if os.path.isfile(cons.TK_CTRL_WKUPF):
-        try:
-            # now write wakeup timer
-            with open(cons.TK_CTRL_WKUPF, "w") as wakeFile:
-                # write time
-                wakeFile.write(str(pWkeUpTimeEpoch))
-                # success
-                res = True
-        except Exception:
-            # we only care about this, at least for now, if it succeeds
-            res = False
-    # result
-    return res
-
-
 class timekprUserStore:
     """Class will privide methods to help managing users, like intialize the config for them"""
 

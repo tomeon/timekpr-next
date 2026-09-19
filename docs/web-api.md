@@ -146,19 +146,17 @@ module `timekprw` uses in the other direction.
 
 Fields of `/api/v1/config` (names follow `TIMEKPR_*` keys returned by the daemon):
 
-| Field                                | Type                                                  | D-Bus setter                                       |
-| ------------------------------------ | ----------------------------------------------------- | -------------------------------------------------- |
-| `log_level`                          | int (1-3)                                             | `setTimekprLogLevel`                               |
-| `poll_time`                          | seconds                                               | `setTimekprPollTime`                               |
-| `save_time`                          | seconds                                               | `setTimekprSaveTime`                               |
-| `termination_time`                   | seconds                                               | `setTimekprTerminationTime`                        |
-| `final_warning_time`                 | seconds                                               | `setTimekprFinalWarningTime`                       |
-| `final_notification_time`            | seconds                                               | `setTimekprFinalNotificationTime`                  |
-| `session_types_tracked`              | list of strings, e.g. `["x11","wayland","mir","tty"]` | `setTimekprSessionsCtrl`                           |
-| `session_types_excluded`             | list of strings                                       | `setTimekprSessionsExcl`                           |
-| `users_excluded`                     | list of usernames                                     | `setTimekprUsersExcl`                              |
-| `playtime_enabled`                   | bool                                                  | `setTimekprPlayTimeEnabled`                        |
-| `playtime_enhanced_activity_monitor` | bool                                                  | `setTimekprPlayTimeEnhancedActivityMonitorEnabled` |
+| Field                     | Type                                                  | D-Bus setter                      |
+| ------------------------- | ----------------------------------------------------- | --------------------------------- |
+| `log_level`               | int (1-3)                                             | `setTimekprLogLevel`              |
+| `poll_time`               | seconds                                               | `setTimekprPollTime`              |
+| `save_time`               | seconds                                               | `setTimekprSaveTime`              |
+| `termination_time`        | seconds                                               | `setTimekprTerminationTime`       |
+| `final_warning_time`      | seconds                                               | `setTimekprFinalWarningTime`      |
+| `final_notification_time` | seconds                                               | `setTimekprFinalNotificationTime` |
+| `session_types_tracked`   | list of strings, e.g. `["x11","wayland","mir","tty"]` | `setTimekprSessionsCtrl`          |
+| `session_types_excluded`  | list of strings                                       | `setTimekprSessionsExcl`          |
+| `users_excluded`          | list of usernames                                     | `setTimekprUsersExcl`             |
 
 ### Users
 
@@ -170,9 +168,7 @@ Fields of `/api/v1/config` (names follow `TIMEKPR_*` keys returned by the daemon
 | `PATCH` | `/api/v1/users/{username}/config`                     | all `--set*` except time left | Partial update, see field table below.                                                                                                                                    |
 | `GET`   | `/api/v1/users/{username}/status`                     | `--userinfort`                | Realtime counters (`"R"`).                                                                                                                                                |
 | `PUT`   | `/api/v1/users/{username}/config/allowed-hours/{day}` | `--setallowedhours`           | Replace the allowed hours for one weekday, or for every weekday when `{day}` is `all`.                                                                                    |
-| `PUT`   | `/api/v1/users/{username}/config/playtime/activities` | `--setplaytimeactivities`     | Replace the PlayTime activity list.                                                                                                                                       |
 | `POST`  | `/api/v1/users/{username}/time-left`                  | `--settimeleft`               | Add, subtract or set today's remaining time.                                                                                                                              |
-| `POST`  | `/api/v1/users/{username}/playtime-left`              | `--setplaytimeleft`           | Same for PlayTime.                                                                                                                                                        |
 
 There is deliberately no `POST /users` or `DELETE /users/{username}`.
 `timekpra` cannot create or remove a user: the daemon writes a user's
@@ -187,27 +183,19 @@ gain `POST /api/v1/users {"username"}` returning `201` and
 `GET /api/v1/users/{username}/config` returns, and `PATCH` accepts any
 subset of:
 
-| Field                                  | Type                                                                                                              | D-Bus setter                             | Notes                                                                                                                                                                                                                                                                                                                        |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `allowed_days`                         | list of weekdays, e.g. `[1,2,3,4,5]`                                                                              | `setAllowedDays`                         |                                                                                                                                                                                                                                                                                                                              |
-| `limits_per_day`                       | object weekday → seconds, `{"1": 7200, ..., "7": 10800}`                                                          | `setTimeLimitForDays`                    | The daemon stores limits positionally against `allowed_days` (`server/user/userdata.py`), so `GET` lists only allowed days, keys for other days are ignored, missing days keep their current value, and a change of `allowed_days` re-sends the limits aligned with the new days. Values are clamped to 86400 by the daemon. |
-| `allowed_hours`                        | object weekday → list of hour entries (below)                                                                     | `setAllowedHours`, once per day given    | Same shape as the `PUT` sub-resource; `PATCH` is for editing several days in one request.                                                                                                                                                                                                                                    |
-| `limit_per_week`                       | seconds                                                                                                           | `setTimeLimitForWeek`                    |                                                                                                                                                                                                                                                                                                                              |
-| `limit_per_month`                      | seconds                                                                                                           | `setTimeLimitForMonth`                   |                                                                                                                                                                                                                                                                                                                              |
-| `track_inactive`                       | bool                                                                                                              | `setTrackInactive`                       |                                                                                                                                                                                                                                                                                                                              |
-| `hide_tray_icon`                       | bool                                                                                                              | `setHideTrayIcon`                        |                                                                                                                                                                                                                                                                                                                              |
-| `lockout`                              | `{"type": "lock"｜"suspend"｜"suspendwake"｜"terminate"｜"kill"｜"shutdown", "wake_from": hour, "wake_to": hour}` | `setLockoutType`                         | `wake_from`/`wake_to` are required with `suspendwake`, rejected with other types, and `null` in responses for other types; the CLI form is `suspendwake;7;18`.                                                                                                                                                               |
-| `playtime.enabled`                     | bool                                                                                                              | `setPlayTimeEnabled`                     |                                                                                                                                                                                                                                                                                                                              |
-| `playtime.limit_override`              | bool                                                                                                              | `setPlayTimeLimitOverride`               |                                                                                                                                                                                                                                                                                                                              |
-| `playtime.allow_unaccounted_intervals` | bool                                                                                                              | `setPlayTimeUnaccountedIntervalsEnabled` |                                                                                                                                                                                                                                                                                                                              |
-| `playtime.allowed_days`                | list of weekdays                                                                                                  | `setPlayTimeAllowedDays`                 |                                                                                                                                                                                                                                                                                                                              |
-| `playtime.limits_per_day`              | object weekday → seconds                                                                                          | `setPlayTimeLimitsForDays`               | Positional against `playtime.allowed_days`, handled like `limits_per_day`.                                                                                                                                                                                                                                                   |
-| `playtime.activities`                  | list of `{"process", "description"}`                                                                              | `setPlayTimeActivities`                  | CLI form `csgo_linux[CS: GO]`; `description` may be empty.                                                                                                                                                                                                                                                                   |
-
-An hour entry is
-`{"hour": 11, "start_minute": 0, "end_minute": 30, "unaccounted": false}`.
-`start_minute` defaults to `0`, `end_minute` to `60`, `unaccounted`
-to `false`, so the CLI string `7;8;11[00-30];!14` becomes
+| Field                                                                      | Type                                                     | D-Bus setter                          | Notes                                                                                                                                                                                                                                                                                                                        |
+| -------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allowed_days`                                                             | list of weekdays, e.g. `[1,2,3,4,5]`                     | `setAllowedDays`                      |                                                                                                                                                                                                                                                                                                                              |
+| `limits_per_day`                                                           | object weekday → seconds, `{"1": 7200, ..., "7": 10800}` | `setTimeLimitForDays`                 | The daemon stores limits positionally against `allowed_days` (`server/user/userdata.py`), so `GET` lists only allowed days, keys for other days are ignored, missing days keep their current value, and a change of `allowed_days` re-sends the limits aligned with the new days. Values are clamped to 86400 by the daemon. |
+| `allowed_hours`                                                            | object weekday → list of hour entries (below)            | `setAllowedHours`, once per day given | Same shape as the `PUT` sub-resource; `PATCH` is for editing several days in one request.                                                                                                                                                                                                                                    |
+| `limit_per_week`                                                           | seconds                                                  | `setTimeLimitForWeek`                 |                                                                                                                                                                                                                                                                                                                              |
+| `limit_per_month`                                                          | seconds                                                  | `setTimeLimitForMonth`                |                                                                                                                                                                                                                                                                                                                              |
+| `track_inactive`                                                           | bool                                                     | `setTrackInactive`                    |                                                                                                                                                                                                                                                                                                                              |
+| `hide_tray_icon`                                                           | bool                                                     | `setHideTrayIcon`                     |                                                                                                                                                                                                                                                                                                                              |
+| An hour entry is                                                           |
+| `{"hour": 11, "start_minute": 0, "end_minute": 30, "unaccounted": false}`. |
+| `start_minute` defaults to `0`, `end_minute` to `60`, `unaccounted`        |
+| to `false`, so the CLI string `7;8;11[00-30];!14` becomes                  |
 
 ```json
 [
@@ -248,24 +236,7 @@ Example `GET /api/v1/users/alice/config`:
   "limit_per_week": 50000,
   "limit_per_month": 200000,
   "track_inactive": false,
-  "hide_tray_icon": false,
-  "lockout": { "type": "terminate", "wake_from": null, "wake_to": null },
-  "playtime": {
-    "enabled": false,
-    "limit_override": false,
-    "allow_unaccounted_intervals": false,
-    "allowed_days": [1, 2, 3, 4, 5, 6, 7],
-    "limits_per_day": {
-      "1": 1800,
-      "2": 1800,
-      "3": 1800,
-      "4": 1800,
-      "5": 1800,
-      "6": 3600,
-      "7": 3600
-    },
-    "activities": [{ "process": "csgo_linux", "description": "CS: GO" }]
-  }
+  "hide_tray_icon": false
 }
 ```
 
@@ -288,10 +259,7 @@ names follow the daemon's keys (`ACTUAL_*` from
   "time_left_day": 5966,
   "time_left_continuous": 3600,
   "time_spent_session": 900,
-  "time_inactive_session": 60,
-  "playtime_spent_day": 0,
-  "playtime_left_day": 1800,
-  "playtime_active_activity_count": 0
+  "time_inactive_session": 60
 }
 ```
 
@@ -308,8 +276,7 @@ names follow the daemon's keys (`ACTUAL_*` from
 `server/config/configprocessor.py`). The response is `200` with the
 `status` resource. `add` and `subtract` are not idempotent, so a
 client that retries after a network failure may grant time twice; see
-"Later additions". `playtime-left` is identical and maps to
-`setPlayTimeLeft`.
+"Later additions".
 
 The two operations used by the NixOS test are compositions, not
 endpoints: "forbid login" is
@@ -325,14 +292,14 @@ exemption is `POST .../time-left {"operation": "add", "seconds": 300}`.
 
 `timekprw` serves a small single-page UI from `web/static/` at `/`
 (plain HTML, CSS and JavaScript; no build step). It lists users with
-their time left, edits a user's limits, allowed hours, lockout and
-PlayTime settings (sending only the changed fields as one `PATCH`),
-adds or removes time for today, and edits the daemon settings. The
+their time left, edits a user's limits, allowed hours and options
+(sending only the changed fields as one `PATCH`), adds or removes
+time for today, and edits the daemon settings. The
 token is entered once per browser tab.
 
 ### Later additions
 
-- An `Idempotency-Key` header on the two `POST` endpoints, with the
+- An `Idempotency-Key` header on the `POST` endpoint, with the
   backend replaying the stored response for a repeated key, so that
   a retried `add` cannot grant time twice.
 - The GTK administration tool talking to this API (it still uses
@@ -347,32 +314,24 @@ token is entered once per browser tab.
 
 ## Mapping from `timekpra`
 
-| `timekpra`                                  | API                                                                      |
-| ------------------------------------------- | ------------------------------------------------------------------------ |
-| `--userlist`                                | `GET /users`                                                             |
-| `--userinfo U`                              | `GET /users/U/config`                                                    |
-| `--userinfort U`                            | `GET /users/U/status`                                                    |
-| `--setalloweddays U '1;2;3'`                | `PATCH /users/U/config {"allowed_days": [1,2,3]}`                        |
-| `--setallowedhours U DAY '7;8[0-30]'`       | `PUT /users/U/config/allowed-hours/DAY [...]`                            |
-| `--settimelimits U '7200;...'`              | `PATCH /users/U/config {"limits_per_day": {...}}`                        |
-| `--settimelimitweek U N`                    | `PATCH /users/U/config {"limit_per_week": N}`                            |
-| `--settimelimitmonth U N`                   | `PATCH /users/U/config {"limit_per_month": N}`                           |
-| `--settrackinactive U B`                    | `PATCH /users/U/config {"track_inactive": B}`                            |
-| `--sethidetrayicon U B`                     | `PATCH /users/U/config {"hide_tray_icon": B}`                            |
-| `--setlockouttype U T[;F;T]`                | `PATCH /users/U/config {"lockout": {...}}`                               |
-| `--settimeleft U OP N`                      | `POST /users/U/time-left {"operation", "seconds"}`                       |
-| `--setplaytimeenabled U B`                  | `PATCH /users/U/config {"playtime": {"enabled": B}}`                     |
-| `--setplaytimelimitoverride U B`            | `PATCH /users/U/config {"playtime": {"limit_override": B}}`              |
-| `--setplaytimeunaccountedintervalsflag U B` | `PATCH /users/U/config {"playtime": {"allow_unaccounted_intervals": B}}` |
-| `--setplaytimealloweddays U '1;2'`          | `PATCH /users/U/config {"playtime": {"allowed_days": [1,2]}}`            |
-| `--setplaytimelimits U '1800;...'`          | `PATCH /users/U/config {"playtime": {"limits_per_day": {...}}}`          |
-| `--setplaytimeactivities U 'p[desc];...'`   | `PUT /users/U/config/playtime/activities [...]`                          |
-| `--setplaytimeleft U OP N`                  | `POST /users/U/playtime-left {"operation", "seconds"}`                   |
+| `timekpra`                            | API                                                |
+| ------------------------------------- | -------------------------------------------------- |
+| `--userlist`                          | `GET /users`                                       |
+| `--userinfo U`                        | `GET /users/U/config`                              |
+| `--userinfort U`                      | `GET /users/U/status`                              |
+| `--setalloweddays U '1;2;3'`          | `PATCH /users/U/config {"allowed_days": [1,2,3]}`  |
+| `--setallowedhours U DAY '7;8[0-30]'` | `PUT /users/U/config/allowed-hours/DAY [...]`      |
+| `--settimelimits U '7200;...'`        | `PATCH /users/U/config {"limits_per_day": {...}}`  |
+| `--settimelimitweek U N`              | `PATCH /users/U/config {"limit_per_week": N}`      |
+| `--settimelimitmonth U N`             | `PATCH /users/U/config {"limit_per_month": N}`     |
+| `--settrackinactive U B`              | `PATCH /users/U/config {"track_inactive": B}`      |
+| `--sethidetrayicon U B`               | `PATCH /users/U/config {"hide_tray_icon": B}`      |
+| `--settimeleft U OP N`                | `POST /users/U/time-left {"operation", "seconds"}` |
 
 ## Sources
 
 - CLI command list: `common/constants/constants.py`, `TK_USER_ADMIN_COMMANDS`.
 - CLI argument parsing and output formatting: `client/admin/adminprocessor.py`.
 - D-Bus admin methods and their signatures: `server/interface/dbus/daemon.py`.
-- Validation rules (lockout types, time-left operations, seven daily limits, hour map shape): `server/config/configprocessor.py`.
+- Validation rules (time-left operations, seven daily limits, hour map shape): `server/config/configprocessor.py`.
 - User list derivation from config files: `server/config/userhelper.py`, `getSavedUserList`.

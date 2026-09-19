@@ -38,8 +38,6 @@ class timekprNotifications:
         # notification (to replace itself in case they are incoming fast)
         self._lastNotifId = 0
         self._lastNotifDT = datetime.now()
-        self._lastPTNotifId = 0
-        self._lastPTNotifDT = datetime.now()
 
         # session bus
         self._userSessionBus = dbus.SessionBus()
@@ -494,27 +492,15 @@ class timekprNotifications:
                         "TK_MSG_NOTIFICATION_TIME_LEFT_2", pTimeLeft.minute
                     ),
                     msg.getTranslation(
-                        "TK_MSG_NOTIFICATION_PLAYTIME_LEFT_3"
-                        if pMsgType == "PlayTime"
-                        else "TK_MSG_NOTIFICATION_TIME_LEFT_3",
-                        pTimeLeft.second,
+                        "TK_MSG_NOTIFICATION_TIME_LEFT_3", pTimeLeft.second
                     ),
                 )
             )
         elif pMsgCode == cons.TK_MSG_CODE_TIMECRITICAL:
-            # depending on type
-            if pMsgType == cons.TK_CTRL_RES_L:
-                msgCode = "TK_MSG_NOTIFICATION_TIME_IS_UP_1L"
-            elif pMsgType in (cons.TK_CTRL_RES_S, cons.TK_CTRL_RES_W):
-                msgCode = "TK_MSG_NOTIFICATION_TIME_IS_UP_1S"
-            elif pMsgType == cons.TK_CTRL_RES_D:
-                msgCode = "TK_MSG_NOTIFICATION_TIME_IS_UP_1D"
-            else:
-                msgCode = "TK_MSG_NOTIFICATION_TIME_IS_UP_1T"
             # msg
             msgStr = " ".join(
                 (
-                    msg.getTranslation(msgCode),
+                    msg.getTranslation("TK_MSG_NOTIFICATION_TIME_IS_UP_1T"),
                     msg.getTranslation(
                         "TK_MSG_NOTIFICATION_TIME_IS_UP_2", pTimeLeft.second
                     ),
@@ -607,26 +593,12 @@ class timekprNotifications:
                         hints["sound-file"] = cons.TK_CL_NOTIF_SND_FILE_WARN
 
             # calculate last time notification is shown (if this is too recent - replace, otherwise add new notification)
-            if (
-                pMsgType == "PlayTime"
-                and self._lastPTNotifId != 0
-                and abs((datetime.now() - self._lastPTNotifDT).total_seconds())
-                >= (
-                    notificationTimeout
-                    if notificationTimeout > 0
-                    else abs((datetime.now() - self._lastPTNotifDT).total_seconds()) + 1
-                )
-            ):
-                self._lastPTNotifId = 0
-            elif (
-                pMsgType != "PlayTime"
-                and self._lastNotifId != 0
-                and abs((datetime.now() - self._lastNotifDT).total_seconds())
-                >= (
-                    notificationTimeout
-                    if notificationTimeout > 0
-                    else abs((datetime.now() - self._lastNotifDT).total_seconds()) + 1
-                )
+            if self._lastNotifId != 0 and abs(
+                (datetime.now() - self._lastNotifDT).total_seconds()
+            ) >= (
+                notificationTimeout
+                if notificationTimeout > 0
+                else abs((datetime.now() - self._lastNotifDT).total_seconds()) + 1
             ):
                 self._lastNotifId = 0
 
@@ -641,11 +613,7 @@ class timekprNotifications:
             log.log(
                 cons.TK_LOG_LEVEL_DEBUG,
                 "preshow: {}, {}, {}".format(
-                    msg.getTranslation(
-                        "TK_MSG_NOTIFICATION_PLAYTIME_TITLE"
-                        if pMsgType == "PlayTime"
-                        else "TK_MSG_NOTIFICATION_TITLE"
-                    ),
+                    msg.getTranslation("TK_MSG_NOTIFICATION_TITLE"),
                     msgStr,
                     int(notificationTimeout),
                 ),
@@ -658,15 +626,9 @@ class timekprNotifications:
                 # call dbus method
                 notifId = self._dbusConnections[self.CL_CONN_NOTIF][self.CL_IF].Notify(
                     "Timekpr",
-                    self._lastPTNotifId
-                    if pMsgType == "PlayTime"
-                    else self._lastNotifId,
+                    self._lastNotifId,
                     timekprIcon,
-                    msg.getTranslation(
-                        "TK_MSG_NOTIFICATION_PLAYTIME_TITLE"
-                        if pMsgType == "PlayTime"
-                        else "TK_MSG_NOTIFICATION_TITLE"
-                    ),
+                    msg.getTranslation("TK_MSG_NOTIFICATION_TITLE"),
                     msgStr,
                     actions,
                     hints,
@@ -689,13 +651,9 @@ class timekprNotifications:
                         f'WARNING (DBUS): "{dbusEx!s}" in "{__name__}.{self.notifyUser.__name__}"',
                     )
 
-            # save notification ID (only if message is not about PlayTime, otherwise it may dismiss standard time or vice versa)
-            if pMsgType == "PlayTime":
-                self._lastPTNotifId = notifId
-                self._lastPTNotifDT = datetime.now()
-            else:
-                self._lastNotifId = notifId
-                self._lastNotifDT = datetime.now()
+            # save notification ID
+            self._lastNotifId = notifId
+            self._lastNotifDT = datetime.now()
 
             # user wants to hear things
             if (
@@ -750,8 +708,6 @@ class timekprNotifications:
         # check and reset which notification has changed
         if self._lastNotifId == pNotifId:
             self._lastNotifId = 0
-        elif self._lastPTNotifId == pNotifId:
-            self._lastPTNotifId = 0
 
     # --------------- request methods to timekpr --------------- #
 

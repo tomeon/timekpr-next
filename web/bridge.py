@@ -225,34 +225,6 @@ class Bridge:
                     webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
                 )
         apply_scalars(steps, "", patch, webapi.USER_FIELDS)
-        if patch.lockout is not None:
-            wake_from, wake_to = webapi.lockout_wake(patch.lockout.model_dump())
-            steps.run(
-                "lockout",
-                "setLockoutType",
-                patch.lockout.type,
-                str(wake_from),
-                str(wake_to),
-            )
-        if patch.playtime is not None:
-            apply_days_and_limits(
-                steps,
-                "playtime.",
-                patch.playtime,
-                current.playtime,
-                "setPlayTimeAllowedDays",
-                "setPlayTimeLimitsForDays",
-            )
-            apply_scalars(steps, "playtime.", patch.playtime, webapi.PLAYTIME_FIELDS)
-            if patch.playtime.activities is not None:
-                steps.run(
-                    "playtime.activities",
-                    "setPlayTimeActivities",
-                    [
-                        [activity.process, activity.description]
-                        for activity in patch.playtime.activities
-                    ],
-                )
         return self.get_user_config(username)
 
     def set_allowed_hours(self, username, day, entries):
@@ -266,10 +238,10 @@ class Bridge:
         )
         return self.get_user_config(username)
 
-    def set_time_left(self, username, request, playtime=False):
+    def set_time_left(self, username, request):
         self._require_user(username)
         self._call(
-            "setPlayTimeLeft" if playtime else "setTimeLeft",
+            "setTimeLeft",
             username,
             webapi.TIME_LEFT_OPERATIONS[request.operation],
             request.seconds,

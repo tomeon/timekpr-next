@@ -11,22 +11,11 @@ def test_user_config_round_trip():
     config = webapi.user_config_from_daemon(info)
     back = webapi.user_config_to_daemon(config)
     expected = {
-        key: value
-        for key, value in info.items()
-        if not key.startswith(("TIME_", "PLAYTIME_LEFT", "PLAYTIME_SPENT"))
+        key: value for key, value in info.items() if not key.startswith("TIME_")
     }
     assert back == expected
     # in the daemon's key order, so that timekpra prints the same thing
     assert list(back) == list(expected)
-
-
-def test_suspendwake_round_trip():
-    info = plain(default_user())
-    info["LOCKOUT_TYPE"] = "suspendwake"
-    info["WAKEUP_HOUR_INTERVAL"] = "7;18"
-    config = webapi.user_config_from_daemon(info)
-    assert config["lockout"] == {"type": "suspendwake", "wake_from": 7, "wake_to": 18}
-    assert webapi.user_config_to_daemon(config)["WAKEUP_HOUR_INTERVAL"] == "7;18"
 
 
 def test_status_round_trip():

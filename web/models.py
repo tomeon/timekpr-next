@@ -16,7 +16,6 @@ Hour = Annotated[int, Field(ge=0, le=23)]
 Minute = Annotated[int, Field(ge=0, le=60)]
 Seconds = Annotated[int, Field(ge=0)]
 
-LockoutType = Literal["lock", "suspend", "suspendwake", "terminate", "kill", "shutdown"]
 TimeLeftOperation = Literal["add", "subtract", "set"]
 
 
@@ -58,41 +57,6 @@ class HourEntry(Model):
         return self
 
 
-class Lockout(Model):
-    type: LockoutType
-    wake_from: Hour | None = None
-    wake_to: Hour | None = None
-
-    @model_validator(mode="after")
-    def _check_wake(self):
-        wake = (self.wake_from, self.wake_to)
-        if self.type == "suspendwake":
-            if None in wake:
-                raise ValueError("suspendwake needs wake_from and wake_to")
-        elif wake != (None, None):
-            raise ValueError("wake_from and wake_to are only valid with suspendwake")
-        return self
-
-
-class Activity(Model):
-    """A PlayTime activity: a process name (mask) and a description"""
-
-    process: Annotated[str, Field(min_length=1)]
-    description: str = ""
-
-
-class PlayTimeConfig(Model):
-    enabled: bool
-    limit_override: bool
-    allow_unaccounted_intervals: bool
-    allowed_days: list[Weekday]
-    limits_per_day: dict[Weekday, Seconds]
-    activities: list[Activity]
-
-
-PlayTimeConfigPatch = partial(PlayTimeConfig, "PlayTimeConfigPatch")
-
-
 class UserConfig(Model):
     allowed_days: list[Weekday]
     # only days present in allowed_days carry a limit (the daemon stores
@@ -103,12 +67,9 @@ class UserConfig(Model):
     limit_per_month: Seconds
     track_inactive: bool
     hide_tray_icon: bool
-    lockout: Lockout
-    playtime: PlayTimeConfig
 
 
-class UserConfigPatch(partial(UserConfig, "_UserConfigPatchBase")):
-    playtime: PlayTimeConfigPatch | None = None
+UserConfigPatch = partial(UserConfig, "UserConfigPatch")
 
 
 # ## user status ##
@@ -124,12 +85,9 @@ class UserStatus(Model):
     time_spent_week: int
     time_spent_month: int
     time_left_day: int
-    playtime_spent_day: int
-    playtime_left_day: int
     time_left_continuous: int | None = None
     time_spent_session: int | None = None
     time_inactive_session: int | None = None
-    playtime_active_activity_count: int | None = None
 
 
 class UserSummary(Model):
@@ -162,8 +120,6 @@ class ServerConfig(Model):
     session_types_tracked: list[str]
     session_types_excluded: list[str]
     users_excluded: list[str]
-    playtime_enabled: bool
-    playtime_enhanced_activity_monitor: bool
 
 
 ServerConfigPatch = partial(ServerConfig, "ServerConfigPatch")

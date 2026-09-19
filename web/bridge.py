@@ -11,6 +11,7 @@ and the order in which a PATCH is applied.
 
 import gettext
 import os
+import re
 import threading
 import time
 
@@ -31,23 +32,30 @@ _DAEMON_FAILURES = (
     "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR",
     "TK_MSG_CONFIG_LOADER_SAVECONTROL_UNEXPECTED_ERROR",
 )
-_daemon_failure_texts = None
+# the daemon's replies when what the request names does not exist
+_DAEMON_NOT_FOUND = (
+    "TK_MSG_CONFIG_LOADER_USER_NOTFOUND",
+    "TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND",
+    "TK_MSG_CONFIG_LOADER_POLICY_NOTFOUND",
+)
+_daemon_texts = {}
 
 
-def daemon_failure_texts():
-    """The daemon's failure messages in every locale timekpr ships.  The
-    daemon only reports -1 and a message translated in its own locale, which
-    need not be ours, so all translations are recognized."""
-    global _daemon_failure_texts
-    if _daemon_failure_texts is None:
-        texts = set()
+def daemon_texts(keys):
+    """The daemon's messages for the given keys in every locale timekpr
+    ships, as they come back with a -1 result.  The daemon only reports a
+    message translated in its own locale, which need not be ours, so all
+    translations are recognized.  Messages with a placeholder are turned
+    into regular expressions."""
+    if keys not in _daemon_texts:
+        patterns = set()
         try:
             languages = os.listdir(cons.TK_LOCALIZATION_DIR)
         except OSError:
             languages = []
-        for key in _DAEMON_FAILURES:
+        for key in keys:
             source = msg._messages[key]["s"]
-            texts.update({source, msg.getTranslation(key)})
+            texts = {source, msg.getTranslation(key)}
             for language in languages:
                 try:
                     texts.add(
@@ -57,8 +65,13 @@ def daemon_failure_texts():
                     )
                 except OSError:
                     pass
-        _daemon_failure_texts = texts
-    return _daemon_failure_texts
+            for text in texts:
+                # "%%s" in the source is "%s" once formatted by the daemon
+                patterns.add(
+                    "^" + ".*".join(re.escape(part) for part in text.split("%%s")) + "$"
+                )
+        _daemon_texts[keys] = re.compile("|".join(patterns), re.DOTALL)
+    return _daemon_texts[keys]
 
 
 class DaemonError(Exception):
@@ -136,10 +149,14 @@ class Bridge:
             # the timekpr group; the connector appends the daemon's reason to
             # its own message, which is in our locale
             raise DaemonError(502, message)
-        if code != 0 and message in daemon_failure_texts():
+        if code != 0 and daemon_texts(_DAEMON_FAILURES).match(message):
             # the daemon could not apply a valid request (its log has the reason,
             # a read-only /etc/timekpr for example)
             raise DaemonError(500, message)
+        if code != 0 and daemon_texts(_DAEMON_NOT_FOUND).match(message):
+            # what the request names does not exist: a user nobody knows, a
+            # group without a policy, a policy that is not there to delete
+            raise DaemonError(404, message)
         if code != 0:
             raise DaemonError(400, message)
         return result[2] if len(result) > 2 else None
@@ -182,15 +199,10 @@ class Bridge:
                 user.status = self.get_user_status(user.username)
         return users
 
-    def _require_user(self, username):
-        """The daemon answers an effective policy for any name; only the
-        users it lists (those with a policy, present in the system, or
-        known members of a group with a policy) are resources here"""
-        if username not in [user[0] for user in self._call("getUserList")]:
-            raise DaemonError(404, f"timekpr has no configuration for user {username}")
-
     def _user_info(self, username, level):
-        self._require_user(username)
+        """The daemon answers the effective policy of every user it or NSS
+        knows (a directory user need not be listed), and "not found" for
+        any other name, which _call turns into a 404"""
         return self._call("getUserConfigurationAndInformation", username, level)
 
     def get_user(self, username):
@@ -235,7 +247,6 @@ class Bridge:
 
     def set_allowed_hours(self, username, day, entries):
         """day is an ISO weekday or "all" """
-        self._require_user(username)
         Steps(self, username).run(
             f"allowed_hours.{day}",
             "setAllowedHours",
@@ -245,7 +256,6 @@ class Bridge:
         return self.get_user_config(username)
 
     def set_time_left(self, username, request):
-        self._require_user(username)
         self._call(
             "setTimeLeft",
             username,
@@ -257,14 +267,8 @@ class Bridge:
     # ## policies ##
 
     def _delete_policy(self, target, what):
-        try:
-            self._call("deletePolicy", target)
-        except DaemonError as ex:
-            # the only request the daemon refuses here is deleting a policy
-            # that does not exist
-            if ex.status != 400:
-                raise
-            raise DaemonError(404, f"timekpr has no policy for {what}")
+        # a policy that is not there to delete is a 404 (see _call)
+        self._call("deletePolicy", target)
 
     def delete_user_policy(self, username):
         """The user's group policies (or the defaults) apply again; the
@@ -288,12 +292,8 @@ class Bridge:
             for group in self._call("getGroupList")
         ]
 
-    def _require_group(self, group):
-        if group not in [entry[0] for entry in self._call("getGroupList")]:
-            raise DaemonError(404, f"timekpr has no policy for group {group}")
-
     def _group_info(self, group):
-        self._require_group(group)
+        # a group without a policy is a 404 (see _call)
         return self._call(
             "getUserConfigurationAndInformation",
             group_target(group),

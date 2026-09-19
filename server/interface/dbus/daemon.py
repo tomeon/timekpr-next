@@ -615,7 +615,8 @@ class timekprDaemon(dbus.service.Object):
             timekprUStore = timekprUserStore()
             # check if we have this user
             userList = timekprUStore.getSavedUserList(
-                self._timekprConfig.getTimekprConfigDir()
+                self._timekprConfig.getTimekprConfigDir(),
+                list(self._timekprUserList),
             )
         except Exception as unexpectedException:
             # logging

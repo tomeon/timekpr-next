@@ -276,16 +276,18 @@ def expect_login_terminated(user, password):
 def exercise(user, password, admin):
     """A user's own policy, made before the user ever logged in: nothing
     is created on login any more, and a setting creates the policy."""
-    with subtest(f"{user}: {admin.name} knows the user"):
-        # the list holds every user of the system, logged in or not
-        assert admin.knows(user)
-
     with subtest(f"{user}: the defaults apply before any policy is made"):
         assert admin.policy_source(user) == "default"
 
     with subtest(f"{user}: forbid all screen time via {admin.name} before any login"):
         admin.forbid(user)
         assert admin.policy_source(user) == "user"
+
+    with subtest(f"{user}: {admin.name} knows the user"):
+        # the list holds the users of the system and every user with a
+        # policy: a directory user, whom the system cannot enumerate, is
+        # listed once they have one (or are logged in)
+        assert admin.knows(user)
 
     with subtest(f"{user}: a restricted login is terminated"):
         expect_login_terminated(user, password)
@@ -424,7 +426,7 @@ def check_web_api():
         bad = machine.succeed(
             f"timekpra --server {TIMEKPRW_UNIX_URL} --userinfo {NOSUCHUSER}"
         )
-        assert f"no configuration for user {NOSUCHUSER}" in bad, bad
+        assert "is not found" in bad, bad
 
     with subtest("timekpra --server: settings arrive at the daemon"):
         UNIX.run("--setallowedhours", ALICE, "3", "7;11[0-30];!14")

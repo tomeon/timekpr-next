@@ -18,9 +18,11 @@ from timekpr.common.utils.config import (
     timekprUserControl,
 )
 from timekpr.server.config.policy import (
+    TK_POLICY_SOURCE_USER,
     groupName,
     isGroupTarget,
     timekprPolicyStore,
+    userExists,
 )
 
 
@@ -224,6 +226,18 @@ class timekprUserConfigurationProcessor:
             result, message = 0, ""
             resolution = self._policyStore.resolve(self._userName)
             self._timekprUserConfig = resolution.config
+            # a name with no policy of its own that neither NSS nor the
+            # daemon knows is not a user (the defaults would apply to any
+            # string otherwise)
+            if (
+                resolution.source != TK_POLICY_SOURCE_USER
+                and not pIsUserLoggedIn
+                and not userExists(self._userName)
+            ):
+                result = -1
+                message = msg.getTranslation("TK_MSG_CONFIG_LOADER_USER_NOTFOUND") % (
+                    self._userName
+                )
 
         # if we are still fine
         if result != 0:

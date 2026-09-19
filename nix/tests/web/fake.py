@@ -126,6 +126,12 @@ class FakeConnector:
                     {},
                 )
             return 0, "", dict(self.groups[name])
+        if name not in self.users:
+            return (
+                -1,
+                msg.getTranslation("TK_MSG_CONFIG_LOADER_USER_NOTFOUND") % (name),
+                {},
+            )
         info = dict(self.users[name])
         if name == "alice":
             info.update(LIVE)
@@ -155,7 +161,8 @@ class FakeConnector:
             return self.groups.setdefault(target, default_group())
         if target not in self.policies:
             self.policies.add(target)
-            self.users[target]["POLICY_SOURCE"] = "user"
+            # a setter creates a policy for any name, known or not
+            self.users.setdefault(target, default_user())["POLICY_SOURCE"] = "user"
         return self.users[target]
 
     def setOverrides(self, target, overrides):

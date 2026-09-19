@@ -131,12 +131,15 @@ class timekprUserStore:
         # use passed value
         return pConfigDir
 
-    def getSavedUserList(self, pConfigDir=None):
+    def getSavedUserList(self, pConfigDir=None, pExtraUsers=()):
         """
         Get the user list: the users with a policy file (which may name
         users that do not exist any more), the users present in the
-        system, and the known members of the groups with a policy.  Every
-        entry is [user, full name, where the effective policy comes from].
+        system, the known members of the groups with a policy, and the
+        given extra users (the daemon passes the ones it is tracking, so
+        that a directory user, whom the system cannot enumerate, is listed
+        while logged in).  Every entry is [user, full name, where the
+        effective policy comes from].
         """
         # initialize username storage
         userList = []
@@ -166,8 +169,9 @@ class timekprUserStore:
             # keep the validated ones
             if userNameValidated:
                 userNames.add(rUser)
-        # the users in the system
+        # the users in the system, and the ones given
         userNames.update(users)
+        userNames.update(pExtraUsers)
         # the known members of the groups with a policy (best effort)
         for rGroup in policyStore.getGroupsWithPolicy():
             userNames.update(policyStore.getGroupMembers(rGroup, users))

@@ -107,7 +107,7 @@ def test_socket_activation_and_connector(tmp_path, token_file):
         result, message, info = via_unix.getUserConfigurationAndInformation(
             "nobody", "F"
         )
-        assert result == -1 and "no configuration" in message and info == {}
+        assert result == -1 and "is not found" in message and info == {}
 
         # groups and policies, as timekpra --grouplist and friends use them
         result, _, groups = via_unix.getGroupList()

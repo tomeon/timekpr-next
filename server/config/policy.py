@@ -62,6 +62,16 @@ def groupTarget(pGroup):
     return f"{cons.TK_GROUP_TARGET_PREFIX}{pGroup}"
 
 
+def userExists(pUserName):
+    """Whether NSS knows the user (a directory user need not be enumerable,
+    so this is asked by name, never from a listing)"""
+    try:
+        pwd.getpwnam(pUserName)
+    except KeyError:
+        return False
+    return True
+
+
 def getUserGroups(pUserName):
     """The names of the groups a user belongs to, as NSS knows them (empty
     set for a user NSS does not know)"""

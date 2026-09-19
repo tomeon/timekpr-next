@@ -5,6 +5,7 @@ See docs/web-api.md for the API this implements.  Field names follow that
 document; the mapping onto the daemon's configuration keys lives in
 bridge.py.
 """
+
 from typing import Annotated, Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
@@ -21,19 +22,30 @@ TimeLeftOperation = Literal["add", "subtract", "set"]
 
 class Model(BaseModel):
     """Base for every API model: unknown fields are an error"""
+
     model_config = ConfigDict(extra="forbid")
 
 
 def partial(model, name):
     """Derive a model with every field optional (for PATCH bodies)"""
-    fields = {fname: (Optional[finfo.rebuild_annotation()], None) for fname, finfo in model.model_fields.items()}
-    return create_model(name, __base__=Model, __doc__="Partial update: every field is optional", **fields)
+    fields = {
+        fname: (Optional[finfo.rebuild_annotation()], None)
+        for fname, finfo in model.model_fields.items()
+    }
+    return create_model(
+        name,
+        __base__=Model,
+        __doc__="Partial update: every field is optional",
+        **fields,
+    )
 
 
 # ## user configuration ##
 
+
 class HourEntry(Model):
     """One allowed hour of a day, optionally only a part of it"""
+
     hour: Hour
     start_minute: Minute = 0
     end_minute: Minute = 60
@@ -64,6 +76,7 @@ class Lockout(Model):
 
 class Activity(Model):
     """A PlayTime activity: a process name (mask) and a description"""
+
     process: Annotated[str, Field(min_length=1)]
     description: str = ""
 
@@ -100,9 +113,11 @@ class UserConfigPatch(partial(UserConfig, "_UserConfigPatchBase")):
 
 # ## user status ##
 
+
 class UserStatus(Model):
     """Counters for a user; the actual_* values exist only while the daemon
     tracks a session of the user"""
+
     session_active: bool
     time_spent_balance: int
     time_spent_day: int
@@ -136,6 +151,7 @@ class TimeLeftRequest(Model):
 
 # ## daemon configuration ##
 
+
 class ServerConfig(Model):
     log_level: Annotated[int, Field(ge=1, le=3)]
     poll_time: Annotated[int, Field(ge=1)]
@@ -155,6 +171,7 @@ ServerConfigPatch = partial(ServerConfig, "ServerConfigPatch")
 
 # ## service ##
 
+
 class Health(Model):
     daemon: Literal["ok", "unreachable"]
     timekpr_version: str
@@ -167,6 +184,7 @@ class FieldError(Model):
 
 class Problem(Model):
     """RFC 9457 problem details"""
+
     type: str = "about:blank"
     title: str
     status: int

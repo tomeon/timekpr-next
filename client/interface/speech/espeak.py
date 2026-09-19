@@ -10,6 +10,7 @@ import time
 # init speech
 try:
     from espeak import espeak as espeak
+
     _USE_SPEECH = True
 except (ImportError, ValueError):
     _USE_SPEECH = False
@@ -17,16 +18,19 @@ except (ImportError, ValueError):
     if not _USE_SPEECH:
         try:
             from espeakng import ESpeakNG as espeakng
+
             _USE_SPEECH_NG = True
         except (ImportError, ValueError):
             _USE_SPEECH_NG = False
             pass
     pass
 
+
 def isSupported():
     """Return whether speech can be used"""
     # result
-    return (_USE_SPEECH or _USE_SPEECH_NG)
+    return _USE_SPEECH or _USE_SPEECH_NG
+
 
 class timekprSpeech(object):
     """Class will provide speech synth functionality"""
@@ -46,7 +50,7 @@ class timekprSpeech(object):
         elif _USE_SPEECH_NG:
             # ng espeak
             self.espeak = espeakng()
-            self.espeak.voice = self.getDefaultSpeechLanguage();
+            self.espeak.voice = self.getDefaultSpeechLanguage()
             self.espeak.pitch = 1
             self.espeak.speed = 135
             self.espeak.range = 600

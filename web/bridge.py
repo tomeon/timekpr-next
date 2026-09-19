@@ -8,6 +8,7 @@ timekpr.common.utils.webapi (shared with timekpra's HTTP connector);
 this module adds the Pydantic models, the daemon's error conventions,
 and the order in which a PATCH is applied.
 """
+
 import gettext
 import os
 import threading
@@ -49,7 +50,11 @@ def daemon_failure_texts():
             texts.update({source, msg.getTranslation(key)})
             for language in languages:
                 try:
-                    texts.add(gettext.translation("timekpr", cons.TK_LOCALIZATION_DIR, languages=[language]).gettext(source))
+                    texts.add(
+                        gettext.translation(
+                            "timekpr", cons.TK_LOCALIZATION_DIR, languages=[language]
+                        ).gettext(source)
+                    )
                 except OSError:
                     pass
         _daemon_failure_texts = texts
@@ -101,7 +106,10 @@ class Bridge(object):
         if self._connector is None:
             # importing dbus-related modules is deferred so that the API
             # models can be used without a system bus (tests)
-            from timekpr.client.interface.dbus.administration import timekprAdminConnector
+            from timekpr.client.interface.dbus.administration import (
+                timekprAdminConnector,
+            )
+
             try:
                 self._connector = timekprAdminConnector()
             except dbus.DBusException as ex:
@@ -121,7 +129,9 @@ class Bridge(object):
         code, message = result[0], result[1]
         if code == _RESULT_NOT_READY or (code != 0 and not connected):
             raise DaemonError(503, message)
-        if code != 0 and message.startswith(msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED")):
+        if code != 0 and message.startswith(
+            msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED")
+        ):
             # the daemon (through polkit) refused us: timekprw's user is not in
             # the timekpr group; the connector appends the daemon's reason to
             # its own message, which is in our locale
@@ -143,12 +153,16 @@ class Bridge(object):
                 self._call("getUserList")
                 result = models.Health(daemon="ok", timekpr_version=cons.TK_VERSION)
             except DaemonError:
-                result = models.Health(daemon="unreachable", timekpr_version=cons.TK_VERSION)
+                result = models.Health(
+                    daemon="unreachable", timekpr_version=cons.TK_VERSION
+                )
             self._health = (time.monotonic(), result)
         return result
 
     def get_server_config(self):
-        return models.ServerConfig(**webapi.server_config_from_daemon(self._call("getTimekprConfiguration")))
+        return models.ServerConfig(
+            **webapi.server_config_from_daemon(self._call("getTimekprConfiguration"))
+        )
 
     def patch_server_config(self, patch):
         apply_scalars(Steps(self), "", patch, webapi.SERVER_FIELDS)
@@ -157,7 +171,10 @@ class Bridge(object):
     # ## users ##
 
     def list_users(self, include_status=False):
-        users = [models.UserSummary(username=user[0], full_name=user[1]) for user in self._call("getUserList")]
+        users = [
+            models.UserSummary(username=user[0], full_name=user[1])
+            for user in self._call("getUserList")
+        ]
         if include_status:
             for user in users:
                 user.status = self.get_user_status(user.username)
@@ -165,7 +182,9 @@ class Bridge(object):
 
     def _require_user(self, username):
         if username not in [user[0] for user in self._call("getUserList")]:
-            raise DaemonError(404, "timekpr has no configuration for user %s" % (username))
+            raise DaemonError(
+                404, "timekpr has no configuration for user %s" % (username)
+            )
 
     def _user_info(self, username, level):
         self._require_user(username)
@@ -173,41 +192,90 @@ class Bridge(object):
 
     def get_user(self, username):
         info = self._user_info(username, cons.TK_CL_INF_FULL)
-        return models.User(username=username, config=models.UserConfig(**webapi.user_config_from_daemon(info)), status=models.UserStatus(**webapi.user_status_from_daemon(info)))
+        return models.User(
+            username=username,
+            config=models.UserConfig(**webapi.user_config_from_daemon(info)),
+            status=models.UserStatus(**webapi.user_status_from_daemon(info)),
+        )
 
     def get_user_config(self, username):
-        return models.UserConfig(**webapi.user_config_from_daemon(self._user_info(username, cons.TK_CL_INF_FULL)))
+        return models.UserConfig(
+            **webapi.user_config_from_daemon(
+                self._user_info(username, cons.TK_CL_INF_FULL)
+            )
+        )
 
     def get_user_status(self, username):
-        return models.UserStatus(**webapi.user_status_from_daemon(self._user_info(username, cons.TK_CL_INF_FULL)))
+        return models.UserStatus(
+            **webapi.user_status_from_daemon(
+                self._user_info(username, cons.TK_CL_INF_FULL)
+            )
+        )
 
     def patch_user_config(self, username, patch):
         current = self.get_user_config(username)
         steps = Steps(self, username)
-        apply_days_and_limits(steps, "", patch, current, "setAllowedDays", "setTimeLimitForDays")
+        apply_days_and_limits(
+            steps, "", patch, current, "setAllowedDays", "setTimeLimitForDays"
+        )
         if patch.allowed_hours is not None:
             for day, entries in patch.allowed_hours.items():
-                steps.run("allowed_hours.%s" % (day), "setAllowedHours", str(day), webapi.hours_to_daemon([entry.model_dump() for entry in entries]))
+                steps.run(
+                    "allowed_hours.%s" % (day),
+                    "setAllowedHours",
+                    str(day),
+                    webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
+                )
         apply_scalars(steps, "", patch, webapi.USER_FIELDS)
         if patch.lockout is not None:
             wake_from, wake_to = webapi.lockout_wake(patch.lockout.model_dump())
-            steps.run("lockout", "setLockoutType", patch.lockout.type, str(wake_from), str(wake_to))
+            steps.run(
+                "lockout",
+                "setLockoutType",
+                patch.lockout.type,
+                str(wake_from),
+                str(wake_to),
+            )
         if patch.playtime is not None:
-            apply_days_and_limits(steps, "playtime.", patch.playtime, current.playtime, "setPlayTimeAllowedDays", "setPlayTimeLimitsForDays")
+            apply_days_and_limits(
+                steps,
+                "playtime.",
+                patch.playtime,
+                current.playtime,
+                "setPlayTimeAllowedDays",
+                "setPlayTimeLimitsForDays",
+            )
             apply_scalars(steps, "playtime.", patch.playtime, webapi.PLAYTIME_FIELDS)
             if patch.playtime.activities is not None:
-                steps.run("playtime.activities", "setPlayTimeActivities", [[activity.process, activity.description] for activity in patch.playtime.activities])
+                steps.run(
+                    "playtime.activities",
+                    "setPlayTimeActivities",
+                    [
+                        [activity.process, activity.description]
+                        for activity in patch.playtime.activities
+                    ],
+                )
         return self.get_user_config(username)
 
     def set_allowed_hours(self, username, day, entries):
         """day is an ISO weekday or "all" """
         self._require_user(username)
-        Steps(self, username).run("allowed_hours.%s" % (day), "setAllowedHours", "ALL" if day == "all" else str(day), webapi.hours_to_daemon([entry.model_dump() for entry in entries]))
+        Steps(self, username).run(
+            "allowed_hours.%s" % (day),
+            "setAllowedHours",
+            "ALL" if day == "all" else str(day),
+            webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
+        )
         return self.get_user_config(username)
 
     def set_time_left(self, username, request, playtime=False):
         self._require_user(username)
-        self._call("setPlayTimeLeft" if playtime else "setTimeLeft", username, webapi.TIME_LEFT_OPERATIONS[request.operation], request.seconds)
+        self._call(
+            "setPlayTimeLeft" if playtime else "setTimeLeft",
+            username,
+            webapi.TIME_LEFT_OPERATIONS[request.operation],
+            request.seconds,
+        )
         return self.get_user_status(username)
 
 
@@ -239,9 +307,15 @@ def apply_days_and_limits(steps, prefix, patch, current, days_setter, limits_set
     """Allowed days and their limits are coupled: the daemon stores limits
     positionally against the allowed days, so whenever either changes the
     limits are re-sent aligned with the (new) allowed days"""
-    days = sorted(set(patch.allowed_days)) if patch.allowed_days is not None else current.allowed_days
+    days = (
+        sorted(set(patch.allowed_days))
+        if patch.allowed_days is not None
+        else current.allowed_days
+    )
     if patch.allowed_days is not None:
         steps.run(prefix + "allowed_days", days_setter, [str(day) for day in days])
     if patch.allowed_days is not None or patch.limits_per_day is not None:
         limits = {**current.limits_per_day, **(patch.limits_per_day or {})}
-        steps.run(prefix + "limits_per_day", limits_setter, webapi.limits_list(days, limits))
+        steps.run(
+            prefix + "limits_per_day", limits_setter, webapi.limits_list(days, limits)
+        )

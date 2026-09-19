@@ -22,7 +22,9 @@ from timekpr.common.utils.misc import getNormalizedUserNames
 
 # user limits
 _limitsConfig = {}
-_loginManagers = [result.strip(None) for result in cons.TK_USERS_LOGIN_MANAGERS.split(";")]
+_loginManagers = [
+    result.strip(None) for result in cons.TK_USERS_LOGIN_MANAGERS.split(";")
+]
 
 # defaults
 _limitsConfig["UID_MIN"] = 1000
@@ -31,7 +33,9 @@ _limitsConfig["UID_MAX"] = 60000
 #   all users, max 101 chars
 #   linux users, extended with uppercase characters and first numeric or "." character
 #   domain users, extended with uppercase characters and first numeric or ".", and "@" symbol
-_userNameRegexp = re.compile("^[a-zA-Z0-9_\.]([a-zA-Z0-9_\.@-]{0,101}|[a-zA-Z0-9_\.@-]{0,100}\$)$")
+_userNameRegexp = re.compile(
+    "^[a-zA-Z0-9_\.]([a-zA-Z0-9_\.@-]{0,101}|[a-zA-Z0-9_\.@-]{0,100}\$)$"
+)
 
 
 # some distros are "different", login.defs may be in different dir, config reflects multiple dirs to check for the file
@@ -62,7 +66,7 @@ def isUserValid(pUserId, pUserName=None, pUserShell=None):
     # check user id
     if pUserId is not None and pUserId != "":
         # check normal users and to test in VMs default user (it may have UID of 999, -1 from limit)
-        isUIDOK = (int(pUserId) >= _limitsConfig["UID_MIN"] - 1)
+        isUIDOK = int(pUserId) >= _limitsConfig["UID_MIN"] - 1
         # check shell (if provided)
         if isUIDOK and pUserShell is not None:
             # uid is ok and shell is passed
@@ -76,13 +80,13 @@ def isUserValid(pUserId, pUserName=None, pUserShell=None):
                 # user is not ours
                 isUIDOK = False
     # fin
-    return(isUIDOK)
+    return isUIDOK
 
 
 def getTimekprLoginManagers():
     """Get login manager names"""
     global _loginManagers
-    return(_loginManagers)
+    return _loginManagers
 
 
 def setWakeUpByRTC(pWkeUpTimeEpoch):
@@ -137,15 +141,25 @@ class timekprUserStore(object):
         # go through our users
         for rUser in users:
             # get path of file
-            file = os.path.join(timekprConfigManager.getTimekprConfigDir(), cons.TK_USER_CONFIG_FILE % (rUser))
+            file = os.path.join(
+                timekprConfigManager.getTimekprConfigDir(),
+                cons.TK_USER_CONFIG_FILE % (rUser),
+            )
 
             # check if we have config for them
             if not os.path.isfile(file):
-                log.log(cons.TK_LOG_LEVEL_INFO, "setting up user \"%s\" with id %i" % (rUser, users[rUser][0]))
+                log.log(
+                    cons.TK_LOG_LEVEL_INFO,
+                    'setting up user "%s" with id %i' % (rUser, users[rUser][0]),
+                )
                 # user config
-                timekprUserConfig(timekprConfigManager.getTimekprConfigDir(), rUser).initUserConfiguration()
+                timekprUserConfig(
+                    timekprConfigManager.getTimekprConfigDir(), rUser
+                ).initUserConfiguration()
                 # user control
-                timekprUserControl(timekprConfigManager.getTimekprWorkDir(), rUser).initUserControl()
+                timekprUserControl(
+                    timekprConfigManager.getTimekprWorkDir(), rUser
+                ).initUserControl()
 
         log.log(cons.TK_LOG_LEVEL_DEBUG, "finishing setting up users")
 
@@ -154,9 +168,9 @@ class timekprUserStore(object):
 
     def getSavedUserList(self, pConfigDir=None):
         """
-            Get user list, this will get user list from config files present in the system:
-              no config - no user
-              leftover config - please set up non-existent user (maybe pre-defined one?)
+        Get user list, this will get user list from config files present in the system:
+          no config - no user
+          leftover config - please set up non-existent user (maybe pre-defined one?)
         """
         # initialize username storage
         filterExistingOnly = False  # this is to filter only existing local users (currently just here, not decided on what to do)
@@ -180,7 +194,9 @@ class timekprUserStore(object):
         log.log(cons.TK_LOG_LEVEL_DEBUG, "listing user config files")
 
         # now list the config files
-        userConfigFiles = glob(os.path.join(configDir, cons.TK_USER_CONFIG_FILE % ("*")))
+        userConfigFiles = glob(
+            os.path.join(configDir, cons.TK_USER_CONFIG_FILE % ("*"))
+        )
 
         log.log(cons.TK_LOG_LEVEL_DEBUG, "traversing user config files")
 
@@ -189,7 +205,11 @@ class timekprUserStore(object):
             # exclude standard sample file
             if "timekpr.USER.conf" not in rUserConfigFile:
                 # first get filename and then from filename extract username part (as per cons.TK_USER_CONFIG_FILE)
-                user = re.sub(cons.TK_USER_CONFIG_FILE.replace(".%s.", r"\.(.*)\."), r"\1", os.path.basename(rUserConfigFile))
+                user = re.sub(
+                    cons.TK_USER_CONFIG_FILE.replace(".%s.", r"\.(.*)\."),
+                    r"\1",
+                    os.path.basename(rUserConfigFile),
+                )
                 # whether user is valid in config file
                 userNameValidated = False
                 # try to read the first line with username
@@ -215,4 +235,4 @@ class timekprUserStore(object):
         log.log(cons.TK_LOG_LEVEL_DEBUG, "finishing user list")
 
         # finish
-        return(userList)
+        return userList

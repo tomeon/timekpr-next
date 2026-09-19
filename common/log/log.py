@@ -20,13 +20,26 @@ _LOG_PEND_EVT_CNT = 0
 _LOG_PEND_FLUSH_CNT = 0
 _LOG_BUFFER = []
 
+
 # log names
 def _getLogFileName(pWho, pUserName):
     """Get log file"""
     # log file
-    logFile = (cons.TK_LOG_FILE_CLIENT if pWho == cons.TK_LOG_OWNER_CLIENT else (cons.TK_LOG_FILE_ADMIN if pWho == cons.TK_LOG_OWNER_ADMIN else (cons.TK_LOG_FILE_ADMIN_SU if pWho == cons.TK_LOG_OWNER_ADMIN_SU else cons.TK_LOG_FILE)))
+    logFile = (
+        cons.TK_LOG_FILE_CLIENT
+        if pWho == cons.TK_LOG_OWNER_CLIENT
+        else (
+            cons.TK_LOG_FILE_ADMIN
+            if pWho == cons.TK_LOG_OWNER_ADMIN
+            else (
+                cons.TK_LOG_FILE_ADMIN_SU
+                if pWho == cons.TK_LOG_OWNER_ADMIN_SU
+                else cons.TK_LOG_FILE
+            )
+        )
+    )
     # replace user in log file
-    return(logFile.replace(cons.TK_LOG_USER, pUserName, 1))
+    return logFile.replace(cons.TK_LOG_USER, pUserName, 1)
 
 
 def _output(pText):

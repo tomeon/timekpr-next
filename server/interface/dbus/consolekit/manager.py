@@ -4,6 +4,7 @@ Created on Aug 28, 2018
 @author: mjasnik
 """
 
+
 # connection with ck
 class timekprUserLoginManager(object):
     """Class enables the connection with ConsoleKit"""
@@ -33,7 +34,9 @@ class timekprUserLoginManager(object):
         # NOT IMPLEMENTED
         raise NotImplementedError("ConsoleKit support is not implemented")
 
-    def terminateUserSessions(self, pUserName, pUserPath, pTimekprConfig, pRestrictionType):
+    def terminateUserSessions(
+        self, pUserName, pUserPath, pTimekprConfig, pRestrictionType
+    ):
         """Terminate user sessions"""
         # NOT IMPLEMENTED
         raise NotImplementedError("ConsoleKit support is not implemented")

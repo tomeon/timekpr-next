@@ -7,6 +7,7 @@ Created on Aug 28, 2018
 # import
 import gi
 import os
+
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
@@ -67,20 +68,34 @@ class timekprIndicator(timekprNotificationArea):
         log.log(cons.TK_LOG_LEVEL_INFO, "start initTimekprIndicatorIcon")
 
         # init indicator itself (icon will be set later)
-        self._indicator = AppIndicator.Indicator.new("indicator-timekpr", os.path.join(self._timekprClientConfig.getTimekprSharedDir(), "icons", cons.TK_PRIO_CONF["client-logo"][cons.TK_ICON_STAT]), AppIndicator.IndicatorCategory.APPLICATION_STATUS)
+        self._indicator = AppIndicator.Indicator.new(
+            "indicator-timekpr",
+            os.path.join(
+                self._timekprClientConfig.getTimekprSharedDir(),
+                "icons",
+                cons.TK_PRIO_CONF["client-logo"][cons.TK_ICON_STAT],
+            ),
+            AppIndicator.IndicatorCategory.APPLICATION_STATUS,
+        )
         self._indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE)
 
         # define empty menu
         self._timekprMenu = Gtk.Menu()
 
         # add menu items
-        self._timekprMenuItemTimeLeft = Gtk.MenuItem(msg.getTranslation("TK_MSG_MENU_TIME_LEFT"))
+        self._timekprMenuItemTimeLeft = Gtk.MenuItem(
+            msg.getTranslation("TK_MSG_MENU_TIME_LEFT")
+        )
         self._timekprMenu.append(self._timekprMenuItemTimeLeft)
         self._timekprMenu.append(Gtk.SeparatorMenuItem())
-        self._timekprMenuItemProperties = Gtk.MenuItem(msg.getTranslation("TK_MSG_MENU_CONFIGURATION"))
+        self._timekprMenuItemProperties = Gtk.MenuItem(
+            msg.getTranslation("TK_MSG_MENU_CONFIGURATION")
+        )
         self._timekprMenu.append(self._timekprMenuItemProperties)
         self._timekprMenu.append(Gtk.SeparatorMenuItem())
-        self._timekprMenuItemAbout = Gtk.MenuItem(msg.getTranslation("TK_MSG_MENU_ABOUT"))
+        self._timekprMenuItemAbout = Gtk.MenuItem(
+            msg.getTranslation("TK_MSG_MENU_ABOUT")
+        )
         self._timekprMenu.append(self._timekprMenuItemAbout)
 
         # enable all
@@ -88,7 +103,9 @@ class timekprIndicator(timekprNotificationArea):
 
         # connect signal to code
         self._timekprMenuItemTimeLeft.connect("activate", super().invokeTimekprTimeLeft)
-        self._timekprMenuItemProperties.connect("activate", super().invokeTimekprUserProperties)
+        self._timekprMenuItemProperties.connect(
+            "activate", super().invokeTimekprUserProperties
+        )
         self._timekprMenuItemAbout.connect("activate", super().invokeTimekprAbout)
 
         # set menu to indicator
@@ -102,7 +119,9 @@ class timekprIndicator(timekprNotificationArea):
     def setTimeLeft(self, pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft=None):
         """Set time left in the indicator"""
         # make strings to set
-        timeLeftStr, icon = super().formatTimeLeft(pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft)
+        timeLeftStr, icon = super().formatTimeLeft(
+            pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft
+        )
 
         # if we have smth to set
         if timeLeftStr is not None:
@@ -123,4 +142,8 @@ class timekprIndicator(timekprNotificationArea):
 
     def setTrayIconEnabled(self, pEnabled):
         """Set whether tray icon is enabled"""
-        self._indicator.set_status(AppIndicator.IndicatorStatus.ACTIVE if pEnabled else AppIndicator.IndicatorStatus.PASSIVE)
+        self._indicator.set_status(
+            AppIndicator.IndicatorStatus.ACTIVE
+            if pEnabled
+            else AppIndicator.IndicatorStatus.PASSIVE
+        )

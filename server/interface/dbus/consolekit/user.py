@@ -4,6 +4,7 @@ Created on Aug 28, 2018
 @author: mjasnik
 """
 
+
 # connection with ck
 class timekprUserManager(object):
     # init

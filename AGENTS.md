@@ -225,7 +225,9 @@ Other facts about the sandbox worth knowing before trying something:
   Settings can be made for a user (or a `@group`) that has never logged
   in: the setter creates the policy file; nothing is created on its own
   any more (see `docs/proposals/group-targeting.md` and
-  `server/config/policy.py`).
+  `server/config/policy.py`). Kanidm does not enumerate accounts, so
+  `--userlist` shows bob only once he has a policy or is logged in;
+  `--userinfo bob@...` works at any time because NSS knows him by name.
 - The daemon's log is `/var/log/timekpr.log` and is flushed lazily;
   wait for lines rather than asserting on them immediately, and stop
   the service to flush it when diagnosing a failure.

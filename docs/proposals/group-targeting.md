@@ -83,9 +83,15 @@ present" test, and no marker key is needed.
   first tracked, and on demand when extra time is granted to a user who
   was not yet tracked. Counters are not policy.
 - The admin user list is the union of users with a policy file, users
-  from `pwd.getpwall()` passing the validity check, and known members
-  of groups with a policy; each entry carries the policy's provenance
-  ([userhelper.py:134](../../server/config/userhelper.py#L134)).
+  from `pwd.getpwall()` passing the validity check, known members of
+  groups with a policy, and the users the daemon is tracking; each entry
+  carries the policy's provenance
+  ([userhelper.py:134](../../server/config/userhelper.py#L134)). A
+  directory user, whom the system cannot enumerate, is therefore listed
+  once they have a policy or are logged in, but can be administered by
+  name at any time: `getUserInformation` answers the effective policy
+  for every name NSS or the daemon knows, and "not found" for any other
+  name without a policy (the web bridge turns that into a 404).
 
 Migration of installations that already had a file per user: those
 files count as user policies with default values and would shadow any

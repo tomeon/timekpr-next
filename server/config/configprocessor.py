@@ -290,10 +290,11 @@ class timekprUserConfigurationProcessor:
                     userConfigurationStore["TRACK_INACTIVE"] = (
                         self._timekprUserConfig.getUserTrackInactive()
                     )
-                    # hide icon
-                    userConfigurationStore["HIDE_TRAY_ICON"] = (
-                        self._timekprUserConfig.getUserHideTrayIcon()
-                    )
+                    # hide icon (a user's setting; a group policy has none)
+                    if not self._isGroup:
+                        userConfigurationStore["HIDE_TRAY_ICON"] = (
+                            self._timekprUserConfig.getUserHideTrayIcon()
+                        )
                     # limit per week
                     userConfigurationStore["LIMIT_PER_WEEK"] = (
                         self._timekprUserConfig.getUserWeekLimit()

@@ -183,7 +183,7 @@
             };
             programs.prettier.enable = true;
             programs.ruff-check = {
-              #enable = true;
+              enable = true;
               includes = treefmt.options.programs.ruff-check.includes.default ++ pythonScripts;
             };
             programs.ruff-format = {

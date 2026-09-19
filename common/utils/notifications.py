@@ -5,12 +5,14 @@ Created on Aug 28, 2018
 """
 
 # imports
-import dbus.service
 from datetime import datetime
+
+import dbus.service
+
+from timekpr.common.constants import constants as cons
 
 # timekpr imports
 from timekpr.common.log import log
-from timekpr.common.constants import constants as cons
 from timekpr.common.utils.misc import getDBUSUserName
 
 
@@ -180,15 +182,7 @@ class timekprNotificationManager(dbus.service.Object):
 
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
-            "time left, tlrow: %i, tleftd: %i, tlimd: %i, notification lvl: %s, priority: %s, force: %s"
-            % (
-                pTimeValues[cons.TK_CTRL_LEFT],
-                pTimeValues[cons.TK_CTRL_LEFTD],
-                pTimeValues[cons.TK_CTRL_LIMITD],
-                self._notificationLvl,
-                notifUrgency,
-                str(pForce),
-            ),
+            f"time left, tlrow: {int(pTimeValues[cons.TK_CTRL_LEFT])}, tleftd: {int(pTimeValues[cons.TK_CTRL_LEFTD])}, tlimd: {int(pTimeValues[cons.TK_CTRL_LIMITD])}, notification lvl: {self._notificationLvl}, priority: {notifUrgency}, force: {pForce!s}",
         )
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "finish processTimeLeft")
 
@@ -200,12 +194,11 @@ class timekprNotificationManager(dbus.service.Object):
         # convert this all to dbus
         for rKey, rValue in pTimeLimits.items():
             # weekly & monthly limits are set differently
-            if rKey in (cons.TK_CTRL_LIMITW, cons.TK_CTRL_LIMITM):
-                # this is to comply with standard limits structure
-                timeLimits[rKey] = dbus.Dictionary(signature="sv")
-                timeLimits[rKey][rKey] = dbus.Int32(rValue)
-            # PlayTime flags
-            elif rKey in (cons.TK_CTRL_PTTLO, cons.TK_CTRL_PTAUH, cons.TK_CTRL_PTTLE):
+            if rKey in (cons.TK_CTRL_LIMITW, cons.TK_CTRL_LIMITM) or rKey in (
+                cons.TK_CTRL_PTTLO,
+                cons.TK_CTRL_PTAUH,
+                cons.TK_CTRL_PTTLE,
+            ):
                 # this is to comply with standard limits structure
                 timeLimits[rKey] = dbus.Dictionary(signature="sv")
                 timeLimits[rKey][rKey] = dbus.Int32(rValue)
@@ -236,7 +229,7 @@ class timekprNotificationManager(dbus.service.Object):
                     )
 
         if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
-            log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "TLDB: %s" % (str(timeLimits)))
+            log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, f"TLDB: {timeLimits!s}")
 
         # process
         self.timeLimits(cons.TK_PRIO_LOW, timeLimits)
@@ -259,7 +252,6 @@ class timekprNotificationManager(dbus.service.Object):
     def sessionAttributeVerification(self, pWhat, pKey):
         """Send out signal"""
         # this just passes time back
-        pass
 
     # --------------- DBUS / communication methods (limits, config) --------------- #
 
@@ -267,13 +259,11 @@ class timekprNotificationManager(dbus.service.Object):
     def timeLeft(self, pPriority, pTimeLeft):
         """Send out signal"""
         # this just passes time back
-        pass
 
     @dbus.service.signal(cons.TK_DBUS_USER_LIMITS_INTERFACE, signature="sa{sa{sv}}")
     def timeLimits(self, pPriority, pTimeLimits):
         """Send out signal"""
         # this just passes time back
-        pass
 
     # --------------- DBUS / communication methods (notifications) --------------- #
 
@@ -282,37 +272,32 @@ class timekprNotificationManager(dbus.service.Object):
         self, pPriority, pTimeLeftTotal, pTimeLeftToday, pTimeLimitToday
     ):
         """Send out signal"""
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "sending tln: %i" % (pTimeLeftTotal))
+        log.log(cons.TK_LOG_LEVEL_DEBUG, f"sending tln: {int(pTimeLeftTotal)}")
         # You have %s to use continously, including %s ouf of %s today
-        pass
 
     @dbus.service.signal(cons.TK_DBUS_USER_NOTIF_INTERFACE, signature="ssi")
     def timeCriticalNotification(self, pFinalNotificationType, pPriority, pSecondsLeft):
         """Send out signal"""
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
-            "sending tcn: %s, %i" % (pFinalNotificationType, pSecondsLeft),
+            f"sending tcn: {pFinalNotificationType}, {int(pSecondsLeft)}",
         )
         # Your time is up, you will be forcibly logged / locked / suspended / shutdown out in %i seconds!
-        pass
 
     @dbus.service.signal(cons.TK_DBUS_USER_NOTIF_INTERFACE, signature="s")
     def timeNoLimitNotification(self, pPriority):
         """Send out signal"""
         log.log(cons.TK_LOG_LEVEL_DEBUG, "sending ntln")
         # Congratulations, your time is not limited today
-        pass
 
     @dbus.service.signal(cons.TK_DBUS_USER_NOTIF_INTERFACE, signature="s")
     def timeLeftChangedNotification(self, pPriority):
         """Send out signal"""
         log.log(cons.TK_LOG_LEVEL_DEBUG, "sending tlcn")
         # Limits have changed and applied
-        pass
 
     @dbus.service.signal(cons.TK_DBUS_USER_NOTIF_INTERFACE, signature="s")
     def timeConfigurationChangedNotification(self, pPriority):
         """Send out signal"""
         log.log(cons.TK_LOG_LEVEL_DEBUG, "sending tccn")
         # Configuration has changed, new limits may have been applied
-        pass

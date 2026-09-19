@@ -8,26 +8,28 @@ Created on Aug 28, 2018
 from dbus.mainloop.glib import DBusGMainLoop
 
 DBusGMainLoop(set_as_default=True)
-from datetime import timedelta
 import os
+from datetime import timedelta
+
 import dbus
 from gi.repository import GLib
 
-# timekpr imports
-from timekpr.common.constants import constants as cons
-from timekpr.common.log import log
-from timekpr.common.utils import misc
-from timekpr.common.utils.config import timekprClientConfig
 from timekpr.client.interface.ui.appindicator import (
     timekprIndicator as appind_timekprIndicator,
 )
 from timekpr.client.interface.ui.statusicon import (
     timekprIndicator as statico_timekprIndicator,
 )
+
+# timekpr imports
+from timekpr.common.constants import constants as cons
 from timekpr.common.constants import messages as msg
+from timekpr.common.log import log
+from timekpr.common.utils import misc
+from timekpr.common.utils.config import timekprClientConfig
 
 
-class timekprClient(object):
+class timekprClient:
     """Main class for holding all client logic (including dbus)"""
 
     # --------------- initialization / control methods --------------- #
@@ -242,8 +244,7 @@ class timekprClient(object):
             # logging
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                'ERROR (DBUS): "%s" in "%s.%s"'
-                % (str(dbusEx), __name__, self.connectTimekprSignalsDBUS.__name__),
+                f'ERROR (DBUS): "{dbusEx!s}" in "{__name__}.{self.connectTimekprSignalsDBUS.__name__}"',
             )
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
@@ -267,7 +268,7 @@ class timekprClient(object):
         """Receive the signal and process the data"""
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
-            "receive verification request: %s, %s" % (pWhat, "key"),
+            "receive verification request: {}, {}".format(pWhat, "key"),
         )
         # resend stuff to server
         self._timekprClientIndicator.verifySessionAttributes(pWhat, pKey)
@@ -288,11 +289,7 @@ class timekprClient(object):
     def receiveTimeLeft(self, pPriority, pTimeInformation):
         """Receive the signal and process the data to user"""
         # check which options are available
-        timeLeft = (
-            pTimeInformation[cons.TK_CTRL_LEFT]
-            if cons.TK_CTRL_LEFT in pTimeInformation
-            else 0
-        )
+        timeLeft = pTimeInformation.get(cons.TK_CTRL_LEFT, 0)
         playTimeLeft = (
             pTimeInformation[cons.TK_CTRL_PTLPD]
             if cons.TK_CTRL_PTLSTC in pTimeInformation
@@ -300,15 +297,10 @@ class timekprClient(object):
             and cons.TK_CTRL_PTTLO in pTimeInformation
             else None
         )
-        isTimeNotLimited = (
-            pTimeInformation[cons.TK_CTRL_TNL]
-            if cons.TK_CTRL_TNL in pTimeInformation
-            else 0
-        )
+        isTimeNotLimited = pTimeInformation.get(cons.TK_CTRL_TNL, 0)
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
-            "receive timeleft, prio: %s, tl: %i, ptl: %s, nolim: %i"
-            % (pPriority, timeLeft, str(playTimeLeft), isTimeNotLimited),
+            f"receive timeleft, prio: {pPriority}, tl: {int(timeLeft)}, ptl: {playTimeLeft!s}, nolim: {int(isTimeNotLimited)}",
         )
         # process show / hide icon
         self.processShowClientIcon(pTimeInformation)
@@ -328,7 +320,7 @@ class timekprClient(object):
 
     def receiveTimeLimits(self, pPriority, pTimeLimits):
         """Receive the signal and process the data to user"""
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "receive timelimits: %s" % (pPriority))
+        log.log(cons.TK_LOG_LEVEL_DEBUG, f"receive timelimits: {pPriority}")
         # renew limits in GUI
         self._timekprClientIndicator.renewLimitConfiguration(pTimeLimits)
 
@@ -340,7 +332,7 @@ class timekprClient(object):
         """Receive time left and update GUI"""
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
-            "receive tl notif: %s, %i" % (pPriority, pTimeLeftTotal),
+            f"receive tl notif: {pPriority}, {int(pTimeLeftTotal)}",
         )
         # if notifications are turned on
         if (
@@ -361,7 +353,7 @@ class timekprClient(object):
         """Receive critical time left and show that to user"""
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
-            "receive crit notif: %s, %i" % (pFinalNotificationType, pSecondsLeft),
+            f"receive crit notif: {pFinalNotificationType}, {int(pSecondsLeft)}",
         )
         # process time left (this shows in any case)
         self._timekprClientIndicator.notifyUser(

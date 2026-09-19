@@ -5,21 +5,21 @@ Created on Aug 28, 2018
 """
 
 # import section
-from datetime import datetime, timedelta, timezone
+import math
 import random
 import string
-import math
+from datetime import datetime, timedelta
+
+from timekpr.common.constants import constants as cons
 
 # timekpr imports
 from timekpr.common.log import log
-from timekpr.common.constants import constants as cons
-from timekpr.server.interface.dbus.logind.user import timekprUserManager
+from timekpr.common.utils.config import timekprUserConfig, timekprUserControl
 from timekpr.common.utils.notifications import timekprNotificationManager
-from timekpr.common.utils.config import timekprUserConfig
-from timekpr.common.utils.config import timekprUserControl
+from timekpr.server.interface.dbus.logind.user import timekprUserManager
 
 
-class timekprUser(object):
+class timekprUser:
     """Contains all the data for timekpr user"""
 
     def __init__(
@@ -168,7 +168,7 @@ class timekprUser(object):
                 },
             }
             # loop through hours
-            for j in range(0, 23 + 1):
+            for j in range(23 + 1):
                 # initial limit is whole hour
                 limits[str(i)][str(j)] = {
                     cons.TK_CTRL_ACT: False,
@@ -201,7 +201,7 @@ class timekprUser(object):
         # logging
         log.log(
             cons.TK_LOG_LEVEL_INFO,
-            'de-initialization of "%s" DBUS connections' % (self.getUserName()),
+            f'de-initialization of "{self.getUserName()}" DBUS connections',
         )
         # deinit
         self._timekprUserNotification.deInitUser()
@@ -318,17 +318,7 @@ class timekprUser(object):
                     if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
                         log.log(
                             cons.TK_LOG_LEVEL_EXTRA_DEBUG,
-                            "currentDOW: %s, currentHOD: %i, secondsLeftHour: %i, currentMOH: %i, currentSOM: %i, secondsLeftHourLimit: %i, secondsToAddHour: %i, secondsLeft: %i"
-                            % (
-                                i,
-                                j,
-                                secondsLeftHour,
-                                self._currentMOH,
-                                self._effectiveDatetime.second,
-                                secondsLeftHourLimit,
-                                secondsToAddHour,
-                                secondsLeft,
-                            ),
+                            f"currentDOW: {i}, currentHOD: {int(j)}, secondsLeftHour: {int(secondsLeftHour)}, currentMOH: {int(self._currentMOH)}, currentSOM: {int(self._effectiveDatetime.second)}, secondsLeftHourLimit: {int(secondsLeftHourLimit)}, secondsToAddHour: {int(secondsToAddHour)}, secondsLeft: {int(secondsLeft)}",
                         )
                 # hour is disabled
                 else:
@@ -339,17 +329,7 @@ class timekprUser(object):
                 if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
                     log.log(
                         cons.TK_LOG_LEVEL_EXTRA_DEBUG,
-                        "day: %s, hour: %i, enabled: %s, addToHour: %i, contTime: %i, leftD: %i, leftWk: %i, leftMon: %i"
-                        % (
-                            i,
-                            j,
-                            self._timekprUserData[i][str(j)][cons.TK_CTRL_ACT],
-                            secondsToAddHour,
-                            contTime,
-                            timesLeft[cons.TK_CTRL_LEFTD],
-                            self._timekprUserData[cons.TK_CTRL_LEFTW],
-                            self._timekprUserData[cons.TK_CTRL_LEFTM],
-                        ),
+                        f"day: {i}, hour: {int(j)}, enabled: {self._timekprUserData[i][str(j)][cons.TK_CTRL_ACT]}, addToHour: {int(secondsToAddHour)}, contTime: {int(contTime)}, leftD: {int(timesLeft[cons.TK_CTRL_LEFTD])}, leftWk: {int(self._timekprUserData[cons.TK_CTRL_LEFTW])}, leftMon: {int(self._timekprUserData[cons.TK_CTRL_LEFTM])}",
                     )
 
                 # adjust left continously
@@ -369,14 +349,10 @@ class timekprUser(object):
                 #   time previously was previously continous (no break)
                 #   seconds to add must be at least equal to the seconds left in this hour (all hour is available)
                 #   total seconds left this day cannot be 0 unless it's the end of the day (when seconds for the day ends, the only plausible case is the end of the day)
-                contTime = (
-                    True
-                    if (
-                        contTime
-                        and not secondsToAddHour < secondsLeftHour
-                        and not (secondsLeft <= 0 and j != 23)
-                    )
-                    else False
+                contTime = bool(
+                    contTime
+                    and not secondsToAddHour < secondsLeftHour
+                    and not (secondsLeft <= 0 and j != 23)
                 )
 
                 # this is it (time over)
@@ -388,13 +364,14 @@ class timekprUser(object):
         if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
             log.log(
                 cons.TK_LOG_LEVEL_EXTRA_DEBUG,
-                "leftInRow: %i, leftDay: %i, lefDay+1: %i"
-                % (
-                    self._timekprUserData[cons.TK_CTRL_LEFT],
-                    self._timekprUserData[self._currentDOW][cons.TK_CTRL_LEFTD],
-                    self._timekprUserData[
-                        self._timekprUserData[self._currentDOW][cons.TK_CTRL_NDAY]
-                    ][cons.TK_CTRL_LEFTD],
+                "leftInRow: {}, leftDay: {}, lefDay+1: {}".format(
+                    int(self._timekprUserData[cons.TK_CTRL_LEFT]),
+                    int(self._timekprUserData[self._currentDOW][cons.TK_CTRL_LEFTD]),
+                    int(
+                        self._timekprUserData[
+                            self._timekprUserData[self._currentDOW][cons.TK_CTRL_NDAY]
+                        ][cons.TK_CTRL_LEFTD]
+                    ),
                 ),
             )
 
@@ -457,7 +434,7 @@ class timekprUser(object):
             dayAllowed = rDay in allowedDays
 
             # loop through all days
-            for rHour in range(0, 23 + 1):
+            for rHour in range(23 + 1):
                 # if day is disabled, it does not matter whether hour is (order of this if is important)
                 if not dayAllowed:
                     # disallowed
@@ -509,7 +486,7 @@ class timekprUser(object):
         if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
             log.log(
                 cons.TK_LOG_LEVEL_EXTRA_DEBUG,
-                "adjustLimitsFromConfig structure: %s" % (str(self._timekprUserData)),
+                f"adjustLimitsFromConfig structure: {self._timekprUserData!s}",
             )
 
         # get time limits and send them out if needed
@@ -595,8 +572,7 @@ class timekprUser(object):
             # way too ahead of last check time, possible CMOS reset time bug
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                "INFO: user was last checked a very long time ago (%i seconds ago), spent values are not reset to avoid inconsistencies from time resets"
-                % (spentHour),
+                f"INFO: user was last checked a very long time ago ({int(spentHour)} seconds ago), spent values are not reset to avoid inconsistencies from time resets",
             )
 
             # nothing has changed
@@ -766,8 +742,7 @@ class timekprUser(object):
             # sleeping time is added to inactive time (there is a question whether that's OK, disabled currently)
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                "INFO: it appears that computer was put to sleep for %i secs"
-                % (timeSpent),
+                f"INFO: it appears that computer was put to sleep for {int(timeSpent)} secs",
             )
             # effectively spent is 0 (we ignore +/- 3 seconds here)
             timeSpent = 0
@@ -795,7 +770,7 @@ class timekprUser(object):
                 self._timekprUserData[self._currentDOW][cons.TK_CTRL_NDAY],
             ):
                 # clean up hours for this day
-                for rHour in range(0, 23 + 1):
+                for rHour in range(23 + 1):
                     # reset spent for hour
                     self._timekprUserData[rDay][str(rHour)][cons.TK_CTRL_SPENTH] = 0
                     # reset sleeping
@@ -844,30 +819,31 @@ class timekprUser(object):
         if dayChanged:
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                "day change, user: %s, tbal: %i, tsp: %i, ptbal: %i, ptsp: %i"
-                % (
+                "day change, user: {}, tbal: {}, tsp: {}, ptbal: {}, ptsp: {}".format(
                     self.getUserName(),
-                    self._timekprUserData[self._currentDOW][cons.TK_CTRL_SPENTBD],
-                    self._timekprUserData[cons.TK_CTRL_SPENTD],
-                    self._timekprUserData[cons.TK_CTRL_PTCNT][self._currentDOW][
-                        cons.TK_CTRL_SPENTBD
-                    ],
-                    self._timekprUserData[cons.TK_CTRL_PTCNT][self._currentDOW][
-                        cons.TK_CTRL_SPENTD
-                    ],
+                    int(self._timekprUserData[self._currentDOW][cons.TK_CTRL_SPENTBD]),
+                    int(self._timekprUserData[cons.TK_CTRL_SPENTD]),
+                    int(
+                        self._timekprUserData[cons.TK_CTRL_PTCNT][self._currentDOW][
+                            cons.TK_CTRL_SPENTBD
+                        ]
+                    ),
+                    int(
+                        self._timekprUserData[cons.TK_CTRL_PTCNT][self._currentDOW][
+                            cons.TK_CTRL_SPENTD
+                        ]
+                    ),
                 ),
             )
             if weekChanged:
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    "week change, user: %s, twk: %i"
-                    % (self.getUserName(), self._timekprUserData[cons.TK_CTRL_SPENTW]),
+                    f"week change, user: {self.getUserName()}, twk: {int(self._timekprUserData[cons.TK_CTRL_SPENTW])}",
                 )
             if monthChanged:
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    "month change, user: %s, tmon: %i"
-                    % (self.getUserName(), self._timekprUserData[cons.TK_CTRL_SPENTM]),
+                    f"month change, user: {self.getUserName()}, tmon: {int(self._timekprUserData[cons.TK_CTRL_SPENTM])}",
                 )
 
         # check if we need to save progress
@@ -899,7 +875,7 @@ class timekprUser(object):
         timeSpentThisSession = timeInactiveThisSession = timeAvailableIntervals = 0
 
         # go through hours for this day
-        for j in range(0, 23 + 1):
+        for j in range(23 + 1):
             # for current day (and enabled hours)
             if self._timekprUserData[self._currentDOW][str(j)][cons.TK_CTRL_ACT]:
                 timeAvailableIntervals += (
@@ -939,15 +915,7 @@ class timekprUser(object):
         # debug (bt = since boot / restart)
         log.log(
             cons.TK_LOG_LEVEL_INFO,
-            'get time for "%s", tltd %i, tlrow: %i, tspbal: %i, tspbt: %i, tidbt: %i'
-            % (
-                self.getUserName(),
-                timeLeftToday,
-                timeLeftInARow,
-                timeSpentBalance,
-                timeSpentThisSession,
-                timeInactiveThisSession,
-            ),
+            f'get time for "{self.getUserName()}", tltd {int(timeLeftToday)}, tlrow: {int(timeLeftInARow)}, tspbal: {int(timeSpentBalance)}, tspbt: {int(timeSpentThisSession)}, tidbt: {int(timeInactiveThisSession)}',
         )
 
         # set up values
@@ -997,8 +965,7 @@ class timekprUser(object):
         if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
             log.log(
                 cons.TK_LOG_LEVEL_EXTRA_DEBUG,
-                "force: %i, timeValues structure: %s"
-                % (pForceNotifications, timeValues),
+                f"force: {int(pForceNotifications)}, timeValues structure: {timeValues}",
             )
 
         # process notifications, if needed
@@ -1032,8 +999,7 @@ class timekprUser(object):
             # logging
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                'get PlayTime for "%s", ena: %s, acc: %s, tim: %i'
-                % (self.getUserName(), isPTEnabled, isPTAccounted, timeLeftPT),
+                f'get PlayTime for "{self.getUserName()}", ena: {isPTEnabled}, acc: {isPTAccounted}, tim: {int(timeLeftPT)}',
             )
         # result
         return timeLeftPT, isPTEnabled, isPTAccounted, isPTActive
@@ -1050,8 +1016,7 @@ class timekprUser(object):
         if self._timekprUserData[cons.TK_CTRL_LCMOD] != userConfigLastModified:
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                'user "%s" config changed, prev/now: %s / %s'
-                % (
+                'user "{}" config changed, prev/now: {} / {}'.format(
                     self.getUserName(),
                     self._timekprUserData[cons.TK_CTRL_LCMOD].strftime(
                         cons.TK_LOG_DATETIME_FORMAT
@@ -1071,8 +1036,7 @@ class timekprUser(object):
             if self._timekprUserData[cons.TK_CTRL_LMOD] != userControlLastModified:
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    'user "%s" control changed, prev/now: %s / %s'
-                    % (
+                    'user "{}" control changed, prev/now: {} / {}'.format(
                         self.getUserName(),
                         self._timekprUserData[cons.TK_CTRL_LMOD].strftime(
                             cons.TK_LOG_DATETIME_FORMAT
@@ -1120,8 +1084,7 @@ class timekprUser(object):
         if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
             log.log(
                 cons.TK_LOG_LEVEL_EXTRA_DEBUG,
-                "save spent structure: %s"
-                % (str(self._timekprUserData[self._currentDOW])),
+                f"save spent structure: {self._timekprUserData[self._currentDOW]!s}",
             )
 
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "finish saveSpent")
@@ -1143,14 +1106,14 @@ class timekprUser(object):
                     cons.TK_CTRL_LIMITD: self._timekprUserData[rDay][
                         cons.TK_CTRL_LIMITD
                     ],
-                    cons.TK_CTRL_INT: list(),
+                    cons.TK_CTRL_INT: [],
                 }
                 # init hours for intervals
                 startHour = endHour = uaccValue = None
                 uaccChanged = False
 
                 # loop through all days
-                for rHour in range(0, 23 + 1):
+                for rHour in range(23 + 1):
                     # hour in str
                     hourStr = str(rHour)
                     # fill up start value
@@ -1246,8 +1209,8 @@ class timekprUser(object):
 
         # ## PlayTime ##
         # initialize limit and process list
-        timeLimits[cons.TK_CTRL_PTLMT] = list()
-        timeLimits[cons.TK_CTRL_PTLST] = list()
+        timeLimits[cons.TK_CTRL_PTLMT] = []
+        timeLimits[cons.TK_CTRL_PTLST] = []
         # get PT days, limits and activities
         allowedDaysPT = self._timekprUserConfig.getUserPlayTimeAllowedWeekdays()
         allowedLimitsPT = self._timekprUserConfig.getUserPlayTimeLimitsPerWeekdays()
@@ -1283,7 +1246,7 @@ class timekprUser(object):
 
         # debug
         if log.isDebugEnabled(cons.TK_LOG_LEVEL_EXTRA_DEBUG):
-            log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "TL: %s" % (str(timeLimits)))
+            log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, f"TL: {timeLimits!s}")
 
         # process notifications, if needed
         self._timekprUserNotification.processTimeLimits(timeLimits)
@@ -1297,9 +1260,7 @@ class timekprUser(object):
             # if there is no key, we need to set up validation key
             if pKey == "":
                 # logging
-                log.log(
-                    cons.TK_LOG_LEVEL_INFO, "session attributes request: %s" % (pWhat)
-                )
+                log.log(cons.TK_LOG_LEVEL_INFO, f"session attributes request: {pWhat}")
                 # generate random key
                 self._timekprUserData[cons.TK_CTRL_SCR_K] = "".join(
                     random.choice(string.ascii_uppercase + string.digits)
@@ -1323,13 +1284,14 @@ class timekprUser(object):
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    "session attributes verify: %s,%s,%s" % (pWhat, "key", pValue),
+                    "session attributes verify: {},{},{}".format(pWhat, "key", pValue),
                 )
                 # if verification is successful
                 if pKey == self._timekprUserData[cons.TK_CTRL_SCR_K]:
                     # set up valid property
-                    self._timekprUserData[cons.TK_CTRL_SCR_N] = (
-                        True if str(pValue).lower() in ("true", "1") else False
+                    self._timekprUserData[cons.TK_CTRL_SCR_N] = str(pValue).lower() in (
+                        "true",
+                        "1",
                     )
                 # reset key anyway
                 self._timekprUserData[cons.TK_CTRL_SCR_K] = None
@@ -1337,8 +1299,9 @@ class timekprUser(object):
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    "session attributes out of order: %s,%s,%s"
-                    % (pWhat, "key", pValue),
+                    "session attributes out of order: {},{},{}".format(
+                        pWhat, "key", pValue
+                    ),
                 )
                 # reset key anyway
                 self._timekprUserData[cons.TK_CTRL_SCR_K] = None
@@ -1358,7 +1321,7 @@ class timekprUser(object):
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    'send re-validation request to user "%s"' % (self.getUserName()),
+                    f'send re-validation request to user "{self.getUserName()}"',
                 )
                 # send verification request
                 self.processUserSessionAttributes(cons.TK_CTRL_SCR_N, "", None)
@@ -1408,8 +1371,7 @@ class timekprUser(object):
         if res is None:
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                'there is no next interval available today for user "%s"'
-                % (self.getUserName()),
+                f'there is no next interval available today for user "{self.getUserName()}"',
             )
         # return
         return res

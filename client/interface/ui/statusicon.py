@@ -6,16 +6,18 @@ Created on Aug 28, 2018
 
 # import
 import os
+
 import gi
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
+from timekpr.client.interface.ui.notificationarea import timekprNotificationArea
+
 # timekpr imports
 from timekpr.common.constants import constants as cons
-from timekpr.common.log import log
-from timekpr.client.interface.ui.notificationarea import timekprNotificationArea
 from timekpr.common.constants import messages as msg
+from timekpr.common.log import log
 
 # status icon stuff
 _USE_STATUSICON = True
@@ -41,7 +43,6 @@ class timekprIndicator(timekprNotificationArea):
 
     def isSupported(self):
         """Get whether appindicator is supported"""
-        global _USE_STATUSICON
         # returns whether we can use appindicator
         return _USE_STATUSICON
 

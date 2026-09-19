@@ -4,22 +4,23 @@ Created on Aug 28, 2018
 @author: mjasnik
 """
 
-import gi
 import os
 import webbrowser
 
+import gi
+
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
-from gi.repository import Gdk
-from gi.repository import GLib
-from datetime import timedelta, datetime
 import re
+from datetime import datetime, timedelta
+
+from gi.repository import Gdk, GLib, Gtk
+
+from timekpr.client.interface.dbus.administration import timekprAdminConnector
 
 # timekpr imports
 from timekpr.common.constants import constants as cons
-from timekpr.common.log import log
-from timekpr.client.interface.dbus.administration import timekprAdminConnector
 from timekpr.common.constants import messages as msg
+from timekpr.common.log import log
 
 # constant
 _NO_TIME_LABEL_SHORT = "--:--"
@@ -33,7 +34,7 @@ _DAY_HOUR_MIN_SEC_REGEXP = re.compile(
 )
 
 
-class timekprAdminGUI(object):
+class timekprAdminGUI:
     """Main class for supporting timekpr forms"""
 
     def __init__(self, pTimekprVersion, pResourcePath, pUsername):
@@ -549,7 +550,7 @@ class timekprAdminGUI(object):
         # initial config
         for rDay in range(1, 7 + 1):
             self._tkSavedCfg["timeLimitDaysHoursActual"][str(rDay)] = {}
-            for rHour in range(0, 23 + 1):
+            for rHour in range(23 + 1):
                 self._tkSavedCfg["timeLimitDaysHoursActual"][str(rDay)][str(rHour)] = {
                     cons.TK_CTRL_SMIN: 0,
                     cons.TK_CTRL_EMIN: cons.TK_LIMIT_PER_MINUTE,
@@ -608,7 +609,7 @@ class timekprAdminGUI(object):
             rDay[3] = 0
             rDay[4] = _NO_TIME_LABEL
             # clear day config
-            for rHour in range(0, 23 + 1):
+            for rHour in range(23 + 1):
                 self._tkSavedCfg["timeLimitDaysHoursActual"][rDay[0]][str(rHour)] = {
                     cons.TK_CTRL_SMIN: 0,
                     cons.TK_CTRL_EMIN: cons.TK_LIMIT_PER_MINUTE,
@@ -697,59 +698,61 @@ class timekprAdminGUI(object):
             )
 
         # failure
-        if self._timekprAdminConnector is not None:
-            # disable all
-            if not self._timekprAdminConnector.isConnected()[0]:
+        # disable all
+        if (
+            self._timekprAdminConnector is not None
+            and not self._timekprAdminConnector.isConnected()[0]
+        ):
+            # reset
+            for rCtrl in (
+                "TimekprTrackingSessionsTreeView",
+                "TimekprTrackingSessionsButtonControlBX",
+                "TimekprExcludedSessionsTreeView",
+                "TimekprExcludedSessionsButtonControlBX",
+                "TimekprExcludedUsersTreeView",
+                "TimekprExcludedUsersButtonControlBX",
+                "TimekprPlayTimeEnableGlobalCB",
+                "TimekprPlayTimeEnhancedActivityMonitorCB",
+            ):
                 # reset
-                for rCtrl in (
-                    "TimekprTrackingSessionsTreeView",
-                    "TimekprTrackingSessionsButtonControlBX",
-                    "TimekprExcludedSessionsTreeView",
-                    "TimekprExcludedSessionsButtonControlBX",
-                    "TimekprExcludedUsersTreeView",
-                    "TimekprExcludedUsersButtonControlBX",
-                    "TimekprPlayTimeEnableGlobalCB",
-                    "TimekprPlayTimeEnhancedActivityMonitorCB",
-                ):
-                    # reset
-                    self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(False)
+                self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(False)
 
+            # reset
+            for rCtrl in (
+                "TimekprPlayTimeEnableGlobalCB",
+                "TimekprPlayTimeEnhancedActivityMonitorCB",
+            ):
                 # reset
-                for rCtrl in (
-                    "TimekprPlayTimeEnableGlobalCB",
-                    "TimekprPlayTimeEnhancedActivityMonitorCB",
-                ):
-                    # reset
-                    self._timekprAdminFormBuilder.get_object(rCtrl).set_active(False)
+                self._timekprAdminFormBuilder.get_object(rCtrl).set_active(False)
 
+            # reset
+            for rCtrl in (
+                "TimekprConfigurationLoglevelSB",
+                "TimekprConfigurationPollIntervalSB",
+                "TimekprConfigurationSaveTimeSB",
+                "TimekprConfigurationTerminationTimeSB",
+                "TimekprConfigurationWarningTimeSB",
+                "TimekprConfigurationFinalNotificationSB",
+            ):
                 # reset
-                for rCtrl in (
-                    "TimekprConfigurationLoglevelSB",
-                    "TimekprConfigurationPollIntervalSB",
-                    "TimekprConfigurationSaveTimeSB",
-                    "TimekprConfigurationTerminationTimeSB",
-                    "TimekprConfigurationWarningTimeSB",
-                    "TimekprConfigurationFinalNotificationSB",
-                ):
-                    # reset
-                    self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(False)
-                    self._timekprAdminFormBuilder.get_object(rCtrl).set_value(0)
+                self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(False)
+                self._timekprAdminFormBuilder.get_object(rCtrl).set_value(0)
 
+            # reset
+            for rCtrl in (
+                "TimekprTrackingSessionsLS",
+                "TimekprExcludedSessionsLS",
+                "TimekprExcludedUsersLS",
+            ):
                 # reset
-                for rCtrl in (
-                    "TimekprTrackingSessionsLS",
-                    "TimekprExcludedSessionsLS",
-                    "TimekprExcludedUsersLS",
-                ):
-                    # reset
-                    self._timekprAdminFormBuilder.get_object(rCtrl).clear()
+                self._timekprAdminFormBuilder.get_object(rCtrl).clear()
 
     # --------------- DEV test methods --------------- #
 
     def initDEVDefaultConfig(self):
         """Initialize GUI elements for DEV mode"""
         # DEV
-        if cons.TK_DEV_ACTIVE and 1 == 2:
+        if cons.TK_DEV_ACTIVE and 1 == 2:  # noqa: PLR0133 (hand-flipped DEV switch)
             # if there is date, no need to add one
             if (
                 len(self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS"))
@@ -824,7 +827,7 @@ class timekprAdminGUI(object):
                 ).append(["5", "kca.*c", "Stupid calculator"])
 
             # enable certain functionality
-            if 1 == 1:
+            if 1 == 1:  # noqa: PLR0133 (hand-flipped DEV switch)
                 # enable certain objects (fot testing)
                 for rO in (
                     "TimekprUserPlayTimeProcessesAdjustmentAddBT",
@@ -853,11 +856,10 @@ class timekprAdminGUI(object):
             userIdx = userCombobox.get_active()
             userModel = userCombobox.get_model()
             # only if we have selection
-            if userIdx is not None and userModel is not None:
-                # only if selected
-                if userIdx >= 0:
-                    # get username
-                    userName = userModel[userIdx][0]
+            # only if selected
+            if userIdx is not None and userModel is not None and userIdx >= 0:
+                # get username
+                userName = userModel[userIdx][0]
 
         # result
         return userName
@@ -938,18 +940,18 @@ class timekprAdminGUI(object):
         isDayFmt = pTotalSeconds >= cons.TK_LIMIT_PER_DAY and not pFormatDays
         # limit
         limitDay = (
-            "%s:" % (str((time - cons.TK_DATETIME_START).days).rjust(2, "0"))
+            "{}:".format(str((time - cons.TK_DATETIME_START).days).rjust(2, "0"))
             if pFormatDays
             else ""
         )
-        limitHr = "%s" % (str(24 if isDayFmt else time.hour).rjust(2, "0"))
-        limitMin = ":%s" % (str(0 if isDayFmt else time.minute).rjust(2, "0"))
+        limitHr = "{}".format(str(24 if isDayFmt else time.hour).rjust(2, "0"))
+        limitMin = ":{}".format(str(0 if isDayFmt else time.minute).rjust(2, "0"))
         limitSec = (
-            ":%s" % (str(0 if isDayFmt else time.second).rjust(2, "0"))
+            ":{}".format(str(0 if isDayFmt else time.second).rjust(2, "0"))
             if pFormatSecs
             else ""
         )
-        limit = "%s%s%s%s" % (limitDay, limitHr, limitMin, limitSec)
+        limit = f"{limitDay}{limitHr}{limitMin}{limitSec}"
         # value
         return limit
 
@@ -965,7 +967,7 @@ class timekprAdminGUI(object):
         uaccChanged = False
 
         # loop through all days
-        for rHour in range(0, 23 + 1):
+        for rHour in range(23 + 1):
             # hour in str
             hourStr = str(rHour)
             # we process only hours that are available
@@ -987,28 +989,32 @@ class timekprAdminGUI(object):
                 )
 
             # if interval is complete and next hour is not available or there is not a continous interval (start != 0 or unaccounted changed, so it's different)
-            if startTimeStr is not None and endTimeStr is not None:
-                if hourStr not in self._tkSavedCfg["timeLimitDaysHoursActual"][
-                    pDay
-                ] or (
-                    hourStr in self._tkSavedCfg["timeLimitDaysHoursActual"][pDay]
-                    and (
-                        self._tkSavedCfg["timeLimitDaysHoursActual"][pDay][hourStr][
-                            cons.TK_CTRL_SMIN
-                        ]
-                        != 0
-                        or uaccChanged is True
+            if (
+                startTimeStr is not None
+                and endTimeStr is not None
+                and (
+                    hourStr not in self._tkSavedCfg["timeLimitDaysHoursActual"][pDay]
+                    or (
+                        hourStr in self._tkSavedCfg["timeLimitDaysHoursActual"][pDay]
+                        and (
+                            self._tkSavedCfg["timeLimitDaysHoursActual"][pDay][hourStr][
+                                cons.TK_CTRL_SMIN
+                            ]
+                            != 0
+                            or uaccChanged is True
+                        )
                     )
-                ):
-                    # add new limit interval
-                    timeLimits.append(
-                        [startTimeStr, endTimeStr, startSeconds, endSeconds, uaccValue]
-                    )
-                    # erase values
-                    startTimeStr = None
-                    endTimeStr = None
-                    uaccValue = None
-                    uaccChanged = False
+                )
+            ):
+                # add new limit interval
+                timeLimits.append(
+                    [startTimeStr, endTimeStr, startSeconds, endSeconds, uaccValue]
+                )
+                # erase values
+                startTimeStr = None
+                endTimeStr = None
+                uaccValue = None
+                uaccChanged = False
 
             # we process only hours that are available
             if hourStr in self._tkSavedCfg["timeLimitDaysHoursActual"][pDay]:
@@ -1064,7 +1070,7 @@ class timekprAdminGUI(object):
     def getSelectedDays(self):
         """Get selected day from day list"""
         # get selected rows
-        for i in range(0, 2):
+        for i in range(2):
             # get selected rows
             (tm, paths) = (
                 self._timekprAdminFormBuilder.get_object("TimekprWeekDaysTreeView")
@@ -1100,7 +1106,7 @@ class timekprAdminGUI(object):
     def getSelectedHourInterval(self):
         """Get selected hour interval from hour interval list"""
         # refresh the child
-        for i in range(0, 2):
+        for i in range(2):
             # get selection
             (tm, ti) = (
                 self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsTreeView")
@@ -1144,13 +1150,12 @@ class timekprAdminGUI(object):
         """Sort hour intervals for ease of use"""
         # sort vairables
         hours = {}
-        rIdx = 0
 
         # prepare sort
-        for rIt in self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS"):
+        for rIdx, rIt in enumerate(
+            self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS")
+        ):
             hours[rIt[4]] = rIdx
-            # count further
-            rIdx += 1
 
         # set sort order
         sortedHours = []
@@ -1309,7 +1314,7 @@ class timekprAdminGUI(object):
             for rUser in userList:
                 # name
                 userName = (
-                    "%s (%s)" % (rUser[0], rUser[1])
+                    f"{rUser[0]} ({rUser[1]})"
                     if (rUser[1] is not None and rUser[1] != "")
                     else rUser[0]
                 )
@@ -1482,7 +1487,7 @@ class timekprAdminGUI(object):
                             timeSpent = cons.TK_DATETIME_START + timedelta(
                                 seconds=abs(rValue)
                             )
-                            timeSpentStr = "%s:%s:%s:%s" % (
+                            timeSpentStr = "{}:{}:{}:{}".format(
                                 str((timeSpent - cons.TK_DATETIME_START).days).rjust(
                                     2, "0"
                                 ),
@@ -1498,7 +1503,7 @@ class timekprAdminGUI(object):
                             timeSpentWeek = cons.TK_DATETIME_START + timedelta(
                                 seconds=rValue
                             )
-                            timeSpentWeekStr = "%s:%s:%s:%s" % (
+                            timeSpentWeekStr = "{}:{}:{}:{}".format(
                                 str(
                                     (timeSpentWeek - cons.TK_DATETIME_START).days
                                 ).rjust(2, "0"),
@@ -1514,7 +1519,7 @@ class timekprAdminGUI(object):
                             timeSpentMonth = cons.TK_DATETIME_START + timedelta(
                                 seconds=rValue
                             )
-                            timeSpentMonthStr = "%s:%s:%s:%s" % (
+                            timeSpentMonthStr = "{}:{}:{}:{}".format(
                                 str(
                                     (timeSpentMonth - cons.TK_DATETIME_START).days
                                 ).rjust(2, "0"),
@@ -1531,7 +1536,7 @@ class timekprAdminGUI(object):
                             timeLeft = cons.TK_DATETIME_START + timedelta(
                                 seconds=rValue
                             )
-                            timeLeftStr = "%s:%s:%s:%s" % (
+                            timeLeftStr = "{}:{}:{}:{}".format(
                                 str((timeLeft - cons.TK_DATETIME_START).days).rjust(
                                     2, "0"
                                 ),
@@ -1548,7 +1553,7 @@ class timekprAdminGUI(object):
                             timeLeft = cons.TK_DATETIME_START + timedelta(
                                 seconds=rValue
                             )
-                            timeLeftStr = "%s:%s:%s" % (
+                            timeLeftStr = "{}:{}:{}".format(
                                 str(timeLeft.hour).rjust(2, "0"),
                                 str(timeLeft.minute).rjust(2, "0"),
                                 str(timeLeft.second).rjust(2, "0"),
@@ -1562,7 +1567,7 @@ class timekprAdminGUI(object):
                             timeLeft = cons.TK_DATETIME_START + timedelta(
                                 seconds=rValue
                             )
-                            timeLeftStr = "%s:%s:%s" % (
+                            timeLeftStr = "{}:{}:{}".format(
                                 str(timeLeft.hour).rjust(2, "0"),
                                 str(timeLeft.minute).rjust(2, "0"),
                                 str(timeLeft.second).rjust(2, "0"),
@@ -1579,7 +1584,7 @@ class timekprAdminGUI(object):
                             timeLeft = cons.TK_DATETIME_START + timedelta(
                                 seconds=rValue
                             )
-                            timeLeftStr = "%s:%s:%s:%s" % (
+                            timeLeftStr = "{}:{}:{}:{}".format(
                                 str((timeLeft - cons.TK_DATETIME_START).days).rjust(
                                     2, "0"
                                 ),
@@ -1596,7 +1601,7 @@ class timekprAdminGUI(object):
                             timeLeft = cons.TK_DATETIME_START + timedelta(
                                 seconds=rValue
                             )
-                            timeLeftStr = "%s:%s:%s:%s" % (
+                            timeLeftStr = "{}:{}:{}:{}".format(
                                 str((timeLeft - cons.TK_DATETIME_START).days).rjust(
                                     2, "0"
                                 ),
@@ -1613,7 +1618,7 @@ class timekprAdminGUI(object):
                             timeLeft = cons.TK_DATETIME_START + timedelta(
                                 seconds=rValue
                             )
-                            timeLeftStr = "%s:%s:%s" % (
+                            timeLeftStr = "{}:{}:{}".format(
                                 str(timeLeft.hour).rjust(2, "0"),
                                 str(timeLeft.minute).rjust(2, "0"),
                                 str(timeLeft.second).rjust(2, "0"),
@@ -1653,7 +1658,7 @@ class timekprAdminGUI(object):
                             # limits per allowed weekdays
                             self._tkSavedCfg["timeLimitDaysLimits"] = []
                             # allowed weekdays
-                            for rDay in range(0, len(rValue)):
+                            for rDay in range(len(rValue)):
                                 # add the value
                                 self._tkSavedCfg["timeLimitDaysLimits"].append(
                                     int(rValue[rDay])
@@ -1711,7 +1716,7 @@ class timekprAdminGUI(object):
                             # limits per allowed weekdays
                             self._tkSavedCfg["playTimeLimitDaysLimits"] = []
                             # allowed weekdays
-                            for rDay in range(0, len(rValue)):
+                            for rDay in range(len(rValue)):
                                 # add the value
                                 self._tkSavedCfg["playTimeLimitDaysLimits"].append(
                                     int(rValue[rDay])
@@ -1720,7 +1725,7 @@ class timekprAdminGUI(object):
                             # PlayTime activity list
                             self._tkSavedCfg["playTimeActivities"] = []
                             # allowed weekdays
-                            for rDay in range(0, len(rValue)):
+                            for rDay in range(len(rValue)):
                                 # add the value
                                 self._tkSavedCfg["playTimeActivities"].append(
                                     [rValue[rDay][0], rValue[rDay][1]]
@@ -2253,7 +2258,7 @@ class timekprAdminGUI(object):
         # if at least one is changed
         enable = False
         if pApplyControls:
-            for rKey, rVal in changeControl.items():
+            for rVal in changeControl.values():
                 # one thing changed
                 if rVal["st"]:
                     # enable
@@ -2380,7 +2385,7 @@ class timekprAdminGUI(object):
         # if at least one is changed
         configChanged = False
         if pApplyControls:
-            for rKey, rVal in changeControl.items():
+            for rVal in changeControl.values():
                 # one thing changed
                 if rVal["st"]:
                     # enable
@@ -2486,10 +2491,7 @@ class timekprAdminGUI(object):
 
         # ## PlayTime activities ###
         tmpArray = []
-        idx = 0
-        for rIt in actSt:
-            # increase idx
-            idx += 1
+        for idx, rIt in enumerate(actSt, start=1):
             # do not add, if last line is not filed in properly
             if not (idx == actStLen and rIt[1] == ""):
                 # add mask and description
@@ -2503,7 +2505,7 @@ class timekprAdminGUI(object):
         # if at least one is changed
         enable = False
         if pApplyControls:
-            for rKey, rVal in changeControl.items():
+            for rVal in changeControl.values():
                 # one thing changed
                 if rVal["st"]:
                     # enable
@@ -2577,7 +2579,7 @@ class timekprAdminGUI(object):
             if lockoutType == cons.TK_CTRL_RES_W
             else "23"
         )
-        interval = "%s;%s" % (hrFrom, hrTo)
+        interval = f"{hrFrom};{hrTo}"
         value = (lockoutType, hrFrom, hrTo)
         changeControl[control] = {
             "st": lockoutType != self._tkSavedCfg["timeLockoutType"]
@@ -2592,7 +2594,7 @@ class timekprAdminGUI(object):
         # if at least one is changed
         enable = False
         if pApplyControls:
-            for rKey, rVal in changeControl.items():
+            for rVal in changeControl.values():
                 # one thing changed
                 if rVal["st"]:
                     # enable
@@ -3213,7 +3215,7 @@ class timekprAdminGUI(object):
                         changeCnt += 1
                         # set internal state
                         self._tkSavedCfg["timeLockoutType"] = rVal["val"][0]
-                        self._tkSavedCfg["timeWakeInterval"] = "%s;%s" % (
+                        self._tkSavedCfg["timeWakeInterval"] = "{};{}".format(
                             rVal["val"][1],
                             rVal["val"][2],
                         )
@@ -3251,8 +3253,8 @@ class timekprAdminGUI(object):
 
     def addElementToList(self, pName):
         """Add tracked session"""
-        lstSt = self._timekprAdminFormBuilder.get_object("%sLS" % (pName))
-        lstTw = self._timekprAdminFormBuilder.get_object("%sTreeView" % (pName))
+        lstSt = self._timekprAdminFormBuilder.get_object(f"{pName}LS")
+        lstTw = self._timekprAdminFormBuilder.get_object(f"{pName}TreeView")
         lstLen = len(lstSt)
 
         # check if the last one is not empty (no need to add more empty rows)
@@ -3268,20 +3270,17 @@ class timekprAdminGUI(object):
     def removeElementFromList(self, pName):
         """Remove tracked session"""
         # defaults
-        elemIdx = self.getSelectedConfigElement("%sTreeView" % (pName))
-        rIdx = 0
+        elemIdx = self.getSelectedConfigElement(f"{pName}TreeView")
         # remove selected item
-        for rIt in self._timekprAdminFormBuilder.get_object("%sLS" % (pName)):
+        for rIdx, rIt in enumerate(
+            self._timekprAdminFormBuilder.get_object(f"{pName}LS")
+        ):
             # check what to remove
             if elemIdx == rIdx:
                 # remove
-                self._timekprAdminFormBuilder.get_object("%sLS" % (pName)).remove(
-                    rIt.iter
-                )
+                self._timekprAdminFormBuilder.get_object(f"{pName}LS").remove(rIt.iter)
                 # this is it
                 break
-            # count further
-            rIdx += 1
         # verify control availability
         self.calculateTimekprConfigControlAvailability()
 
@@ -3473,25 +3472,26 @@ class timekprAdminGUI(object):
         # def
         secs = self.verifyAndCalcLimit(text, "h")
         # if we could calculate seconds (i.e. entered text is correct)
-        if secs is not None:
-            # if values before and after does not change (or initial ""), we do nothing
-            if secsBefore != secs or (
+        # if values before and after does not change (or initial ""), we do nothing
+        if secs is not None and (
+            secsBefore != secs
+            or (
                 intervalSt[path][0] == -1
                 and intervalSt[path][1 if pIsFrom else 2] == ""
-            ):
-                # format secs
-                text = self.formatTimeStr(secs)
-                # set values
-                intervalSt[path][1 if pIsFrom else 2] = text
-                intervalSt[path][4 if pIsFrom else 5] = secs
-                # reset id
-                intervalSt[path][0] = -1
-                # calculate control availability
-                self.calculateUserConfigControlAvailability()
+            )
+        ):
+            # format secs
+            text = self.formatTimeStr(secs)
+            # set values
+            intervalSt[path][1 if pIsFrom else 2] = text
+            intervalSt[path][4 if pIsFrom else 5] = secs
+            # reset id
+            intervalSt[path][0] = -1
+            # calculate control availability
+            self.calculateUserConfigControlAvailability()
 
     def verifyAndSetWeeklyLimits(self, path, text):
         """Verify and set weekly values"""
-        pass
         # store
         limitsSt = self._timekprAdminFormBuilder.get_object(
             "TimekprUserConfWkMonLimitsLS"
@@ -3501,20 +3501,18 @@ class timekprAdminGUI(object):
         # def
         secs = self.verifyAndCalcLimit(text, "w" if limitsSt[path][0] == "WK" else "m")
         # if we could calculate seconds (i.e. entered text is correct)
-        if secs is not None:
-            # if values before and after does not change, we do nothing
-            if secsBefore != secs:
-                # format secs
-                text = self.formatTimeStr(secs, pFormatSecs=True, pFormatDays=True)
-                # set values
-                limitsSt[path][3] = text
-                limitsSt[path][2] = secs
-                # calculate control availability
-                self.calculateUserConfigControlAvailability()
+        # if values before and after does not change, we do nothing
+        if secs is not None and secsBefore != secs:
+            # format secs
+            text = self.formatTimeStr(secs, pFormatSecs=True, pFormatDays=True)
+            # set values
+            limitsSt[path][3] = text
+            limitsSt[path][2] = secs
+            # calculate control availability
+            self.calculateUserConfigControlAvailability()
 
     def verifyAndSetDayLimits(self, path, text, pIsPlayTime=False):
         """Verify and set daily values"""
-        pass
         # store
         limitsSt = self._timekprAdminFormBuilder.get_object(
             "TimekprUserPlayTimeLimitsLS" if pIsPlayTime else "TimekprWeekDaysLS"
@@ -3529,16 +3527,15 @@ class timekprAdminGUI(object):
         # def
         secs = self.verifyAndCalcLimit(text, "d")
         # if we could calculate seconds (i.e. entered text is correct)
-        if secs is not None:
-            # if values before and after does not change, we do nothing
-            if secsBefore != secs:
-                # format secs
-                text = self.formatTimeStr(secs, pFormatSecs=True)
-                # set values
-                limitsSt[path][4] = text
-                limitsSt[path][3] = secs
-                # calculate control availability
-                controlFnc()
+        # if values before and after does not change, we do nothing
+        if secs is not None and secsBefore != secs:
+            # format secs
+            text = self.formatTimeStr(secs, pFormatSecs=True)
+            # set values
+            limitsSt[path][4] = text
+            limitsSt[path][3] = secs
+            # calculate control availability
+            controlFnc()
 
     def areHoursVerified(self):
         """Return whether all hours have been verified"""
@@ -3635,7 +3632,7 @@ class timekprAdminGUI(object):
                     if pLimitType == "w"
                     else cons.TK_LIMIT_PER_DAY,
                 )
-        except:
+        except Exception:
             # we do not care about any errors
             secs = None
         # return seconds
@@ -3687,10 +3684,9 @@ class timekprAdminGUI(object):
                 and limit > 0
             ):
                 # idx
-                idx = 0
                 found = False
                 # fill the intervals
-                for rInterval in self.getIntervalList(dayNum):
+                for idx, rInterval in enumerate(self.getIntervalList(dayNum)):
                     # exists
                     found = True
                     # determine which is the current hour
@@ -3715,7 +3711,6 @@ class timekprAdminGUI(object):
                             rInterval[4],
                         ]
                     )
-                    idx += 1
                 # found
                 if found:
                     # set selection to found row
@@ -3758,7 +3753,7 @@ class timekprAdminGUI(object):
             # intervals store
             intervalsSt = self._timekprAdminFormBuilder.get_object("TimekprWeekDaysLS")
             # change interval selection as well
-            for rHour in range(0, 23 + 1):
+            for rHour in range(23 + 1):
                 self._tkSavedCfg["timeLimitDaysHoursActual"][intervalsSt[path][0]][
                     str(rHour)
                 ] = {
@@ -4235,7 +4230,7 @@ class timekprAdminGUI(object):
                 "TimekprUserConfDaySettingsSetDaysIntervalsFromRB"
             ).get_active()
             # set seconds and display idx
-            for rIdx in range(0, len(rb)):
+            for rIdx in range(len(rb)):
                 # depending whether start or end is selected we change that
                 rb[rIdx][3] = 4 if isFrom else 5  # seconds
                 rb[rIdx][4] = 1 if isFrom else 2  # time (seconds) to display
@@ -4338,7 +4333,7 @@ class timekprAdminGUI(object):
             intervalStartEndMismatch = False
 
             # check intervals
-            for rIdx in range(0, intervalsLen):
+            for rIdx in range(intervalsLen):
                 # interval boundaries
                 fromSecs = intervalsSt[rIdx][4]
                 toSecs = intervalsSt[rIdx][5]
@@ -4367,11 +4362,7 @@ class timekprAdminGUI(object):
                     elif (
                         secondsFrom < fromSecs < secondsTo
                         or secondsFrom < toSecs < secondsTo
-                    ):
-                        # this is it
-                        intervalOverlaps = True
-                    # check whether start is betwen existing interval
-                    elif (
+                    ) or (
                         fromSecs < secondsFrom < toSecs or fromSecs < secondsTo < toSecs
                     ):
                         # this is it
@@ -4563,7 +4554,7 @@ class timekprAdminGUI(object):
 
     def timekprLogoClicked(self, evt, smth):
         """Open link to development support page, disabled, and maybe never will be enabled :)"""
-        if 1 == 1:
+        if 1 == 1:  # noqa: PLR0133 (hand-flipped switch, see docstring)
             pass
         elif os.geteuid() == 0:
             # copy to clipboard and show message

@@ -1,6 +1,7 @@
 """The daemon/JSON conversions shared by timekprw and timekpra's HTTP connector."""
 
 from fake import LIVE, default_user
+
 from timekpr.common.utils import webapi
 from timekpr.web.bridge import plain
 

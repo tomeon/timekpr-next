@@ -5,9 +5,10 @@ Created on Aug 28, 2018
 """
 
 # import section
-import dbus
-import time
 import signal
+import time
+
+import dbus
 from gi.repository import GLib
 
 # timekpr imports
@@ -16,7 +17,7 @@ from timekpr.common.log import log
 from timekpr.common.utils import misc
 
 
-class timekprUserLoginManager(object):
+class timekprUserLoginManager:
     """Class enables the connection with login1"""
 
     def __init__(self):
@@ -46,8 +47,7 @@ class timekprUserLoginManager(object):
         if self._login1ManagerInterface is not None:
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                "IMPORTANT WARNING: connection to DBUS was lost, trying to establish it again, retry %i"
-                % (self._connectionRetryCount),
+                f"IMPORTANT WARNING: connection to DBUS was lost, trying to establish it again, retry {int(self._connectionRetryCount)}",
             )
 
         try:
@@ -83,7 +83,7 @@ class timekprUserLoginManager(object):
         except Exception as exc:
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                "ERROR: error getting DBUS login manager: %s" % (exc),
+                f"ERROR: error getting DBUS login manager: {exc}",
             )
             # reset connections
             self._login1ManagerInterface = None
@@ -144,10 +144,10 @@ class timekprUserLoginManager(object):
             # get all properties
             for key, value in loggedInUsers.items():
                 # optimize logging
-                uNameLog = "USER: %s" % (key)
+                uNameLog = f"USER: {key}"
                 # values and keys
                 for keyx, valuex in value.items():
-                    uNameLog = "%s, %s: %s" % (uNameLog, keyx, valuex)
+                    uNameLog = f"{uNameLog}, {keyx}: {valuex}"
                 log.log(cons.TK_LOG_LEVEL_DEBUG, uNameLog)
 
         log.log(
@@ -249,8 +249,7 @@ class timekprUserLoginManager(object):
             except Exception as exc:
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    'ERROR: error getting session properties for session "%s" DBUS: %s'
-                    % (str(rUserSession[1]), exc),
+                    f'ERROR: error getting session properties for session "{rUserSession[1]!s}" DBUS: {exc}',
                 )
 
             # free
@@ -284,9 +283,9 @@ class timekprUserLoginManager(object):
                     for rSymb in (".", "_", "-"):
                         # check for name
                         if (
-                            "%s%s" % (rSymb, rLMan) in pUserName
-                            or "%s%s%s" % (rSymb, rLMan, rSymb) in pUserName
-                            or "%s%s" % (rLMan, rSymb) in pUserName
+                            f"{rSymb}{rLMan}" in pUserName
+                            or f"{rSymb}{rLMan}{rSymb}" in pUserName
+                            or f"{rLMan}{rSymb}" in pUserName
                         ):
                             # we found one
                             loginManager = pUserName
@@ -300,7 +299,7 @@ class timekprUserLoginManager(object):
                 # log
                 log.log(
                     cons.TK_LOG_LEVEL_DEBUG,
-                    "INFO: searching for login manager (%s) VTNr" % (pUserName),
+                    f"INFO: searching for login manager ({pUserName}) VTNr",
                 )
                 # VTNr (default)
                 loginSessionVTNr = None
@@ -321,15 +320,13 @@ class timekprUserLoginManager(object):
                     # seat is found
                     log.log(
                         cons.TK_LOG_LEVEL_INFO,
-                        "INFO: login manager (%s) TTY found: %s"
-                        % (pUserName, self._loginManagerVTNr),
+                        f"INFO: login manager ({pUserName}) TTY found: {self._loginManagerVTNr}",
                     )
             else:
                 # log
                 log.log(
                     cons.TK_LOG_LEVEL_DEBUG,
-                    "INFO: searching for login manager, user (%s) does not look like one"
-                    % (pUserName),
+                    f"INFO: searching for login manager, user ({pUserName}) does not look like one",
                 )
         # in case we tried hard
         elif (
@@ -341,8 +338,7 @@ class timekprUserLoginManager(object):
             # seat is NOT found and we'll not try to find it anymore
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                "INFO: login manager (%s) TTY is NOT found, giving up until restart"
-                % (pUserName),
+                f"INFO: login manager ({pUserName}) TTY is NOT found, giving up until restart",
             )
 
     def switchTTY(self, pSeatId, pForce):
@@ -366,8 +362,7 @@ class timekprUserLoginManager(object):
                 willSwitchTTY = False
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    "ERROR: error getting seat (%s) from DBUS: %s"
-                    % (str(pSeatId), exc),
+                    f"ERROR: error getting seat ({pSeatId!s}) from DBUS: {exc}",
                 )
 
             # only if we got the seat
@@ -381,8 +376,9 @@ class timekprUserLoginManager(object):
                 )
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    "INFO:%s switching TTY to %s"
-                    % (" (forced)" if pForce else "", self._loginManagerVTNr),
+                    "INFO:{} switching TTY to {}".format(
+                        " (forced)" if pForce else "", self._loginManagerVTNr
+                    ),
                 )
                 # finally switching the TTY
                 if cons.TK_DEV_ACTIVE:
@@ -415,7 +411,7 @@ class timekprUserLoginManager(object):
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "start terminateUserSessions")
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
-            'inspecting "%s" userpath "%s" sessions' % (pUserName, pUserPath),
+            f'inspecting "{pUserName}" userpath "{pUserPath}" sessions',
         )
 
         # get user session list
@@ -434,8 +430,7 @@ class timekprUserLoginManager(object):
             ):
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    '(delayed 0.1 sec) killing "%s" session "%s" (%s, %s)'
-                    % (
+                    '(delayed 0.1 sec) killing "{}" session "{}" ({}, {})'.format(
                         pUserName,
                         rUserSession["sessionPath"],
                         rUserSession["sessionId"],
@@ -479,8 +474,9 @@ class timekprUserLoginManager(object):
             else:
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    'saving "%s" session %s (%s)'
-                    % (pUserName, rUserSession["sessionPath"], rUserSession["type"]),
+                    'saving "{}" session {} ({})'.format(
+                        pUserName, rUserSession["sessionPath"], rUserSession["type"]
+                    ),
                 )
 
         # kill leftover processes (if we are killing smth)
@@ -490,14 +486,12 @@ class timekprUserLoginManager(object):
             # switch TTY
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                "scheduling a TTY switch sequence after %i seconds" % (tmo),
+                f"scheduling a TTY switch sequence after {int(tmo)} seconds",
             )
             # schedule a switch
             GLib.timeout_add_seconds(tmo, self.switchTTY, lastSeat, False)
         else:
-            log.log(
-                cons.TK_LOG_LEVEL_INFO, "TTY switch ommitted for user %s" % (pUserName)
-            )
+            log.log(cons.TK_LOG_LEVEL_INFO, f"TTY switch ommitted for user {pUserName}")
 
         # cleanup
         if sessionsToKill > 0:
@@ -506,7 +500,7 @@ class timekprUserLoginManager(object):
             # dispatch a killer for leftovers
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                "dipatching a killer for leftover processes after %i seconds" % (tmo),
+                f"dipatching a killer for leftover processes after {int(tmo)} seconds",
             )
             # schedule leftover processes to be killed (it's rather sophisticated killing and checks whether we need to kill gui or terminal processes)
             GLib.timeout_add_seconds(
@@ -526,7 +520,7 @@ class timekprUserLoginManager(object):
         else:
             log.log(
                 cons.TK_LOG_LEVEL_DEBUG,
-                'start suspendComputer in the name of "%s"' % (pUserName),
+                f'start suspendComputer in the name of "{pUserName}"',
             )
             GLib.timeout_add_seconds(0.1, self._login1ManagerInterface.Suspend, False)
 
@@ -541,6 +535,6 @@ class timekprUserLoginManager(object):
         else:
             log.log(
                 cons.TK_LOG_LEVEL_DEBUG,
-                'start shutdownComputer in the name of "%s"' % (pUserName),
+                f'start shutdownComputer in the name of "{pUserName}"',
             )
             GLib.timeout_add_seconds(0.1, self._login1ManagerInterface.PowerOff, False)

@@ -6,7 +6,7 @@ document; the mapping onto the daemon's configuration keys lives in
 bridge.py.
 """
 
-from typing import Annotated, Literal, Optional
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
@@ -29,7 +29,7 @@ class Model(BaseModel):
 def partial(model, name):
     """Derive a model with every field optional (for PATCH bodies)"""
     fields = {
-        fname: (Optional[finfo.rebuild_annotation()], None)
+        fname: (finfo.rebuild_annotation() | None, None)
         for fname, finfo in model.model_fields.items()
     }
     return create_model(
@@ -60,8 +60,8 @@ class HourEntry(Model):
 
 class Lockout(Model):
     type: LockoutType
-    wake_from: Optional[Hour] = None
-    wake_to: Optional[Hour] = None
+    wake_from: Hour | None = None
+    wake_to: Hour | None = None
 
     @model_validator(mode="after")
     def _check_wake(self):
@@ -108,7 +108,7 @@ class UserConfig(Model):
 
 
 class UserConfigPatch(partial(UserConfig, "_UserConfigPatchBase")):
-    playtime: Optional[PlayTimeConfigPatch] = None
+    playtime: PlayTimeConfigPatch | None = None
 
 
 # ## user status ##
@@ -126,16 +126,16 @@ class UserStatus(Model):
     time_left_day: int
     playtime_spent_day: int
     playtime_left_day: int
-    time_left_continuous: Optional[int] = None
-    time_spent_session: Optional[int] = None
-    time_inactive_session: Optional[int] = None
-    playtime_active_activity_count: Optional[int] = None
+    time_left_continuous: int | None = None
+    time_spent_session: int | None = None
+    time_inactive_session: int | None = None
+    playtime_active_activity_count: int | None = None
 
 
 class UserSummary(Model):
     username: str
     full_name: str
-    status: Optional[UserStatus] = None
+    status: UserStatus | None = None
 
 
 class User(Model):
@@ -188,7 +188,7 @@ class Problem(Model):
     type: str = "about:blank"
     title: str
     status: int
-    detail: Optional[str] = None
+    detail: str | None = None
     errors: list[FieldError] = []
     # fields of a PATCH that were written before a later one failed
     applied: list[str] = []

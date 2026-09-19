@@ -5,8 +5,8 @@ Created on Aug 28, 2018
 """
 
 # imports
-from datetime import datetime
 import os
+from datetime import datetime
 
 # timekpr imports
 from timekpr.common.constants import constants as cons
@@ -44,12 +44,11 @@ def _getLogFileName(pWho, pUserName):
 
 def _output(pText):
     """Print to console and/or file"""
-    global _LOG_FILE, _LOG_PEND_EVT_CNT, _LOG_BUFFER
 
     # format text
-    logText = "%s: %s" % (datetime.now().strftime(cons.TK_LOG_DATETIME_FORMAT), pText)
+    logText = f"{datetime.now().strftime(cons.TK_LOG_DATETIME_FORMAT)}: {pText}"
     # prepare a line for file
-    _LOG_BUFFER.append("%s\n" % (logText))
+    _LOG_BUFFER.append(f"{logText}\n")
 
     # in development mode, we spit out in console as well
     if cons.TK_DEV_ACTIVE:
@@ -71,14 +70,12 @@ def setLogging(pLogLevel, pLogDir, pWho, pUserName):
 
 def isLoggingActive():
     """Is debug enabled"""
-    global _LOG_FILE
     # check whether debug is enabled
     return _LOG_FILE is not None
 
 
 def isDebugEnabled(pDebugLevel=cons.TK_LOG_LEVEL_DEBUG):
     """Is debug enabled"""
-    global _LOG_LEVEL
     # check whether debug is enabled
     if pDebugLevel <= _LOG_LEVEL:
         return True
@@ -86,7 +83,6 @@ def isDebugEnabled(pDebugLevel=cons.TK_LOG_LEVEL_DEBUG):
 
 def getLogLevel():
     """Return log level"""
-    global _LOG_LEVEL
     # return
     return _LOG_LEVEL
 
@@ -100,7 +96,7 @@ def setLogLevel(pLvl):
 
 def log(pLvl, pText):
     """Print to console"""
-    global _LOG_LEVEL, _LOG_PEND_EVT_CNT
+    global _LOG_PEND_EVT_CNT
     # check debug level and output
     if pLvl <= _LOG_LEVEL:
         # add to pending event cnt
@@ -125,7 +121,7 @@ def autoFlushLogFile():
 def flushLogFile():
     """This will flush the log file to file"""
     # iport globals
-    global _LOG_FILE, _LOG_BUFFER, _LOG_PEND_EVT_CNT, _LOG_PEND_FLUSH_CNT
+    global _LOG_PEND_EVT_CNT, _LOG_PEND_FLUSH_CNT
     # we can only flush if there is a file
     if _LOG_FILE is not None and len(_LOG_BUFFER) > 0:
         try:
@@ -139,7 +135,7 @@ def flushLogFile():
                 _LOG_BUFFER.clear()
         except Exception as ex:
             # spit out to console
-            consoleOut("ERROR, CAN NOT WRITE TO LOG DUE TO:\n%s" % (ex))
+            consoleOut(f"ERROR, CAN NOT WRITE TO LOG DUE TO:\n{ex}")
 
 
 def consoleOut(*args):

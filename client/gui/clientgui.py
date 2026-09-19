@@ -4,18 +4,20 @@ Created on Aug 28, 2018
 @author: mjasnik
 """
 
-import gi
 import os
 import re
 
+import gi
+
 gi.require_version("Gtk", "3.0")
-from gi.repository import Gtk
 from datetime import datetime, timedelta
+
+from gi.repository import Gtk
 
 # timekpr imports
 from timekpr.common.constants import constants as cons
-from timekpr.common.log import log
 from timekpr.common.constants import messages as msg
+from timekpr.common.log import log
 
 # constant
 _NO_TIME_LABEL = "--:--:--"
@@ -25,7 +27,7 @@ _HOUR_REGEXP = re.compile("^([0-9]{1,2})$")
 _HOUR_MIN_REGEXP = re.compile("^([0-9]{1,2}):([0-9]{1,2})$")
 
 
-class timekprGUI(object):
+class timekprGUI:
     """Main class for supporting timekpr forms"""
 
     def __init__(self, pTimekprVersion, pTimekprClientConfig, pUsername, pUserNameFull):
@@ -89,7 +91,7 @@ class timekprGUI(object):
 
         # set up username (this does not change)
         self._timekprConfigDialogBuilder.get_object("timekprUsernameLB").set_text(
-            "%s (%s)" % (self._userName, pUserNameFull)
+            f"{self._userName} ({pUserNameFull})"
             if pUserNameFull != ""
             else self._userName
         )
@@ -148,7 +150,7 @@ class timekprGUI(object):
         ).set_visible(False)
 
         # initial config (everything is to the max)
-        for i in range(0, 7):
+        for i in range(7):
             # set up default limits
             self._limitConfig[str(i + 1)] = {
                 cons.TK_CTRL_LIMITD: None,
@@ -299,24 +301,23 @@ class timekprGUI(object):
             )
 
         # if we could calculate seconds (i.e. entered text is correct)
-        if secs is not None:
-            # only if changed
-            if secsBefore != secs:
-                # check if we have this interval already
-                dupl = [rPrio for rPrio in timelSt if rPrio[0] == secs]
-                # we can not allow duplicates
-                if not len(dupl) > 0:
-                    # format secs
-                    textStr = self.formatTimeStr(
-                        cons.TK_DATETIME_START + timedelta(seconds=secs), "s"
-                    )
-                    # set values
-                    timelSt[path][0] = secs
-                    timelSt[path][1] = textStr
-                    # sort
-                    self.sortNotificationConfig(pConfType)
-                    # verify controls too
-                    self.processConfigChanged()
+        # only if changed
+        if secs is not None and secsBefore != secs:
+            # check if we have this interval already
+            dupl = [rPrio for rPrio in timelSt if rPrio[0] == secs]
+            # we can not allow duplicates
+            if not len(dupl) > 0:
+                # format secs
+                textStr = self.formatTimeStr(
+                    cons.TK_DATETIME_START + timedelta(seconds=secs), "s"
+                )
+                # set values
+                timelSt[path][0] = secs
+                timelSt[path][1] = textStr
+                # sort
+                self.sortNotificationConfig(pConfType)
+                # verify controls too
+                self.processConfigChanged()
 
     def setPriorityValue(self, path, text, pConfType):
         """Verify and set time string values"""
@@ -411,14 +412,11 @@ class timekprGUI(object):
         elemIdx = tm.get_path(ti)[0] if ti is not None else None
         # only if something is selected
         if elemIdx is not None:
-            rIdx = 0
             # remove selected item
-            for rIt in prioSt:
+            for rIdx, rIt in enumerate(prioSt):
                 if elemIdx == rIdx:
                     # remove
                     prioSt.remove(rIt.iter)
-                # count further
-                rIdx += 1
             # verify controls too
             self.processConfigChanged()
 
@@ -432,12 +430,9 @@ class timekprGUI(object):
         )
         # sort vairables
         prio = {}
-        rIdx = 0
         # prepare sort
-        for rIt in prioSt:
+        for rIdx, rIt in enumerate(prioSt):
             prio[rIt[0]] = rIdx
-            # count further
-            rIdx += 1
         # set sort order
         sortedPrio = []
         # set up proper order
@@ -466,7 +461,7 @@ class timekprGUI(object):
             # calculate days
             days = (pTime - cons.TK_DATETIME_START).days
             # calculate hours and mins
-            hrMin = "%s:%s" % (
+            hrMin = "{}:{}".format(
                 ("24" if pFormatType != "f" and days >= 1 else str(pTime.hour)).rjust(
                     2, "0"
                 ),
@@ -477,11 +472,11 @@ class timekprGUI(object):
             # final composition
             # for limit time (h:m:s)
             if pFormatType == "t":
-                timeStr = "%s:%s" % (hrMin, secs)
+                timeStr = f"{hrMin}:{secs}"
             # for full time (d:h:m:s)
             else:
                 timeStr = (
-                    "%s:%s:%s" % (str(days).rjust(2, "0"), hrMin, secs)
+                    "{}:{}:{}".format(str(days).rjust(2, "0"), hrMin, secs)
                     if pFormatType != "s"
                     else hrMin
                 )
@@ -602,9 +597,7 @@ class timekprGUI(object):
             self._timeLeftContinous = cons.TK_DATETIME_START + timedelta(
                 seconds=pTimeInformation[cons.TK_CTRL_LEFT]
             )
-            self._timeTrackInactive = (
-                True if pTimeInformation[cons.TK_CTRL_TRACK] else False
-            )
+            self._timeTrackInactive = bool(pTimeInformation[cons.TK_CTRL_TRACK])
             self._timeTimeLimitOverridePT = (
                 bool(pTimeInformation[cons.TK_CTRL_PTTLO])
                 if cons.TK_CTRL_PTTLO in pTimeInformation
@@ -628,9 +621,7 @@ class timekprGUI(object):
                 else None
             )
             self._timePTActivityCntStr = str(
-                pTimeInformation[cons.TK_CTRL_PTLSTC]
-                if cons.TK_CTRL_PTLSTC in pTimeInformation
-                else 0
+                pTimeInformation.get(cons.TK_CTRL_PTLSTC, 0)
             )
 
         # calculate strings to show (and show only those, which have data)
@@ -706,8 +697,6 @@ class timekprGUI(object):
             # new limits appeared
             self._limitConfig = pLimits
 
-        # hide PT page by default
-        enablePT = False
         # clear out days / limits / processes
         self._timekprConfigDialogBuilder.get_object("timekprAllowedDaysDaysLS").clear()
         self._timekprConfigDialogBuilder.get_object(
@@ -746,14 +735,12 @@ class timekprGUI(object):
             # check for override
             elif rKey == cons.TK_CTRL_PTTLO:
                 # if enabled
-                self._timeTimeLimitOverridePT = (
-                    True if bool(self._limitConfig[rKey][rKey]) else False
-                )
+                self._timeTimeLimitOverridePT = bool(self._limitConfig[rKey][rKey])
             # check for allowed during unaccounted intervals
             elif rKey == cons.TK_CTRL_PTAUH:
                 # if enabled
-                self._timeUnaccountedIntervalsFlagPT = (
-                    True if bool(self._limitConfig[rKey][rKey]) else False
+                self._timeUnaccountedIntervalsFlagPT = bool(
+                    self._limitConfig[rKey][rKey]
                 )
             # for the days limits
             elif rKey in ("1", "2", "3", "4", "5", "6", "7"):
@@ -774,7 +761,7 @@ class timekprGUI(object):
                         (
                             cons.TK_DATETIME_START + timedelta(days=int(rKey) - 1)
                         ).strftime("%A"),
-                        "%s" % (timeLimitStr),
+                        f"{timeLimitStr}",
                     ]
                 )
 
@@ -792,12 +779,8 @@ class timekprGUI(object):
         ):
             # PlayTime
             for rKey in (cons.TK_CTRL_PTLMT, cons.TK_CTRL_PTLST, cons.TK_CTRL_PTTLE):
-                # PT enable
-                if rKey == cons.TK_CTRL_PTTLE:
-                    # enable PT
-                    enablePT = bool(self._limitConfig[rKey][cons.TK_CTRL_PTTLE])
                 # PT limits
-                elif rKey == cons.TK_CTRL_PTLMT:
+                if rKey == cons.TK_CTRL_PTLMT:
                     # for all days
                     for rDay in self._limitConfig[rKey][cons.TK_CTRL_PTLMT]:
                         # count
@@ -819,7 +802,7 @@ class timekprGUI(object):
                                     cons.TK_DATETIME_START
                                     + timedelta(days=int(rDay[0]) - 1)
                                 ).strftime("%A"),
-                                "%s" % (timeLimitStr),
+                                f"{timeLimitStr}",
                             ]
                         )
                         # if alllowed list has current day
@@ -1014,9 +997,7 @@ class timekprGUI(object):
                     # fill in the intervals with empty values
                     self._timekprConfigDialogBuilder.get_object(
                         "timekprAllowedDaysIntervalsLS"
-                    ).append(
-                        [("%s - %s") % (_NO_TIME_LABEL_SHORT, _NO_TIME_LABEL_SHORT), ""]
-                    )
+                    ).append([(f"{_NO_TIME_LABEL_SHORT} - {_NO_TIME_LABEL_SHORT}"), ""])
                 else:
                     # fill the intervals
                     for r in self._limitConfig[tm.get_value(ti, 0)][cons.TK_CTRL_INT]:
@@ -1035,8 +1016,9 @@ class timekprGUI(object):
                                 "timekprAllowedDaysIntervalsLS"
                             ).append(
                                 [
-                                    ("%s - %s")
-                                    % (_NO_TIME_LABEL_SHORT, _NO_TIME_LABEL_SHORT),
+                                    (
+                                        f"{_NO_TIME_LABEL_SHORT} - {_NO_TIME_LABEL_SHORT}"
+                                    ),
                                     "",
                                 ]
                             )
@@ -1049,8 +1031,7 @@ class timekprGUI(object):
                                 "timekprAllowedDaysIntervalsLS"
                             ).append(
                                 [
-                                    ("%s:%s - %s:%s")
-                                    % (
+                                    ("{}:{} - {}:{}").format(
                                         str(start.hour).rjust(2, "0"),
                                         str(start.minute).rjust(2, "0"),
                                         str(end.hour).rjust(2, "0")
@@ -1074,7 +1055,6 @@ class timekprGUI(object):
     def configPageSwitchSignal(self, nb=None, pg=None, pgn=None):
         """Enable or disable apply on page change"""
         # nothing here
-        pass
 
     def saveUserConfigSignal(self, evt):
         """Save the configuration using config file manager"""

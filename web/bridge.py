@@ -89,7 +89,7 @@ def plain(value):
     return value
 
 
-class Bridge(object):
+class Bridge:
     """Serialized access to the daemon through timekprAdminConnector"""
 
     # /health needs no token, so its daemon round trip is rate limited by
@@ -113,7 +113,7 @@ class Bridge(object):
             try:
                 self._connector = timekprAdminConnector()
             except dbus.DBusException as ex:
-                raise DaemonError(503, "cannot connect to the system bus: %s" % (ex))
+                raise DaemonError(503, f"cannot connect to the system bus: {ex}")
         if not self._connector.isConnected()[0]:
             self._connector.initTimekprConnection(True, True)
         if not self._connector.isConnected()[0]:
@@ -182,9 +182,7 @@ class Bridge(object):
 
     def _require_user(self, username):
         if username not in [user[0] for user in self._call("getUserList")]:
-            raise DaemonError(
-                404, "timekpr has no configuration for user %s" % (username)
-            )
+            raise DaemonError(404, f"timekpr has no configuration for user {username}")
 
     def _user_info(self, username, level):
         self._require_user(username)
@@ -221,7 +219,7 @@ class Bridge(object):
         if patch.allowed_hours is not None:
             for day, entries in patch.allowed_hours.items():
                 steps.run(
-                    "allowed_hours.%s" % (day),
+                    f"allowed_hours.{day}",
                     "setAllowedHours",
                     str(day),
                     webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
@@ -261,7 +259,7 @@ class Bridge(object):
         """day is an ISO weekday or "all" """
         self._require_user(username)
         Steps(self, username).run(
-            "allowed_hours.%s" % (day),
+            f"allowed_hours.{day}",
             "setAllowedHours",
             "ALL" if day == "all" else str(day),
             webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
@@ -279,7 +277,7 @@ class Bridge(object):
         return self.get_user_status(username)
 
 
-class Steps(object):
+class Steps:
     """Runs the setters of a PATCH one by one, remembering which fields
     were written so that a failure can report them"""
 

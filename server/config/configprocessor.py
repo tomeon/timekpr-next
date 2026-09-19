@@ -5,18 +5,21 @@ Created on Jan 17, 2019
 """
 
 # timekpr imports
-from timekpr.common.constants import constants as cons
-from timekpr.common.utils.config import timekprUserConfig
-from timekpr.common.utils.config import timekprUserControl
-from timekpr.common.utils.config import timekprConfig
-from timekpr.common.constants import messages as msg
-
 # imports
 from datetime import datetime
+
 import dbus
 
+from timekpr.common.constants import constants as cons
+from timekpr.common.constants import messages as msg
+from timekpr.common.utils.config import (
+    timekprConfig,
+    timekprUserConfig,
+    timekprUserControl,
+)
 
-class timekprUserConfigurationProcessor(object):
+
+class timekprUserConfigurationProcessor:
     """Validate and update configuration data for timekpr user"""
 
     def __init__(self, pUserName, pTimekprConfig):
@@ -242,7 +245,7 @@ class timekprUserConfigurationProcessor(object):
                             allowedHours = self._timekprUserConfig.getUserAllowedHours(
                                 rDay
                             )
-                            userConfigurationStore["%s_%s" % (param, rDay)] = (
+                            userConfigurationStore[f"{param}_{rDay}"] = (
                                 allowedHours
                                 if len(allowedHours) > 0
                                 else dbus.Dictionary(signature="sv")
@@ -1383,7 +1386,7 @@ class timekprUserConfigurationProcessor(object):
         return result, message
 
 
-class timekprConfigurationProcessor(object):
+class timekprConfigurationProcessor:
     """Validate and update configuration data for timekpr server"""
 
     def __init__(self):
@@ -1823,9 +1826,7 @@ class timekprConfigurationProcessor(object):
 
             # parse config
             try:
-                for rSession in pSessionsCtrl:
-                    # try to convert seconds in day and normalize seconds in proper interval
-                    sessionsCtrl.append(rSession)
+                sessionsCtrl = list(pSessionsCtrl)
             except Exception:
                 # result
                 result = -1
@@ -1871,9 +1872,7 @@ class timekprConfigurationProcessor(object):
 
             # parse config
             try:
-                for rSession in pSessionsExcl:
-                    # try to convert seconds in day and normalize seconds in proper interval
-                    sessionsExcl.append(rSession)
+                sessionsExcl = list(pSessionsExcl)
             except Exception:
                 # result
                 result = -1
@@ -1922,9 +1921,7 @@ class timekprConfigurationProcessor(object):
 
             # parse config
             try:
-                for rUser in pUsersExcl:
-                    # try to convert seconds in day and normalize seconds in proper interval
-                    usersExcl.append(rUser)
+                usersExcl = list(pUsersExcl)
             except Exception:
                 # result
                 result = -1

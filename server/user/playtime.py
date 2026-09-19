@@ -6,18 +6,20 @@ Created on Aug 01, 2020
 
 # imports
 import os
+import re
+from datetime import datetime
+
 import psutil
 from gi.repository import GLib
-from datetime import datetime
-import re
+
+from timekpr.common.constants import constants as cons
 
 # timekpr imports
 from timekpr.common.log import log
-from timekpr.common.constants import constants as cons
 from timekpr.server.config import userhelper
 
 
-class timekprPlayTimeConfig(object):
+class timekprPlayTimeConfig:
     """Contains all the data for PlayTime user"""
 
     # key constants
@@ -86,8 +88,9 @@ class timekprPlayTimeConfig(object):
                         # log
                         log.log(
                             cons.TK_LOG_LEVEL_DEBUG,
-                            "PT match, uid: %s, exe: %s, cmdl: %s"
-                            % (pUid, exe, "n/a" if cmdLine is None else cmdLine[:128]),
+                            "PT match, uid: {}, exe: {}, cmdl: {}".format(
+                                pUid, exe, "n/a" if cmdLine is None else cmdLine[:128]
+                            ),
                         )
                         # first filter is enough
                         break
@@ -308,13 +311,7 @@ class timekprPlayTimeConfig(object):
                     # log
                     log.log(
                         cons.TK_LOG_LEVEL_DEBUG,
-                        'WARNING: uid/executable changes, uid: %s -> %s, executable: "%s" -> "%s"'
-                        % (
-                            self._cachedPids[self._PIDS][procId][self._UID],
-                            userId,
-                            self._cachedPids[self._PIDS][procId][self._EXE],
-                            exe,
-                        ),
+                        f'WARNING: uid/executable changes, uid: {self._cachedPids[self._PIDS][procId][self._UID]} -> {userId}, executable: "{self._cachedPids[self._PIDS][procId][self._EXE]}" -> "{exe}"',
                     )
                     # save previous user id
                     prevUserId = self._cachedPids[self._PIDS][procId][self._UID]
@@ -359,7 +356,7 @@ class timekprPlayTimeConfig(object):
                         matchedPids = self._getMatchedProcessesByFilter(
                             userId,
                             self._cachedPids[self._USRS][userId][self._FLTS][rFlt],
-                            set([procId]),
+                            {procId},
                         )
                         # match and add to user matched pids
                         for rPid in matchedPids:
@@ -400,28 +397,12 @@ class timekprPlayTimeConfig(object):
                 # print processes
                 log.log(
                     cons.TK_LOG_LEVEL_EXTRA_DEBUG,
-                    "PT, user: %s, processes: %i, match: %i"
-                    % (
-                        rUser,
-                        len(self._cachedPids[self._USRS][rUser][self._PIDS]),
-                        len(self._cachedPids[self._USRS][rUser][self._MPIDS]),
-                    ),
+                    f"PT, user: {rUser}, processes: {len(self._cachedPids[self._USRS][rUser][self._PIDS])}, match: {len(self._cachedPids[self._USRS][rUser][self._MPIDS])}",
                 )
 
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
-            "PT stats, users: %i, cache: %i, add: %i, rm: %i, lost: %i, nocmd: %i, qc: %i, changed: %i, admatch: %i"
-            % (
-                len(self._cachedPids[self._USRS]),
-                cpids,
-                apids,
-                rpids,
-                lpids,
-                lcmpids,
-                qcpids,
-                ccmpids,
-                ampids,
-            ),
+            f"PT stats, users: {len(self._cachedPids[self._USRS])}, cache: {int(cpids)}, add: {int(apids)}, rm: {int(rpids)}, lost: {int(lpids)}, nocmd: {int(lcmpids)}, qc: {int(qcpids)}, changed: {int(ccmpids)}, admatch: {int(ampids)}",
         )
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "finish cachePlayTimeProcesses")
 
@@ -433,7 +414,7 @@ class timekprPlayTimeConfig(object):
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    "sending terminate signal to process %s" % (pPid),
+                    f"sending terminate signal to process {pPid}",
                 )
                 # terminate
                 psutil.Process(pid=int(pPid)).terminate()
@@ -441,11 +422,11 @@ class timekprPlayTimeConfig(object):
             else:
                 # logging
                 log.log(
-                    cons.TK_LOG_LEVEL_INFO, "sending kill signal to process %s" % (pPid)
+                    cons.TK_LOG_LEVEL_INFO, f"sending kill signal to process {pPid}"
                 )
                 # kill
                 psutil.Process(pid=int(pPid)).kill()
-        except:
+        except Exception:
             # error in killing does not matter
             pass
 
@@ -463,17 +444,10 @@ class timekprPlayTimeConfig(object):
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_DEBUG,
-                    'PT: user "%s" (%s) has %i matching processes out of %i, using %i filters'
-                    % (
-                        pUname,
-                        pUid,
-                        len(self._cachedPids[self._USRS][pUid][self._MPIDS]),
-                        len(self._cachedPids[self._USRS][pUid][self._PIDS]),
-                        len(self._cachedPids[self._USRS][pUid][self._FLTS]),
-                    ),
+                    f'PT: user "{pUname}" ({pUid}) has {len(self._cachedPids[self._USRS][pUid][self._MPIDS])} matching processes out of {len(self._cachedPids[self._USRS][pUid][self._PIDS])}, using {len(self._cachedPids[self._USRS][pUid][self._FLTS])} filters',
                 )
             # result
-            return True if self._cachedPids[self._USRS][pUid][self._MPIDS] else False
+            return bool(self._cachedPids[self._USRS][pUid][self._MPIDS])
         else:
             # result
             return False
@@ -488,10 +462,8 @@ class timekprPlayTimeConfig(object):
         # the logic here is that we need to remove obsolete first and add the rest later
         # this is due to user may enter filters in a way that process matches more than one filter
         # therefore not to loose processes, this order is important
-        newFlts = set([rFlt[0] for rFlt in pFlts])
-        existFlts = set(
-            [rFlt for rFlt in self._cachedPids[self._USRS][pUid][self._FLTS]]
-        )
+        newFlts = {rFlt[0] for rFlt in pFlts}
+        existFlts = {rFlt for rFlt in self._cachedPids[self._USRS][pUid][self._FLTS]}
         # remove obsolete filters
         for rFlt in existFlts:
             # if this is obsolete
@@ -515,7 +487,7 @@ class timekprPlayTimeConfig(object):
                 # firstly check if regexp is valid, in case someone will not enter it correclty (probably by mistake)
                 try:
                     # if this succeeds then match is valid
-                    re.compile("^%s$" % (rFlt))
+                    re.compile(f"^{rFlt}$")
                     # filter as is
                     flt = rFlt
                 except re.error:
@@ -525,13 +497,13 @@ class timekprPlayTimeConfig(object):
                 flt = flt.replace("[", "").replace("]", "")
                 # add precompiled filters
                 self._cachedPids[self._USRS][pUid][self._FLTS][rFlt].append(
-                    re.compile("^%s$" % (flt))
+                    re.compile(f"^{flt}$")
                 )
                 self._cachedPids[self._USRS][pUid][self._FLTS][rFlt].append(
-                    re.compile("[/\\\\]%s$" % (flt))
+                    re.compile(f"[/\\\\]{flt}$")
                 )
                 self._cachedPids[self._USRS][pUid][self._FLTS][rFlt].append(
-                    re.compile("[/\\\\]%s " % (flt))
+                    re.compile(f"[/\\\\]{flt} ")
                 )
                 # add matched pids to to matched pid list
                 self._cachedPids[self._USRS][pUid][self._MPIDS].update(
@@ -549,8 +521,7 @@ class timekprPlayTimeConfig(object):
             # logging
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                'killing %i PT processes for uid "%s" '
-                % (len(self._cachedPids[self._USRS][pUid][self._MPIDS]), pUid),
+                f'killing {len(self._cachedPids[self._USRS][pUid][self._MPIDS])} PT processes for uid "{pUid}" ',
             )
             # terminate / kill all user PT processes
             for rPid in self._cachedPids[self._USRS][pUid][self._MPIDS]:
@@ -561,9 +532,7 @@ class timekprPlayTimeConfig(object):
                     0.1,
                     self._scheduleKill,
                     rPid,
-                    True
-                    if self._cachedPids[self._PIDS][rPid][self._TERM] > cons.TK_POLLTIME
-                    else False,
+                    self._cachedPids[self._PIDS][rPid][self._TERM] > cons.TK_POLLTIME,
                 )
 
     # --------------- helper methods --------------- #

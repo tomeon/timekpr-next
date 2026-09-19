@@ -42,10 +42,9 @@ import signal
 # timekpr imports
 from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
-from timekpr.server.interface.dbus.daemon import timekprDaemon
 from timekpr.common.utils import misc
 from timekpr.server.config.userhelper import timekprUserStore
-
+from timekpr.server.interface.dbus.daemon import timekprDaemon
 
 # main start
 if __name__ == "__main__":
@@ -54,23 +53,21 @@ if __name__ == "__main__":
         # get out
         sys.exit(0)
 
-    log.log(
-        cons.TK_LOG_LEVEL_INFO, "--- initiating timekpr v. %s ---" % (cons.TK_VERSION)
-    )
+    log.log(cons.TK_LOG_LEVEL_INFO, f"--- initiating timekpr v. {cons.TK_VERSION} ---")
     # get uname
     uname = os.uname()
     log.log(
         cons.TK_LOG_LEVEL_INFO,
-        "running on: %s, %s, %s, %s" % (uname[0], uname[2], uname[3], uname[4]),
+        f"running on: {uname[0]}, {uname[2]}, {uname[3]}, {uname[4]}",
     )
     # distro
     if _DISTRO_AVAILABLE:
         log.log(
             cons.TK_LOG_LEVEL_INFO,
-            "distribution: %s, %s, %s" % (distro.id(), distro.name(), distro.version()),
+            f"distribution: {distro.id()}, {distro.name()}, {distro.version()}",
         )
-    log.log(cons.TK_LOG_LEVEL_INFO, "using python: %s" % (sys.version))
-    log.log(cons.TK_LOG_LEVEL_INFO, "dbus python: %s" % (dbus.__version__))
+    log.log(cons.TK_LOG_LEVEL_INFO, f"using python: {sys.version}")
+    log.log(cons.TK_LOG_LEVEL_INFO, f"dbus python: {dbus.__version__}")
     log.log(cons.TK_LOG_LEVEL_INFO, "---")
 
     # get daemon class

@@ -6,20 +6,20 @@ Created on Aug 28, 2018
 
 # import
 import dbus
-from gi.repository import GLib
 from dbus.mainloop.glib import DBusGMainLoop
+from gi.repository import GLib
 
 # timekpr imports
 from timekpr.common.constants import constants as cons
+from timekpr.common.constants import messages as msg
 from timekpr.common.log import log
 from timekpr.common.utils import misc
-from timekpr.common.constants import messages as msg
 
 # default loop
 DBusGMainLoop(set_as_default=True)
 
 
-class timekprAdminConnector(object):
+class timekprAdminConnector:
     """Main class for supporting indicator notifications"""
 
     def __init__(self):
@@ -127,8 +127,7 @@ class timekprAdminConnector(object):
         ):
             if self._retryCountLeft > 0 and not pTryOnce:
                 log.consoleOut(
-                    "connection failed, %i attempts left, will retry in %i seconds"
-                    % (self._retryCountLeft, self._retryTimeoutSecs)
+                    f"connection failed, {int(self._retryCountLeft)} attempts left, will retry in {int(self._retryTimeoutSecs)} seconds"
                 )
                 self._retryCountLeft -= 1
 
@@ -156,16 +155,16 @@ class timekprAdminConnector(object):
             message = msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED")
             # the server says why (the text after the error name)
             if ": " in pExceptionStr:
-                message = "%s (%s)" % (message, pExceptionStr.split(": ", 1)[1])
+                message = "{} ({})".format(message, pExceptionStr.split(": ", 1)[1])
         else:
             result = -1
             message = msg.getTranslation("TK_MSG_UNEXPECTED_ERROR") % (
-                ('"%s" in "%s.%s"') % (pExceptionStr, pFPath, pFName)
+                f'"{pExceptionStr}" in "{pFPath}.{pFName}"'
             )
         # log error
         log.log(
             cons.TK_LOG_LEVEL_INFO,
-            'ERROR: "%s" in "%s.%s"' % (pExceptionStr, pFPath, pFName),
+            f'ERROR: "{pExceptionStr}" in "{pFPath}.{pFName}"',
         )
         # result
         return result, message

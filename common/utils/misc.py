@@ -10,11 +10,12 @@ _END_TIME = None
 _RESULT = 0
 
 # imports
-from datetime import datetime
+import inspect
 import os
 import pwd
-import inspect
 import stat
+from datetime import datetime
+
 from gi.repository import Gio
 
 try:
@@ -23,7 +24,6 @@ try:
     _PSUTIL = True
 except (ImportError, ValueError):
     _PSUTIL = False
-    pass
 
 # timekpr imports
 from timekpr.common.constants import constants as cons
@@ -103,15 +103,13 @@ def measureDBUSTimeElapsed(
         if pPrintToConsole:
             # measurement logging
             log.consoleOut(
-                'WARNING: PERFORMANCE (DBUS) - acquiring "%s" took too long (%is)'
-                % (pDbusIFName, result)
+                f'WARNING: PERFORMANCE (DBUS) - acquiring "{pDbusIFName}" took too long ({int(result)}s)'
             )
         else:
             # measurement logging
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                'WARNING: PERFORMANCE (DBUS) - acquiring "%s" took too long (%is)'
-                % (pDbusIFName, result),
+                f'WARNING: PERFORMANCE (DBUS) - acquiring "{pDbusIFName}" took too long ({int(result)}s)',
             )
 
     # return
@@ -123,9 +121,8 @@ def checkAndSetRunning(pAppName, pUserName=""):
     # set up pidfile name
     pidFile = os.path.join(
         cons.TK_LOG_TEMP_DIR,
-        "%s.%s"
-        % (
-            (pAppName if pUserName == "" else "%s.%s" % (pAppName, pUserName)),
+        "{}.{}".format(
+            (pAppName if pUserName == "" else f"{pAppName}.{pUserName}"),
             cons.TK_LOG_PID_EXT,
         ),
     )
@@ -170,8 +167,9 @@ def checkAndSetRunning(pAppName, pUserName=""):
         isAlreadyRunning = True
         # print this to console as well
         print(
-            'Timekpr-nExT "%s" is already running for user "%s"'
-            % (pAppName, pUserName if pUserName != "" else "root")
+            'Timekpr-nExT "{}" is already running for user "{}"'.format(
+                pAppName, pUserName if pUserName != "" else "root"
+            )
         )
     else:
         # check if we have pid file and it is a link for some reason
@@ -190,7 +188,6 @@ def checkAndSetRunning(pAppName, pUserName=""):
 def killLeftoverUserProcesses(pUserName, pTimekprConfig):
     """Kill leftover processes for user"""
     # if psutil is not available, do nothing
-    global _PSUTIL
     if not _PSUTIL:
         return
 
@@ -244,8 +241,7 @@ def killLeftoverUserProcesses(pUserName, pTimekprConfig):
                 # logging
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    "INFO: got leftover process, pid: %s, ppid: %s, username: %s, name: %s, terminal: %s, effective terminal: %s"
-                    % (
+                    "INFO: got leftover process, pid: {}, ppid: {}, username: {}, name: {}, terminal: {}, effective terminal: {}".format(
                         procInfo["pid"],
                         procInfo["ppid"],
                         procInfo["username"],
@@ -271,10 +267,10 @@ def killLeftoverUserProcesses(pUserName, pTimekprConfig):
                     except psutil.Error as psErr:
                         log.log(
                             cons.TK_LOG_LEVEL_INFO,
-                            "ERROR: killing %s failed (%s)"
-                            % (procInfo["pid"], str(psErr)),
+                            "ERROR: killing {} failed ({})".format(
+                                procInfo["pid"], str(psErr)
+                            ),
                         )
-                        pass
                     else:
                         # count killed processes
                         killedProcesses += 1
@@ -282,8 +278,9 @@ def killLeftoverUserProcesses(pUserName, pTimekprConfig):
                     # do not kill terminal sessions if ones are not tracked
                     log.log(
                         cons.TK_LOG_LEVEL_INFO,
-                        "INFO: NOT killing process %s as it's from sessions which are not being tracked"
-                        % (procInfo["pid"]),
+                        "INFO: NOT killing process {} as it's from sessions which are not being tracked".format(
+                            procInfo["pid"]
+                        ),
                     )
             else:
                 # count other processes
@@ -291,8 +288,7 @@ def killLeftoverUserProcesses(pUserName, pTimekprConfig):
     # log
     log.log(
         cons.TK_LOG_LEVEL_INFO,
-        "INFO: %i session related processes were killed, %i other processes for user were not killed"
-        % (killedProcesses, otherProcesses),
+        f"INFO: {int(killedProcesses)} session related processes were killed, {int(otherProcesses)} other processes for user were not killed",
     )
 
 
@@ -310,7 +306,7 @@ def findHourStartEndMinutes(pStr):
     # it makes sense to calc stuff only when there is a hour defined
     if ln > 0:
         # is hour unaccounted
-        uacc = True if pStr[0] == "!" else False
+        uacc = pStr[0] == "!"
         # in case of unlimited hour actual len is smaller
         ln = ln - 1 if uacc else ln
         # get hour (ex: 1 or 11)
@@ -380,7 +376,7 @@ def splitConfigValueNameParam(pStr):
             # process and its description
             value = pStr[0 : st if st > 0 else len(pStr)]
             param = "" if st < 0 else pStr[st + ln : en if en >= 0 else len(pStr)]
-        except:
+        except Exception:
             # it doesn't matter which error occurs
             value = None
             param = None

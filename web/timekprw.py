@@ -41,7 +41,7 @@ def listen_tcp(spec):
     """Bind HOST:PORT or [IPV6]:PORT"""
     parts = urlsplit("//" + spec)
     if parts.hostname is None or parts.port is None:
-        raise ValueError("%s is not HOST:PORT" % (spec))
+        raise ValueError(f"{spec} is not HOST:PORT")
     family, kind, proto, _canonname, sockaddr = socket.getaddrinfo(
         parts.hostname, parts.port, type=socket.SOCK_STREAM, flags=socket.AI_PASSIVE
     )[0]
@@ -99,11 +99,7 @@ def open_listener(spec):
 
 def describe(sock):
     name = sock.getsockname()
-    return (
-        "unix:%s" % (name)
-        if sock.family == socket.AF_UNIX
-        else "%s:%s" % (name[0], name[1])
-    )
+    return f"unix:{name}" if sock.family == socket.AF_UNIX else f"{name[0]}:{name[1]}"
 
 
 # ## configuration ##
@@ -120,9 +116,7 @@ def env_flag(name):
         return False
     if value in ("1", "true", "yes", "on"):
         return True
-    raise SystemExit(
-        "timekprw: TIMEKPRW_%s must be true or false, not %r" % (name, value)
-    )
+    raise SystemExit(f"timekprw: TIMEKPRW_{name} must be true or false, not {value!r}")
 
 
 def hostname(spec):
@@ -150,15 +144,13 @@ def read_token(explicit):
                     token = tokenFile.read().strip()
             except PermissionError:
                 raise SystemExit(
-                    'timekprw: cannot read token file %s; it must be readable by the service (0640 root:%s), or pass it as the systemd credential "token"'
-                    % (path, SOCKET_GROUP)
+                    f'timekprw: cannot read token file {path}; it must be readable by the service (0640 root:{SOCKET_GROUP}), or pass it as the systemd credential "token"'
                 )
             if token == "":
-                raise SystemExit("timekprw: token file %s is empty" % (path))
+                raise SystemExit(f"timekprw: token file {path} is empty")
             if os.stat(path).st_mode & stat.S_IROTH:
                 print(
-                    "timekprw: WARNING: token file %s is readable by everyone; make it 0640 root:%s"
-                    % (path, SOCKET_GROUP),
+                    f"timekprw: WARNING: token file {path} is readable by everyone; make it 0640 root:{SOCKET_GROUP}",
                     file=sys.stderr,
                 )
             return token
@@ -175,14 +167,12 @@ def parse_args(argv):
         action="append",
         metavar="SPEC",
         default=env_default("LISTEN", "").split() or None,
-        help="where to listen: HOST:PORT, [IPV6]:PORT, unix:PATH or fd:N; repeatable (default: %s unless systemd passes sockets)"
-        % (DEFAULT_LISTEN),
+        help=f"where to listen: HOST:PORT, [IPV6]:PORT, unix:PATH or fd:N; repeatable (default: {DEFAULT_LISTEN} unless systemd passes sockets)",
     )
     parser.add_argument(
         "--token-file",
         default=env_default("TOKEN_FILE", None),
-        help='file holding the bearer token clients on TCP must present (default: the systemd credential "token", then %s)'
-        % (cons.TK_WEB_TOKEN_FILE),
+        help=f'file holding the bearer token clients on TCP must present (default: the systemd credential "token", then {cons.TK_WEB_TOKEN_FILE})',
     )
     parser.add_argument(
         "--no-auth",
@@ -221,7 +211,7 @@ def serve(app, sockets, root_path=""):
     import uvicorn
 
     for sock in sockets:
-        print("timekprw: listening on %s" % (describe(sock)), file=sys.stderr)
+        print(f"timekprw: listening on {describe(sock)}", file=sys.stderr)
     config = uvicorn.Config(app, root_path=root_path, log_level="info")
     uvicorn.Server(config).run(sockets=sockets)
 
@@ -256,8 +246,9 @@ def main(argv=None, bridge=None):
     token = None if args.no_auth else read_token(args.token_file)
     if (tcp or (unix and args.auth_unix)) and token is None and not args.no_auth:
         raise SystemExit(
-            "timekprw: no token file found (looked at %s); create one, pass --no-auth, or listen on UNIX sockets only"
-            % (", ".join(token_file_candidates(args.token_file)))
+            "timekprw: no token file found (looked at {}); create one, pass --no-auth, or listen on UNIX sockets only".format(
+                ", ".join(token_file_candidates(args.token_file))
+            )
         )
     if (
         tcp

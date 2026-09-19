@@ -6,7 +6,6 @@ Created on Feb 05, 2019
 
 # imports
 import fileinput
-import re
 import os
 import pwd
 import re
@@ -15,9 +14,11 @@ from glob import glob
 # timekpr imports
 from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
-from timekpr.common.utils.config import timekprConfig
-from timekpr.common.utils.config import timekprUserConfig
-from timekpr.common.utils.config import timekprUserControl
+from timekpr.common.utils.config import (
+    timekprConfig,
+    timekprUserConfig,
+    timekprUserControl,
+)
 from timekpr.common.utils.misc import getNormalizedUserNames
 
 # user limits
@@ -34,7 +35,7 @@ _limitsConfig["UID_MAX"] = 60000
 #   linux users, extended with uppercase characters and first numeric or "." character
 #   domain users, extended with uppercase characters and first numeric or ".", and "@" symbol
 _userNameRegexp = re.compile(
-    "^[a-zA-Z0-9_\.]([a-zA-Z0-9_\.@-]{0,101}|[a-zA-Z0-9_\.@-]{0,100}\$)$"
+    r"^[a-zA-Z0-9_\.]([a-zA-Z0-9_\.@-]{0,101}|[a-zA-Z0-9_\.@-]{0,100}\$)$"
 )
 
 
@@ -59,8 +60,6 @@ for rFile in cons.TK_USER_LIMITS_FILE:
 def isUserValid(pUserId, pUserName=None, pUserShell=None):
     """Validate user ID, name and shell"""
     # vars
-    global _limitsConfig
-    global _userNameRegexp
     isUIDOK = False
 
     # check user id
@@ -68,24 +67,25 @@ def isUserValid(pUserId, pUserName=None, pUserShell=None):
         # check normal users and to test in VMs default user (it may have UID of 999, -1 from limit)
         isUIDOK = int(pUserId) >= _limitsConfig["UID_MIN"] - 1
         # check shell (if provided)
-        if isUIDOK and pUserShell is not None:
-            # uid is ok and shell is passed
-            if "/nologin" in pUserShell or "/false" in pUserShell or "" == pUserShell:
-                # user is not ours
-                isUIDOK = False
+        # uid is ok and shell is passed
+        if (
+            isUIDOK
+            and pUserShell is not None
+            and ("/nologin" in pUserShell or "/false" in pUserShell or "" == pUserShell)
+        ):
+            # user is not ours
+            isUIDOK = False
         # check if username is ok
-        if isUIDOK and pUserName is not None:
-            # uid is ok and name is passed
-            if not _userNameRegexp.match(pUserName):
-                # user is not ours
-                isUIDOK = False
+        # uid is ok and name is passed
+        if isUIDOK and pUserName is not None and not _userNameRegexp.match(pUserName):
+            # user is not ours
+            isUIDOK = False
     # fin
     return isUIDOK
 
 
 def getTimekprLoginManagers():
     """Get login manager names"""
-    global _loginManagers
     return _loginManagers
 
 
@@ -101,14 +101,14 @@ def setWakeUpByRTC(pWkeUpTimeEpoch):
                 wakeFile.write(str(pWkeUpTimeEpoch))
                 # success
                 res = True
-        except:
+        except Exception:
             # we only care about this, at least for now, if it succeeds
             res = False
     # result
     return res
 
 
-class timekprUserStore(object):
+class timekprUserStore:
     """Class will privide methods to help managing users, like intialize the config for them"""
 
     def __init__(self):
@@ -150,7 +150,7 @@ class timekprUserStore(object):
             if not os.path.isfile(file):
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    'setting up user "%s" with id %i' % (rUser, users[rUser][0]),
+                    f'setting up user "{rUser}" with id {int(users[rUser][0])}',
                 )
                 # user config
                 timekprUserConfig(
@@ -215,9 +215,9 @@ class timekprUserStore(object):
                 # try to read the first line with username
                 with open(rUserConfigFile, "r") as confFile:
                     # read first (x) lines and try to get username
-                    for i in range(0, cons.TK_UNAME_SRCH_LN_LMT):
+                    for i in range(cons.TK_UNAME_SRCH_LN_LMT):
                         # check whether we have correct username
-                        if "[%s]" % (user) in confFile.readline():
+                        if f"[{user}]" in confFile.readline():
                             # user validated
                             userNameValidated = True
                             # found

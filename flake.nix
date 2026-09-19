@@ -72,6 +72,7 @@
                 ./flake.nix
                 ./flake.lock
                 ./nix
+                ./ruff.toml
                 ./scripts
               ]);
             };
@@ -160,8 +161,10 @@
             "scripts/lib.sh"
             "scripts/run-nixos-test"
           ];
-          # Only Python written for this flake; timekpr's own sources are
-          # left as upstream formats them.
+          # The flake's own Python, which has no file extension either.
+          # ruff runs over timekpr's sources as well, on the default
+          # `*.py` includes; `ruff.toml` says which of its rules do not
+          # apply to them.
           pythonScripts = [
             "nix/tests/timekpr.py"
             "nix/tests/web/*.py"

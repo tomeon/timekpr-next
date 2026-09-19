@@ -6,7 +6,7 @@ Created on Aug 28, 2018
 
 
 # connection with ck
-class timekprUserManager(object):
+class timekprUserManager:
     # init
     def __init__(self, pUserName, pUserPathOnBus):
         """Initialize manager for ConsoleKit."""

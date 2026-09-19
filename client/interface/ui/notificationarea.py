@@ -5,17 +5,18 @@ Created on Aug 28, 2018
 """
 
 # import
-from datetime import timedelta
 import os
+from datetime import timedelta
+
+from timekpr.client.gui.clientgui import timekprGUI
+from timekpr.client.interface.dbus.notifications import timekprNotifications
 
 # timekpr imports
 from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
-from timekpr.client.interface.dbus.notifications import timekprNotifications
-from timekpr.client.gui.clientgui import timekprGUI
 
 
-class timekprNotificationArea(object):
+class timekprNotificationArea:
     """Support appindicator or other means of showing icon on the screen (this class is a parent for classes like indicator or staticon)"""
 
     def __init__(self, pUserName, pUserNameFull, pTimekprClientConfig):
@@ -208,15 +209,14 @@ class timekprNotificationArea(object):
                 # determine hours and minutes for PlayTime (if there is such time)
                 if pPlayTimeLeft is not None:
                     # format final time string
-                    timeLeftStr = "%s / %s" % (timeLeftStr, timeLeftStrPT)
+                    timeLeftStr = f"{timeLeftStr} / {timeLeftStrPT}"
 
                 # now, if priority changes, set up icon as well
                 if isTimeChanged and self._lastUsedPriority != prio:
                     # log
                     log.log(
                         cons.TK_LOG_LEVEL_DEBUG,
-                        "changing icon for level, old: %s, new: %s"
-                        % (self._lastUsedPriority, prio),
+                        f"changing icon for level, old: {self._lastUsedPriority}, new: {prio}",
                     )
                     # set up last used prio
                     self._lastUsedPriority = prio
@@ -256,13 +256,7 @@ class timekprNotificationArea(object):
             # log
             log.log(
                 cons.TK_LOG_LEVEL_DEBUG,
-                "process PT notif, prio: %s, prevLVL: %i, lvl: %i, icoena: %s"
-                % (
-                    prio,
-                    self._lastUsedPTPriorityLvl,
-                    finLvl,
-                    self.getTrayIconEnabled(),
-                ),
+                f"process PT notif, prio: {prio}, prevLVL: {int(self._lastUsedPTPriorityLvl)}, lvl: {int(finLvl)}, icoena: {self.getTrayIconEnabled()}",
             )
             # if any priority is effective, determine whether we need to inform user
             if (
@@ -303,7 +297,7 @@ class timekprNotificationArea(object):
         # for time left, we need to determine final priority accoriding to user defined priority (if not defined, that will come from server)
         if pMsgCode == cons.TK_MSG_CODE_TIMELEFT:
             # get user configured level and priority
-            prio, finLvl = self._determinePriority(
+            prio, _finLvl = self._determinePriority(
                 "Time", pPriority, (timeLeft - cons.TK_DATETIME_START).total_seconds()
             )
         #  notify user

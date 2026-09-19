@@ -105,8 +105,7 @@ API reference and is installed with the package.
   object with the connector's method names, and `main()` takes a
   `bridge`; `helpers.py` starts that server). `serve.py` presents
   activation descriptors itself, since `LISTEN_PID` cannot be set
-  from a `preexec_fn`. The suite is flake Python, so ruff formats
-  it.
+  from a `preexec_fn`.
 - `checks.<system>.web-ui` runs `test_ui.py` from the same suite: the
   UI in nixpkgs' Playwright Chromium (`playwright-driver.browsers-chromium`
   via `PLAYWRIGHT_BROWSERS_PATH`, launched with `--no-sandbox` because
@@ -131,15 +130,19 @@ API reference and is installed with the package.
 
 ## Conventions
 
-- Run `nix fmt` after every change to Nix, shell, or Python files and
-  fix anything a formatter reports but cannot fix itself. treefmt runs
-  alejandra (Nix), shellcheck and shfmt (the listed shell scripts), and
-  ruff-check and ruff-format (the listed Python files).
-- The Python formatters must only ever apply to Python written for the
-  flake (`nix/tests/timekpr.py`, `scripts/flake-inputs-via-git`).
-  Never reformat timekpr's own Python sources. The scripts have no
-  file extensions, so every new shell or Python script must be added to
-  the `shellScripts` or `pythonScripts` list in `flake.nix`.
+- Run `nix fmt` after every change and fix anything a formatter reports
+  but cannot fix itself. treefmt runs alejandra (Nix), prettier
+  (Markdown, JSON, YAML), xmllint (XML and the SVG icons), shellcheck
+  and shfmt (shell), and ruff-check and ruff-format (Python).
+- Everything with a recognised extension is formatted, timekpr's own
+  sources included. The helper scripts have none, so every new shell or
+  Python script must also be added to the `shellScripts` or
+  `pythonScripts` list in `flake.nix`.
+- `ruff.toml` turns off the handful of ruff's default rules that
+  describe a style timekpr does not follow (`BLE001` and `S110` for the
+  deliberate catch-alls, `DTZ` for its naive local-time arithmetic).
+  Prefer fixing a finding over adding to that list; a one-off
+  intentional violation gets a `# noqa: RULE (why)` instead.
 - Shell scripts: a script that is POSIX sh compatible uses
   `#!/bin/sh`; anything needing bash features uses `#!/usr/bin/env bash`
   and bash idioms throughout (`[[ ]]`, arrays, `(( ))`). Write

@@ -5,8 +5,8 @@ Created on Mar 19, 2019
 """
 
 # imports
-from gettext import ngettext as _translatePlural
 from gettext import gettext as _translateSingle
+from gettext import ngettext as _translatePlural
 
 
 def _(pMsgS):

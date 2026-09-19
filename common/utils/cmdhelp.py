@@ -69,8 +69,7 @@ def printAdminHelp():
 
     # log notice
     log.consoleOut(
-        "%s\n*) %s\n*) %s\n*) %s\n"
-        % (
+        "{}\n*) {}\n*) {}\n*) {}\n".format(
             msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_HEAD"),
             msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_TIME"),
             msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTICE_HOURS"),
@@ -78,7 +77,7 @@ def printAdminHelp():
         )
     )
     # log usage notes text
-    log.consoleOut("%s\n" % (msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTES")))
+    log.consoleOut("{}\n".format(msg.getTranslation("TK_MSG_CONSOLE_USAGE_NOTES")))
     # the web front end as an alternative to the daemon's D-Bus interface
     log.consoleOut(
         "  --server URL [--token-file FILE]  talk to timekprw (http://host:port, https://..., unix:///path) instead of the daemon; also via TIMEKPRA_SERVER and TIMEKPRA_TOKEN_FILE\n"

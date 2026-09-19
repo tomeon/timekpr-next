@@ -143,7 +143,7 @@ def user_config_from_daemon(info):
         "allowed_days": days,
         "limits_per_day": limits_by_day(days, info["LIMITS_PER_WEEKDAYS"]),
         "allowed_hours": {
-            day: hours_from_daemon(info["ALLOWED_HOURS_%s" % day]) for day in WEEKDAYS
+            day: hours_from_daemon(info[f"ALLOWED_HOURS_{day}"]) for day in WEEKDAYS
         },
         "lockout": lockout_from_daemon(info),
         "playtime": {
@@ -170,9 +170,7 @@ def user_config_to_daemon(config):
     playtime = config["playtime"]
     hours = config["allowed_hours"]
     info = {
-        "ALLOWED_HOURS_%s" % day: hours_to_daemon(
-            hours.get(str(day), hours.get(day, []))
-        )
+        f"ALLOWED_HOURS_{day}": hours_to_daemon(hours.get(str(day), hours.get(day, [])))
         for day in WEEKDAYS
     }
     info["ALLOWED_WEEKDAYS"] = [str(day) for day in days]
@@ -181,7 +179,7 @@ def user_config_to_daemon(config):
     info["HIDE_TRAY_ICON"] = config["hide_tray_icon"]
     info["LOCKOUT_TYPE"] = config["lockout"]["type"]
     if info["LOCKOUT_TYPE"] == cons.TK_CTRL_RES_W:
-        info["WAKEUP_HOUR_INTERVAL"] = "%s;%s" % lockout_wake(config["lockout"])
+        info["WAKEUP_HOUR_INTERVAL"] = "{};{}".format(*lockout_wake(config["lockout"]))
     info["LIMIT_PER_WEEK"] = config["limit_per_week"]
     info["LIMIT_PER_MONTH"] = config["limit_per_month"]
     for field, (key, _setter) in PLAYTIME_FIELDS.items():

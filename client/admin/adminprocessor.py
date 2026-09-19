@@ -5,28 +5,28 @@ Created on Aug 28, 2018
 """
 
 # imports
-import os
-import sys
 import getpass
+import os
 import shutil
 import subprocess
 import sys
 from os import geteuid
 
+from timekpr.client.interface.dbus.administration import timekprAdminConnector
+
 # timekpr imports
 from timekpr.common.constants import constants as cons
-from timekpr.common.log import log
-from timekpr.client.interface.dbus.administration import timekprAdminConnector
-from timekpr.common.utils.config import timekprConfig
 from timekpr.common.constants import messages as msg
+from timekpr.common.log import log
 from timekpr.common.utils import cmdhelp
-from timekpr.common.utils.misc import findHourStartEndMinutes as findHourStartEndMinutes
+from timekpr.common.utils.config import timekprConfig
 from timekpr.common.utils.misc import (
-    splitConfigValueNameParam as splitConfigValueNameParam,
+    findHourStartEndMinutes,
+    splitConfigValueNameParam,
 )
 
 
-class timekprAdminClient(object):
+class timekprAdminClient:
     """Main class for holding all client logic (including dbus)"""
 
     # --------------- initialization / control methods --------------- #
@@ -48,7 +48,7 @@ class timekprAdminClient(object):
         while idx < len(args):
             if args[idx] == pOption:
                 if idx + 1 >= len(args):
-                    log.consoleOut("%s needs a value" % (pOption))
+                    log.consoleOut(f"{pOption} needs a value")
                     sys.exit(1)
                 value = args[idx + 1]
                 del args[idx : idx + 2]
@@ -128,7 +128,9 @@ class timekprAdminClient(object):
             else:
                 # print to console
                 log.consoleOut(
-                    "%s\n" % (msg.getTranslation("TK_MSG_CONSOLE_GUI_NOT_AVAILABLE"))
+                    "{}\n".format(
+                        msg.getTranslation("TK_MSG_CONSOLE_GUI_NOT_AVAILABLE")
+                    )
                 )
                 # forced CLI"
                 timekprForceCLI = True
@@ -179,9 +181,7 @@ class timekprAdminClient(object):
             os.close(readFd)
         except Exception as ex:
             # without an agent authorization simply fails for those who need to authenticate
-            log.log(
-                cons.TK_LOG_LEVEL_INFO, "could not start pkttyagent: %s" % (str(ex))
-            )
+            log.log(cons.TK_LOG_LEVEL_INFO, f"could not start pkttyagent: {ex!s}")
         return agent
 
     def stopTtyAuthenticationAgent(self, pAgent):
@@ -204,12 +204,9 @@ class timekprAdminClient(object):
         paramIdx = 0
         paramLen = len(args)
         adminCmdIncorrect = False
-        tmpIdx = 0
 
         # determine parameter offset
-        for rArg in args:
-            # count offset
-            tmpIdx += 1
+        for tmpIdx, rArg in enumerate(args, start=1):
             # check for script
             if "/timekpra" in rArg or "timekpra.py" in rArg:
                 paramIdx = tmpIdx
@@ -488,7 +485,7 @@ class timekprAdminClient(object):
             ):
                 # print join
                 log.consoleOut(
-                    "%s: %s" % (rUserKey, ";".join(list(map(str, rUserConfig))))
+                    "{}: {}".format(rUserKey, ";".join(list(map(str, rUserConfig))))
                 )
             # join the lists
             elif "ALLOWED_HOURS_" in rUserKey:
@@ -497,7 +494,7 @@ class timekprAdminClient(object):
                 # print join
                 if len(rUserConfig) > 0:
                     # process hours
-                    for rUserHour in sorted(list(map(int, rUserConfig))):
+                    for rUserHour in sorted(map(int, rUserConfig)):
                         # unaccounted hour
                         uacc = (
                             "!"
@@ -506,23 +503,14 @@ class timekprAdminClient(object):
                         )
                         # get config per hr
                         hr = (
-                            "%s" % (rUserHour)
+                            f"{rUserHour}"
                             if rUserConfig[str(rUserHour)][cons.TK_CTRL_SMIN] <= 0
                             and rUserConfig[str(rUserHour)][cons.TK_CTRL_EMIN] >= 60
-                            else "%s[%s-%s]"
-                            % (
-                                rUserHour,
-                                rUserConfig[str(rUserHour)][cons.TK_CTRL_SMIN],
-                                rUserConfig[str(rUserHour)][cons.TK_CTRL_EMIN],
-                            )
+                            else f"{rUserHour}[{rUserConfig[str(rUserHour)][cons.TK_CTRL_SMIN]}-{rUserConfig[str(rUserHour)][cons.TK_CTRL_EMIN]}]"
                         )
                         # empty
-                        hrs = (
-                            "%s%s" % (uacc, hr)
-                            if hrs == ""
-                            else "%s;%s%s" % (hrs, uacc, hr)
-                        )
-                log.consoleOut("%s: %s" % (rUserKey, hrs))
+                        hrs = f"{uacc}{hr}" if hrs == "" else f"{hrs};{uacc}{hr}"
+                log.consoleOut(f"{rUserKey}: {hrs}")
             elif rUserKey in (
                 "TRACK_INACTIVE",
                 "HIDE_TRAY_ICON",
@@ -530,7 +518,7 @@ class timekprAdminClient(object):
                 "PLAYTIME_LIMIT_OVERRIDE_ENABLED",
                 "PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED",
             ):
-                log.consoleOut("%s: %s" % (rUserKey, bool(rUserConfig)))
+                log.consoleOut(f"{rUserKey}: {bool(rUserConfig)}")
             elif rUserKey in ("PLAYTIME_ACTIVITIES"):
                 # result
                 result = ""
@@ -538,15 +526,15 @@ class timekprAdminClient(object):
                 for rActArr in rUserConfig:
                     # activity
                     act = (
-                        "%s[%s]" % (rActArr[0], rActArr[1])
+                        f"{rActArr[0]}[{rActArr[1]}]"
                         if rActArr[1] != ""
-                        else "%s" % (rActArr[0])
+                        else f"{rActArr[0]}"
                     )
                     # gather activities
-                    result = "%s" % (act) if result == "" else "%s;%s" % (result, act)
-                log.consoleOut("%s: %s" % (rUserKey, result))
+                    result = f"{act}" if result == "" else f"{result};{act}"
+                log.consoleOut(f"{rUserKey}: {result}")
             else:
-                log.consoleOut("%s: %s" % (rUserKey, str(rUserConfig)))
+                log.consoleOut(f"{rUserKey}: {rUserConfig!s}")
 
     def processSetAllowedDays(self, pUserName, pDayList):
         """Process allowed days"""
@@ -711,7 +699,7 @@ class timekprAdminClient(object):
                 "please specify true or false"
             )
         else:
-            trackInactive = True if str(pTrackInactive).lower() == "true" else False
+            trackInactive = str(pTrackInactive).lower() == "true"
 
         # preprocess successful
         if result == 0:
@@ -739,7 +727,7 @@ class timekprAdminClient(object):
                 "please specify true or false"
             )
         else:
-            hideTrayIcon = True if str(pHideTrayIcon).lower() == "true" else False
+            hideTrayIcon = str(pHideTrayIcon).lower() == "true"
 
         # preprocess successful
         if result == 0:
@@ -775,15 +763,7 @@ class timekprAdminClient(object):
             # fail
             result = -1
             message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (
-                "please specify one of these: %s, %s, %s, %s, %s, %s"
-                % (
-                    cons.TK_CTRL_RES_L,
-                    cons.TK_CTRL_RES_S,
-                    cons.TK_CTRL_RES_W,
-                    cons.TK_CTRL_RES_T,
-                    cons.TK_CTRL_RES_K,
-                    cons.TK_CTRL_RES_D,
-                )
+                f"please specify one of these: {cons.TK_CTRL_RES_L}, {cons.TK_CTRL_RES_S}, {cons.TK_CTRL_RES_W}, {cons.TK_CTRL_RES_T}, {cons.TK_CTRL_RES_K}, {cons.TK_CTRL_RES_D}"
             )
 
         # preprocess successful
@@ -841,9 +821,7 @@ class timekprAdminClient(object):
                 "please specify true or false"
             )
         else:
-            isPlayTimeEnabled = (
-                True if str(pPlayTimeEnabled).lower() == "true" else False
-            )
+            isPlayTimeEnabled = str(pPlayTimeEnabled).lower() == "true"
 
         # preprocess successful
         if result == 0:
@@ -871,9 +849,7 @@ class timekprAdminClient(object):
                 "please specify true or false"
             )
         else:
-            isPlayTimeLimitOverride = (
-                True if str(pPlayTimeLimitOverride).lower() == "true" else False
-            )
+            isPlayTimeLimitOverride = str(pPlayTimeLimitOverride).lower() == "true"
 
         # preprocess successful
         if result == 0:
@@ -904,9 +880,7 @@ class timekprAdminClient(object):
             )
         else:
             isPlayTimeUnaccountedIntervalsEnabled = (
-                True
-                if str(pPlayTimeUnaccountedIntervalsEnabled).lower() == "true"
-                else False
+                str(pPlayTimeUnaccountedIntervalsEnabled).lower() == "true"
             )
 
         # preprocess successful

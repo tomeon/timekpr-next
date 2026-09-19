@@ -5,13 +5,14 @@ Created on Aug 28, 2018
 """
 
 # timekpr imports
-from timekpr.common.constants import messages as msg
+import gettext
+import locale
+from datetime import datetime
 
 # imports
 import dbus
-import locale
-import gettext
-from datetime import datetime
+
+from timekpr.common.constants import messages as msg
 
 # ## constants ##
 # version (in case config is corrupt or smth like that)
@@ -266,7 +267,7 @@ TK_SESSION_TYPES_EXCL = "tty;unspecified"
 # exclude users (test user for timekpr and all known login managers)
 TK_USERS_TEST = "testtimekpr"
 TK_USERS_LOGIN_MANAGERS = "gdm;gdm3;kdm;lightdm;mdm;lxdm;xdm;sddm;cdm"
-TK_USERS_EXCL = "%s;%s" % (TK_USERS_TEST, TK_USERS_LOGIN_MANAGERS)
+TK_USERS_EXCL = f"{TK_USERS_TEST};{TK_USERS_LOGIN_MANAGERS}"
 
 # ## user defaults ##
 # default value for allowed hours
@@ -284,15 +285,7 @@ TK_LIMIT_PER_WEEK = TK_LIMIT_PER_DAY * 7
 # default value for limit per month
 TK_LIMIT_PER_MONTH = TK_LIMIT_PER_DAY * 31
 # default value for limit per every weekday
-TK_LIMITS_PER_WEEKDAYS = "%s;%s;%s;%s;%s;%s;%s" % (
-    TK_LIMIT_PER_DAY,
-    TK_LIMIT_PER_DAY,
-    TK_LIMIT_PER_DAY,
-    TK_LIMIT_PER_DAY,
-    TK_LIMIT_PER_DAY,
-    TK_LIMIT_PER_DAY,
-    TK_LIMIT_PER_DAY,
-)
+TK_LIMITS_PER_WEEKDAYS = f"{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY};{TK_LIMIT_PER_DAY}"
 # default value for nitification levels
 TK_NOTIFICATION_LEVELS = "3600[3];1800[2];600[1];300[0]"
 TK_PT_NOTIFICATION_LEVELS = "180[1]"
@@ -432,100 +425,82 @@ TK_ADMIN_COMMANDS = {
 }
 # define user admin commands
 TK_USER_ADMIN_COMMANDS = {
-    "--help": "%s:\n    %s"
-    % (
+    "--help": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_HELP"),
         "timekpra --help\n    timekpra -h",
     ),
-    "--userlist": "%s:\n    %s"
-    % (msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERLIST"), "timekpra --userlist"),
-    "--userinfo": "%s:\n    %s"
-    % (
+    "--userlist": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERLIST"), "timekpra --userlist"
+    ),
+    "--userinfo": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERCONFIG"),
         "timekpra --userinfo 'testuser'",
     ),
-    "--userinfort": "%s:\n    %s"
-    % (
+    "--userinfort": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_USERCONFIGRT"),
         "timekpra --userinfort 'testuser'",
     ),
-    "--setalloweddays": "%s:\n    %s"
-    % (
+    "--setalloweddays": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETALLOWEDDAYS"),
         "timekpra --setalloweddays 'testuser' '1;2;3;4;5'",
     ),
-    "--setallowedhours": "%s:\n    %s"
-    % (
+    "--setallowedhours": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETALLOWEDHOURS"),
         "timekpra --setallowedhours 'testuser' 'ALL' '7;8;9;10;11[00-30];!14;!15;17;18;19;20[00-45]'",
     ),
-    "--settimelimits": "%s:\n    %s"
-    % (
+    "--settimelimits": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITS"),
         "timekpra --settimelimits 'testuser' '7200;7200;7200;7200;10800'",
     ),
-    "--settimelimitweek": "%s:\n    %s"
-    % (
+    "--settimelimitweek": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITWK"),
         "timekpra --settimelimitweek 'testuser' '50000'",
     ),
-    "--settimelimitmonth": "%s:\n    %s"
-    % (
+    "--settimelimitmonth": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELIMITMON"),
         "timekpra --settimelimitmonth 'testuser' '200000'",
     ),
-    "--settrackinactive": "%s:\n    %s"
-    % (
+    "--settrackinactive": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTRACKINACTIVE"),
         "timekpra --settrackinactive 'testuser' 'false'",
     ),
-    "--sethidetrayicon": "%s:\n    %s"
-    % (
+    "--sethidetrayicon": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETHIDETRAYICON"),
         "timekpra --sethidetrayicon 'testuser' 'false'",
     ),
-    "--setlockouttype": "%s:\n    %s"
-    % (
+    "--setlockouttype": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETLOCKOUTTYPE"),
         "timekpra --setlockouttype 'testuser' 'terminate'\n    timekpra --setlockouttype 'testuser' 'suspendwake;7;18'",
     ),
-    "--settimeleft": "%s:\n    %s"
-    % (
+    "--settimeleft": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETTIMELEFT"),
         "timekpra --settimeleft 'testuser' '+' 3600",
     ),
-    "--setplaytimeenabled": "%s:\n    %s"
-    % (
+    "--setplaytimeenabled": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEENABLED"),
         "timekpra --setplaytimeenabled 'testuser' 'false'",
     ),
-    "--setplaytimelimitoverride": "%s:\n    %s"
-    % (
+    "--setplaytimelimitoverride": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELIMITOVERRIDE"),
         "timekpra --setplaytimelimitoverride 'testuser' 'false'",
     ),
-    "--setplaytimeunaccountedintervalsflag": "%s:\n    %s"
-    % (
+    "--setplaytimeunaccountedintervalsflag": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEUNACCOUNTEDINTARVALSFLAG"),
         "timekpra --setplaytimeunaccountedintervalsflag 'testuser' 'false'",
     ),
-    "--setplaytimealloweddays": "%s:\n    %s"
-    % (
+    "--setplaytimealloweddays": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEALLOWEDDAYS"),
         "timekpra --setplaytimealloweddays 'testuser' '1;2;3;4;5'",
     ),
-    "--setplaytimelimits": "%s:\n    %s"
-    % (
+    "--setplaytimelimits": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELIMITS"),
         "timekpra --setplaytimelimits 'testuser' '1800;1800;1800;1800;3600'",
     ),
-    "--setplaytimeactivities": "%s:\n    %s"
-    % (
+    "--setplaytimeactivities": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMEACTIVITIES"),
         "timekpra --setplaytimeactivities 'testuser' 'DOOMEternalx64vk.exe[Doom Eternal];csgo_linux[CS: GO];firefox[Firefox browser]'",
     ),
-    "--setplaytimeleft": "%s:\n    %s"
-    % (
+    "--setplaytimeleft": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_SETPLAYTIMELEFT"),
         "timekpra --setplaytimeleft 'testuser' '+' 3600",
     ),

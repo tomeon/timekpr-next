@@ -5,10 +5,10 @@ Created on Jan 4, 2019
 """
 
 # imports
-import os
 import getpass
-import sys
+import os
 import signal
+import sys
 
 # set up our python path
 if "/usr/lib/python3/dist-packages" not in sys.path:

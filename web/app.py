@@ -7,7 +7,7 @@ RFC 9457 problem details.
 """
 
 import secrets
-from typing import Annotated, Optional
+from typing import Annotated
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request
@@ -65,7 +65,7 @@ def is_tcp(scope):
     return not server or server[1] is not None
 
 
-class HostCheck(object):
+class HostCheck:
     """Reject TCP requests whose Host header is not one of ours.  A web
     page can point a name it controls at 127.0.0.1 (DNS rebinding), but the
     browser still sends that name as the Host header."""
@@ -85,7 +85,7 @@ class HostCheck(object):
                 "",
             )
             if (urlsplit("//" + host).hostname or "").lower() not in self._hosts:
-                await problem(421, "Host %r is not served here" % (host))(
+                await problem(421, f"Host {host!r} is not served here")(
                     scope, receive, send
                 )
                 return
@@ -112,7 +112,7 @@ def create_app(
 
     def authenticate(
         request: Request,
-        credentials: Annotated[Optional[HTTPAuthorizationCredentials], Depends(bearer)],
+        credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer)],
     ):
         # a trusted UNIX socket's file permissions are its access control
         if is_trusted(request.scope, trusted_sockets):
@@ -192,7 +192,7 @@ def create_app(
     user_responses = {400: {"model": models.Problem}, 404: {"model": models.Problem}}
 
     @api.get("/users", response_model=list[models.UserSummary])
-    def list_users(include: Annotated[Optional[str], Query(pattern="^status$")] = None):
+    def list_users(include: Annotated[str | None, Query(pattern="^status$")] = None):
         return bridge.list_users(include_status=include == "status")
 
     @api.get("/users/{username}", response_model=models.User, responses=user_responses)

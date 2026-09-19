@@ -36,24 +36,24 @@ class _UnixHTTPConnection(http.client.HTTPConnection):
 
 
 def user_path(username, suffix=""):
-    return "/users/%s%s" % (quote(username, safe=""), suffix)
+    return "/users/{}{}".format(quote(username, safe=""), suffix)
 
 
-class timekprAdminHttpConnector(object):
+class timekprAdminHttpConnector:
     """Connector to timekprw at http://HOST:PORT[/PREFIX], https://... or unix:///PATH"""
 
     def __init__(self, url, tokenFile=None, timeout=30):
         parts = urlsplit(url)
         if parts.scheme not in ("http", "https", "unix"):
             raise ValueError(
-                "unsupported server URL %s (use http://, https:// or unix://)" % (url)
+                f"unsupported server URL {url} (use http://, https:// or unix://)"
             )
         self._url = url
         self._scheme = parts.scheme
         self._netloc = parts.netloc
         # unix:///run/x.sock and unix:/run/x.sock name an absolute path
         self._path = (
-            ("/%s%s" % (parts.netloc, parts.path))
+            (f"/{parts.netloc}{parts.path}")
             if parts.scheme == "unix" and parts.netloc
             else parts.path
         )
@@ -88,7 +88,7 @@ class timekprAdminHttpConnector(object):
         """Return (HTTP status, decoded JSON body or None); raises OSError / ValueError"""
         headers = dict(headers or {}, Accept="application/json")
         if self._token is not None:
-            headers["Authorization"] = "Bearer %s" % (self._token)
+            headers["Authorization"] = f"Bearer {self._token}"
         if body is not None:
             headers["Content-Type"] = "application/json"
         connection = self._connection()
@@ -110,22 +110,22 @@ class timekprAdminHttpConnector(object):
         try:
             status, data = self._request(method, path, body)
         except (OSError, ValueError) as ex:
-            log.log(
-                cons.TK_LOG_LEVEL_INFO, 'ERROR: "%s" in "%s %s"' % (ex, method, path)
-            )
+            log.log(cons.TK_LOG_LEVEL_INFO, f'ERROR: "{ex}" in "{method} {path}"')
             self._connected = False
-            return -1, "FAILED to reach timekprw at %s: %s" % (self._url, ex), None
+            return -1, f"FAILED to reach timekprw at {self._url}: {ex}", None
         if status >= 400:
             problem = data if isinstance(data, dict) else {}
-            message = (
-                problem.get("detail") or problem.get("title") or "HTTP %s" % (status)
-            )
+            message = problem.get("detail") or problem.get("title") or f"HTTP {status}"
             errors = [
-                "%s: %s" % (error["field"], error["message"])
+                "{}: {}".format(error["field"], error["message"])
                 for error in problem.get("errors", [])
                 if error["message"] != message
             ]
-            return -1, message + (" (%s)" % ("; ".join(errors)) if errors else ""), None
+            return (
+                -1,
+                message + (" ({})".format("; ".join(errors)) if errors else ""),
+                None,
+            )
         return 0, "", data
 
     # ## the D-Bus connector's interface ##
@@ -140,8 +140,7 @@ class timekprAdminHttpConnector(object):
             self._connected = False
             self._initFailed = True
             log.consoleOut(
-                "FAILED to reach timekprw at %s: %s\nPlease check that timekprw is running and the URL is right"
-                % (self._url, ex)
+                f"FAILED to reach timekprw at {self._url}: {ex}\nPlease check that timekprw is running and the URL is right"
             )
 
     def isConnected(self):
@@ -198,7 +197,7 @@ class timekprAdminHttpConnector(object):
         day = "all" if pDayNumber == "ALL" else str(pDayNumber)
         return self._call(
             "PUT",
-            user_path(pUserName, "/config/allowed-hours/%s" % (day)),
+            user_path(pUserName, f"/config/allowed-hours/{day}"),
             webapi.hours_from_daemon(pHourList),
         )[:2]
 

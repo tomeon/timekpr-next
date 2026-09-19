@@ -5,11 +5,10 @@ Created on Aug 28, 2018
 """
 
 import locale
-import time
 
 # init speech
 try:
-    from espeak import espeak as espeak
+    from espeak import espeak
 
     _USE_SPEECH = True
 except (ImportError, ValueError):
@@ -22,8 +21,6 @@ except (ImportError, ValueError):
             _USE_SPEECH_NG = True
         except (ImportError, ValueError):
             _USE_SPEECH_NG = False
-            pass
-    pass
 
 
 def isSupported():
@@ -32,7 +29,7 @@ def isSupported():
     return _USE_SPEECH or _USE_SPEECH_NG
 
 
-class timekprSpeech(object):
+class timekprSpeech:
     """Class will provide speech synth functionality"""
 
     def __init__(self):

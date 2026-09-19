@@ -6,7 +6,7 @@ Created on Aug 28, 2018
 
 
 # connection with ck
-class timekprUserLoginManager(object):
+class timekprUserLoginManager:
     """Class enables the connection with ConsoleKit"""
 
     def __init__(self):

@@ -1,9 +1,10 @@
 import os
 
 import pytest
-import timekpr.web
 from fake import FakeConnector
 from fastapi.testclient import TestClient
+
+import timekpr.web
 from timekpr.web.app import create_app
 from timekpr.web.bridge import Bridge
 

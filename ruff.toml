@@ -1,0 +1,27 @@
+# ruff-check and ruff-format run over every Python file in the tree (see
+# `treefmt` in flake.nix), timekpr's own sources included.  A handful of
+# ruff's default rules describe a style timekpr deliberately does not
+# follow, and "fixing" them would change how the program behaves, so they
+# are turned off here rather than papered over with per-line `noqa`.
+
+[lint]
+ignore = [
+  # timekpr's daemon, its D-Bus interfaces and its GTK client wrap almost
+  # every call to logind, polkit, psutil and GTK in `except Exception` on
+  # purpose: a failure in any one of them must not take the process down.
+  # Narrowing those to specific exception types is a behavioural change,
+  # not a lint fix.
+  "BLE001",
+  # The same, where the handler has nothing to do but carry on.
+  "S110",
+  # timekpr reckons in local wall-clock time throughout: limits are per
+  # calendar day in the user's own timezone, and `cons.TK_DATETIME_START`
+  # is a naive sentinel that naive `datetime.now()` values are subtracted
+  # from.  Handing those calls a `tzinfo` would make the arithmetic raise.
+  "DTZ",
+]
+
+[lint.isort]
+# `timekpr` is this repository's own package, whatever directory a file
+# happens to sit in, so its imports keep their own block.
+known-first-party = ["timekpr"]

@@ -6,15 +6,18 @@ Created on Aug 28, 2018
 
 # import
 import os
+
 import gi
+
 gi.require_version("Gtk", "3.0")
 from gi.repository import Gtk
 
+from timekpr.client.interface.ui.notificationarea import timekprNotificationArea
+
 # timekpr imports
 from timekpr.common.constants import constants as cons
-from timekpr.common.log import log
-from timekpr.client.interface.ui.notificationarea import timekprNotificationArea
 from timekpr.common.constants import messages as msg
+from timekpr.common.log import log
 
 # status icon stuff
 _USE_STATUSICON = True
@@ -40,7 +43,6 @@ class timekprIndicator(timekprNotificationArea):
 
     def isSupported(self):
         """Get whether appindicator is supported"""
-        global _USE_STATUSICON
         # returns whether we can use appindicator
         return _USE_STATUSICON
 
@@ -73,11 +75,34 @@ class timekprIndicator(timekprNotificationArea):
 
         # build up menu actiongroups
         timekprActionGroup = Gtk.ActionGroup("timekprActions")
-        timekprActionGroup.add_actions([
-            ("TimeLeft", Gtk.STOCK_INFO, msg.getTranslation("TK_MSG_MENU_TIME_LEFT"), None, None, super().invokeTimekprTimeLeft),
-            ("Limits & configuration", Gtk.STOCK_PROPERTIES, msg.getTranslation("TK_MSG_MENU_CONFIGURATION"), None, None, super().invokeTimekprUserProperties),
-            ("About", Gtk.STOCK_ABOUT, msg.getTranslation("TK_MSG_MENU_ABOUT"), None, None, super().invokeTimekprAbout)
-        ])
+        timekprActionGroup.add_actions(
+            [
+                (
+                    "TimeLeft",
+                    Gtk.STOCK_INFO,
+                    msg.getTranslation("TK_MSG_MENU_TIME_LEFT"),
+                    None,
+                    None,
+                    super().invokeTimekprTimeLeft,
+                ),
+                (
+                    "Limits & configuration",
+                    Gtk.STOCK_PROPERTIES,
+                    msg.getTranslation("TK_MSG_MENU_CONFIGURATION"),
+                    None,
+                    None,
+                    super().invokeTimekprUserProperties,
+                ),
+                (
+                    "About",
+                    Gtk.STOCK_ABOUT,
+                    msg.getTranslation("TK_MSG_MENU_ABOUT"),
+                    None,
+                    None,
+                    super().invokeTimekprAbout,
+                ),
+            ]
+        )
 
         # build up menu
         timekprUIManager = Gtk.UIManager()
@@ -86,7 +111,13 @@ class timekprIndicator(timekprNotificationArea):
         self._popup = timekprUIManager.get_widget("/timekprPopupMenu")
 
         # initial config
-        self._tray.set_from_file(os.path.join(self._timekprClientConfig.getTimekprSharedDir(), "icons", cons.TK_PRIO_CONF["client-logo"][cons.TK_ICON_STAT]))
+        self._tray.set_from_file(
+            os.path.join(
+                self._timekprClientConfig.getTimekprSharedDir(),
+                "icons",
+                cons.TK_PRIO_CONF["client-logo"][cons.TK_ICON_STAT],
+            )
+        )
         self.setTimeLeft("", None, 0)
 
         log.log(cons.TK_LOG_LEVEL_DEBUG, "finish initTimekprStatusIcon")
@@ -94,7 +125,9 @@ class timekprIndicator(timekprNotificationArea):
     def setTimeLeft(self, pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft=None):
         """Set time left in the indicator"""
         # make strings to set
-        timeLeftStr, icon = super().formatTimeLeft(pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft)
+        timeLeftStr, icon = super().formatTimeLeft(
+            pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft
+        )
 
         # if we have smth to set
         if timeLeftStr is not None:

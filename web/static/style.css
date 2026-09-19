@@ -1,54 +1,257 @@
 :root {
-  --bg: #f6f7f9; --fg: #1d1f24; --card: #ffffff; --line: #d8dbe2; --muted: #66707f;
-  --accent: #2b6cb0; --accent-fg: #ffffff; --ok: #2f855a; --warn: #c05621; --bad: #c53030;
-  --hour-on: #9ae6b4; --hour-uacc: #faf089; --hour-off: #e2e8f0;
+  --bg: #f6f7f9;
+  --fg: #1d1f24;
+  --card: #ffffff;
+  --line: #d8dbe2;
+  --muted: #66707f;
+  --accent: #2b6cb0;
+  --accent-fg: #ffffff;
+  --ok: #2f855a;
+  --warn: #c05621;
+  --bad: #c53030;
+  --hour-on: #9ae6b4;
+  --hour-uacc: #faf089;
+  --hour-off: #e2e8f0;
 }
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #15171b; --fg: #e6e8ec; --card: #1f2229; --line: #363a44; --muted: #9aa3b2;
-    --accent: #63b3ed; --accent-fg: #0b1320; --hour-on: #276749; --hour-uacc: #975a16; --hour-off: #2d3340;
+    --bg: #15171b;
+    --fg: #e6e8ec;
+    --card: #1f2229;
+    --line: #363a44;
+    --muted: #9aa3b2;
+    --accent: #63b3ed;
+    --accent-fg: #0b1320;
+    --hour-on: #276749;
+    --hour-uacc: #975a16;
+    --hour-off: #2d3340;
   }
 }
-* { box-sizing: border-box; }
-body { margin: 0; font: 15px/1.4 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
-header { display: flex; align-items: center; gap: 1rem; padding: 0.6rem 1rem; border-bottom: 1px solid var(--line); background: var(--card); }
-header h1 { font-size: 1.2rem; margin: 0; }
-nav { margin-left: auto; display: flex; gap: 0.3rem; }
-nav button.active { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-main { padding: 1rem; }
-.page { display: flex; gap: 1rem; align-items: flex-start; }
-aside { flex: 0 0 16rem; }
-#user-detail { flex: 1; min-width: 0; }
-#user-list { list-style: none; margin: 0; padding: 0; }
-#user-list li { padding: 0.5rem 0.7rem; border: 1px solid var(--line); border-radius: 6px; margin-bottom: 0.4rem; background: var(--card); cursor: pointer; }
-#user-list li.selected { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
-#user-list .name { font-weight: 600; }
-#user-list .sub { color: var(--muted); font-size: 0.85rem; }
-.dot { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; background: var(--muted); margin-right: 0.4rem; }
-.dot.active { background: var(--ok); }
-.card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 0.8rem 1rem; margin-bottom: 1rem; }
-.card h3 { margin: 0 0 0.6rem; font-size: 1rem; }
-.badge { padding: 0.1rem 0.5rem; border-radius: 999px; font-size: 0.8rem; background: var(--line); }
-.badge.ok { background: var(--ok); color: #fff; }
-.badge.bad { background: var(--bad); color: #fff; }
-.message { margin: 0 1rem; padding: 0.5rem 0.8rem; border-radius: 6px; background: var(--warn); color: #fff; }
-.message.ok { background: var(--ok); }
-.status { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.3rem 1rem; margin: 0 0 0.8rem; }
-.status dt { color: var(--muted); font-size: 0.8rem; }
-.status dd { margin: 0; font-size: 1.1rem; font-weight: 600; }
-.inline { display: flex; flex-wrap: wrap; gap: 0.6rem 1.2rem; align-items: center; margin: 0.4rem 0; }
-.hint { color: var(--muted); font-size: 0.85rem; margin: 0 0 0.6rem; }
-table { border-collapse: collapse; }
-table.days td, table.days th, table.settings td, table.settings th { padding: 0.2rem 0.6rem; text-align: left; }
-table.hours td { width: 1.6rem; height: 1.6rem; text-align: center; font-size: 0.7rem; cursor: pointer; border: 1px solid var(--card); border-radius: 3px; background: var(--hour-off); }
-table.hours td.on { background: var(--hour-on); }
-table.hours td.uacc { background: var(--hour-uacc); }
-table.hours td.partial::after { content: "•"; }
-table.hours th { text-align: right; padding-right: 0.4rem; font-weight: 500; }
-table.hours input { width: 14rem; font-size: 0.8rem; margin-left: 0.5rem; }
-input[type=text], input[type=number], input[type=password], select, textarea { font: inherit; padding: 0.2rem 0.4rem; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); color: var(--fg); }
-textarea { display: block; width: 100%; max-width: 40rem; }
-button { font: inherit; padding: 0.3rem 0.8rem; border: 1px solid var(--line); border-radius: 4px; background: var(--card); color: var(--fg); cursor: pointer; }
-button.primary { background: var(--accent); color: var(--accent-fg); border-color: var(--accent); }
-.actions { display: flex; gap: 0.6rem; }
-@media (max-width: 800px) { .page { flex-direction: column; } aside { flex: none; width: 100%; } }
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  font:
+    15px/1.4 system-ui,
+    sans-serif;
+  color: var(--fg);
+  background: var(--bg);
+}
+header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.6rem 1rem;
+  border-bottom: 1px solid var(--line);
+  background: var(--card);
+}
+header h1 {
+  font-size: 1.2rem;
+  margin: 0;
+}
+nav {
+  margin-left: auto;
+  display: flex;
+  gap: 0.3rem;
+}
+nav button.active {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+main {
+  padding: 1rem;
+}
+.page {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+aside {
+  flex: 0 0 16rem;
+}
+#user-detail {
+  flex: 1;
+  min-width: 0;
+}
+#user-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+#user-list li {
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  margin-bottom: 0.4rem;
+  background: var(--card);
+  cursor: pointer;
+}
+#user-list li.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+#user-list .name {
+  font-weight: 600;
+}
+#user-list .sub {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+.dot {
+  display: inline-block;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: var(--muted);
+  margin-right: 0.4rem;
+}
+.dot.active {
+  background: var(--ok);
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 1rem;
+}
+.card h3 {
+  margin: 0 0 0.6rem;
+  font-size: 1rem;
+}
+.badge {
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  background: var(--line);
+}
+.badge.ok {
+  background: var(--ok);
+  color: #fff;
+}
+.badge.bad {
+  background: var(--bad);
+  color: #fff;
+}
+.message {
+  margin: 0 1rem;
+  padding: 0.5rem 0.8rem;
+  border-radius: 6px;
+  background: var(--warn);
+  color: #fff;
+}
+.message.ok {
+  background: var(--ok);
+}
+.status {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+  gap: 0.3rem 1rem;
+  margin: 0 0 0.8rem;
+}
+.status dt {
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+.status dd {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+}
+.inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem 1.2rem;
+  align-items: center;
+  margin: 0.4rem 0;
+}
+.hint {
+  color: var(--muted);
+  font-size: 0.85rem;
+  margin: 0 0 0.6rem;
+}
+table {
+  border-collapse: collapse;
+}
+table.days td,
+table.days th,
+table.settings td,
+table.settings th {
+  padding: 0.2rem 0.6rem;
+  text-align: left;
+}
+table.hours td {
+  width: 1.6rem;
+  height: 1.6rem;
+  text-align: center;
+  font-size: 0.7rem;
+  cursor: pointer;
+  border: 1px solid var(--card);
+  border-radius: 3px;
+  background: var(--hour-off);
+}
+table.hours td.on {
+  background: var(--hour-on);
+}
+table.hours td.uacc {
+  background: var(--hour-uacc);
+}
+table.hours td.partial::after {
+  content: "•";
+}
+table.hours th {
+  text-align: right;
+  padding-right: 0.4rem;
+  font-weight: 500;
+}
+table.hours input {
+  width: 14rem;
+  font-size: 0.8rem;
+  margin-left: 0.5rem;
+}
+input[type="text"],
+input[type="number"],
+input[type="password"],
+select,
+textarea {
+  font: inherit;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--fg);
+}
+textarea {
+  display: block;
+  width: 100%;
+  max-width: 40rem;
+}
+button {
+  font: inherit;
+  padding: 0.3rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--card);
+  color: var(--fg);
+  cursor: pointer;
+}
+button.primary {
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-color: var(--accent);
+}
+.actions {
+  display: flex;
+  gap: 0.6rem;
+}
+@media (max-width: 800px) {
+  .page {
+    flex-direction: column;
+  }
+  aside {
+    flex: none;
+    width: 100%;
+  }
+}

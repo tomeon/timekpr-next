@@ -8,6 +8,7 @@ import os
 import sys
 
 from fake import FakeConnector
+
 from timekpr.web import timekprw
 from timekpr.web.bridge import Bridge
 

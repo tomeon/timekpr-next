@@ -4,6 +4,7 @@ import pytest
 from conftest import AUTH, TOKEN
 from fake import FakeConnector
 from fastapi.testclient import TestClient
+
 from timekpr.web import timekprw
 from timekpr.web.app import create_app, is_trusted
 from timekpr.web.bridge import Bridge

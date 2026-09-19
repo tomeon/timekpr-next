@@ -3,6 +3,7 @@ daemon's (result, message[, payload]) convention, and just enough state
 to read back what the setters wrote."""
 
 import dbus
+
 from timekpr.common.constants import messages as msg
 
 ALL_HOURS = {str(hour): {"STARTMIN": 0, "ENDMIN": 60, "UACC": 0} for hour in range(24)}

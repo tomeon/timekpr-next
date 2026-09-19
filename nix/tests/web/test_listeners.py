@@ -41,7 +41,10 @@ def test_socket_activation_and_connector(tmp_path, token_file):
         wait_for(server, via_unix)
         assert via_unix.isConnected() == (True, True)
         result, _message, users = via_unix.getUserList()
-        assert (result, users) == (0, [["alice", "Alice"], ["bob@idm.nixos.test", ""]])
+        assert (result, users) == (
+            0,
+            [["alice", "Alice", "user"], ["bob@idm.nixos.test", "", "default"]],
+        )
 
         # the daemon's shapes and key order, as timekpra prints them
         result, _message, info = via_unix.getUserConfigurationAndInformation(
@@ -52,6 +55,8 @@ def test_socket_activation_and_connector(tmp_path, token_file):
             "ALLOWED_WEEKDAYS",
             "LIMITS_PER_WEEKDAYS",
         ]
+        assert list(info)[13:15] == ["POLICY_SOURCE", "POLICY_GROUPS"]
+        assert info["POLICY_SOURCE"] == "user" and info["POLICY_GROUPS"] == []
         assert info["ACTUAL_TIME_LEFT_DAY"] == 14 and info["TIME_SPENT_WEEK"] == 3
         _, _, realtime = via_unix.getUserConfigurationAndInformation(
             "alice", cons.TK_CL_INF_RT
@@ -103,6 +108,46 @@ def test_socket_activation_and_connector(tmp_path, token_file):
             "nobody", "F"
         )
         assert result == -1 and "no configuration" in message and info == {}
+
+        # groups and policies, as timekpra --grouplist and friends use them
+        result, _, groups = via_unix.getGroupList()
+        assert (result, groups) == (
+            0,
+            [["all", "", ""], ["kids", "all", "alice;bob@idm.nixos.test"]],
+        )
+        result, _, info = via_unix.getUserConfigurationAndInformation(
+            "@kids", cons.TK_CL_INF_FULL
+        )
+        assert result == 0 and list(info)[9:] == [
+            "TRACK_INACTIVE",
+            "LIMIT_PER_WEEK",
+            "LIMIT_PER_MONTH",
+            "OVERRIDES",
+        ]
+        assert info["OVERRIDES"] == ["all"] and info["LIMITS_PER_WEEKDAYS"] == [0] * 7
+        assert via_unix.setOverrides("@kids", ["@all", "guests"]) == (0, "")
+        _, _, info = via_unix.getUserConfigurationAndInformation("@kids", "F")
+        assert info["OVERRIDES"] == ["all", "guests"]
+        # the group's first setting creates its policy
+        assert via_unix.setTimeLimitForDays("@teens", [0] * 7) == (0, "")
+        _, _, info = via_unix.getUserConfigurationAndInformation("@teens", "F")
+        assert info["LIMITS_PER_WEEKDAYS"] == [0] * 7
+        assert via_unix.setTrackInactive("@teens", True) == (0, "")
+        # per-user settings for a group, and per-group settings for a user
+        result, message = via_unix.setHideTrayIcon("@kids", True)
+        assert result == -1 and "is a group" in message
+        result, message = via_unix.setTimeLeft("@kids", "+", 1)
+        assert result == -1 and "is a group" in message
+        result, message = via_unix.setOverrides("alice", ["kids"])
+        assert result == -1 and "is a user" in message
+        assert via_unix.deletePolicy("@teens") == (0, "")
+        result, message = via_unix.deletePolicy("@teens")
+        assert result == -1 and "no policy" in message
+        assert via_unix.deletePolicy("alice") == (0, "")
+        _, _, info = via_unix.getUserConfigurationAndInformation("alice", "F")
+        assert info["POLICY_SOURCE"] == "default"
+        assert via_unix.migratePolicies(True) == (0, "", ["carol"])
+        assert via_unix.migratePolicies(False) == (0, "", ["carol"])
 
         # TCP through the same server needs the token
         anonymous = timekprAdminHttpConnector(f"http://127.0.0.1:{port}", timeout=10)

@@ -36,6 +36,15 @@ USER_FIELDS = {
     "hide_tray_icon": ("HIDE_TRAY_ICON", "setHideTrayIcon"),
 }
 
+# the scalar per-group settings: a group policy has no tray icon (that is
+# a per-user preference)
+GROUP_FIELDS = {
+    field: setter for field, setter in USER_FIELDS.items() if field != "hide_tray_icon"
+}
+
+# where a user's effective policy comes from, API field -> daemon key
+POLICY_FIELDS = {"policy_source": "POLICY_SOURCE", "policy_groups": "POLICY_GROUPS"}
+
 # saved counters (always present) and live counters (present while the
 # daemon tracks a session of the user), API field -> daemon key
 STATUS_SAVED = {
@@ -96,7 +105,7 @@ def hours_to_daemon(entries):
 # ## whole resources ##
 
 
-def user_config_from_daemon(info):
+def _limits_from_daemon(info, fields):
     days = [int(day) for day in info["ALLOWED_WEEKDAYS"]]
     config = {
         "allowed_days": days,
@@ -105,12 +114,12 @@ def user_config_from_daemon(info):
             day: hours_from_daemon(info[f"ALLOWED_HOURS_{day}"]) for day in WEEKDAYS
         },
     }
-    config.update({field: info[key] for field, (key, _setter) in USER_FIELDS.items()})
+    config.update({field: info[key] for field, (key, _setter) in fields.items()})
     return config
 
 
-def user_config_to_daemon(config):
-    """The inverse of user_config_from_daemon, in the daemon's key order"""
+def _limits_to_daemon(config):
+    """The daemon's keys up to the scalars, in its order"""
     days = config["allowed_days"]
     hours = config["allowed_hours"]
     info = {
@@ -119,10 +128,56 @@ def user_config_to_daemon(config):
     }
     info["ALLOWED_WEEKDAYS"] = [str(day) for day in days]
     info["LIMITS_PER_WEEKDAYS"] = limits_list(days, config["limits_per_day"])
+    return info
+
+
+def user_config_from_daemon(info):
+    return _limits_from_daemon(info, USER_FIELDS)
+
+
+def user_config_to_daemon(config):
+    """The inverse of user_config_from_daemon, in the daemon's key order"""
+    info = _limits_to_daemon(config)
     info["TRACK_INACTIVE"] = config["track_inactive"]
     info["HIDE_TRAY_ICON"] = config["hide_tray_icon"]
     info["LIMIT_PER_WEEK"] = config["limit_per_week"]
     info["LIMIT_PER_MONTH"] = config["limit_per_month"]
+    return info
+
+
+def user_policy_from_daemon(info):
+    """Where a user's effective policy comes from (the daemon adds these
+    keys to a user's full information)"""
+    return {
+        "policy_source": info["POLICY_SOURCE"],
+        "policy_groups": [str(group) for group in info["POLICY_GROUPS"]],
+    }
+
+
+def user_policy_to_daemon(user):
+    return {
+        "POLICY_SOURCE": user["policy_source"],
+        "POLICY_GROUPS": list(user["policy_groups"]),
+    }
+
+
+def group_config_from_daemon(info):
+    """A group's policy: the limits, without the tray icon, plus the groups
+    it overrides"""
+    config = _limits_from_daemon(info, GROUP_FIELDS)
+    config["overrides"] = [str(group) for group in info["OVERRIDES"]]
+    return config
+
+
+def group_config_to_daemon(config):
+    """The inverse of group_config_from_daemon, in the daemon's key order
+    (HIDE_TRAY_ICON, which the daemon returns but which means nothing for a
+    group, is left out)"""
+    info = _limits_to_daemon(config)
+    info["TRACK_INACTIVE"] = config["track_inactive"]
+    info["LIMIT_PER_WEEK"] = config["limit_per_week"]
+    info["LIMIT_PER_MONTH"] = config["limit_per_month"]
+    info["OVERRIDES"] = list(config["overrides"])
     return info
 
 

@@ -101,6 +101,27 @@ def test_token_prompt_and_user_list(page, server):
     )
 
 
+def test_user_policy_sources(page, server):
+    # runs before anything saves a configuration for bob, which would
+    # give him a policy of his own
+    sign_in(page, server)
+    assert page.locator("#user-list li .tag").all_inner_texts() == [
+        "own policy",
+        "defaults",
+    ]
+    page.click("#user-list li:nth-child(2)")
+    page.wait_for_selector("#user-detail:not([hidden])")
+    page.wait_for_function(
+        "document.querySelector('#user-policy').textContent === 'Policy: defaults'"
+    )
+    assert page.locator("#delete-policy").is_disabled()
+    page.click("#user-list li:nth-child(1)")
+    page.wait_for_function(
+        "document.querySelector('#user-policy').textContent === 'Policy: own'"
+    )
+    assert page.locator("#delete-policy").is_enabled()
+
+
 def test_user_page_and_config_save(page, server):
     sign_in(page, server)
     page.click("#user-list li:nth-child(2)")
@@ -109,7 +130,7 @@ def test_user_page_and_config_save(page, server):
     assert page.inner_text("#user-title") == "bob@idm.nixos.test"
     assert "Session none" in page.inner_text("#user-status").replace("\n", " ")
     assert page.locator("#hours-grid td.on").count() == 7 * 24
-    assert page.input_value("[name=limit_per_week]") == "168:00"
+    assert page.input_value("#config-form [name=limit_per_week]") == "168:00"
 
     # cycle Monday's hour 0: allowed -> unaccounted -> forbidden
     cell = page.locator("#hours-grid tbody tr:nth-child(1) td:nth-child(2)")
@@ -117,12 +138,12 @@ def test_user_page_and_config_save(page, server):
     assert "uacc" in cell.get_attribute("class")
     cell.click()
     assert not cell.get_attribute("class")
-    page.fill("[name=limit_1]", "2:30")
+    page.fill("#config-form [name=limit_1]", "2:30")
     page.click("#config-form button[type=submit]")
     wait_message(page, "Saved")
 
     # the form shows what came back, and the daemon side got the change
-    assert page.input_value("[name=limit_1]") == "2:30"
+    assert page.input_value("#config-form [name=limit_1]") == "2:30"
     assert page.locator("#hours-grid td.on").count() == 7 * 24 - 1
     _result, _message, info = server.api.getUserConfigurationAndInformation(
         "bob@idm.nixos.test", "F"
@@ -161,3 +182,81 @@ def test_time_left_and_daemon_settings(page, server):
     page.wait_for_function(
         "document.querySelector('#message').textContent.includes('Unexpected ERROR')"
     )
+
+
+def test_groups_page(page, server):
+    sign_in(page, server)
+    page.click("#nav-groups")
+    page.wait_for_selector("#groups-list li")
+    assert set(page.locator("#groups-list li .name").all_inner_texts()) == {
+        "all",
+        "kids",
+    }
+    kids = page.locator("#groups-list li", has_text="kids")
+    text = kids.inner_text().replace("\n", " ")
+    assert "overrides: all" in text
+    assert "alice" in text and "bob@idm.nixos.test" in text
+
+    kids.click()
+    page.wait_for_selector("#group-detail:not([hidden])")
+    page.wait_for_function(
+        "document.querySelectorAll('#group-hours-grid td.on').length > 0"
+    )
+    assert page.inner_text("#group-title") == "kids"
+    # the same form as a user's, minus the user-only parts
+    assert page.locator("#group-config-form [name=hide_tray_icon]").count() == 0
+    assert page.locator("#config-form [name=hide_tray_icon]").count() == 1
+    assert page.locator("#group-detail #time-left-form").count() == 0
+    assert page.locator("#group-config-form [name=track_inactive]").count() == 1
+    assert page.locator("#group-hours-grid td.on").count() == 7 * 24
+    assert page.input_value("#group-config-form [name=overrides]") == "all"
+
+    # only the overrides are sent, and the list reflects them
+    page.fill("#group-config-form [name=overrides]", "all;users")
+    page.click("#group-config-form button[type=submit]")
+    wait_message(page, "Saved")
+    assert page.input_value("#group-config-form [name=overrides]") == "all;users"
+    _result, _message, info = server.api.getUserConfigurationAndInformation(
+        "@kids", "F"
+    )
+    assert list(info["OVERRIDES"]) == ["all", "users"]
+    page.wait_for_function(
+        "[...document.querySelectorAll('#groups-list li')]"
+        ".some((li) => li.textContent.includes('overrides: all;users'))"
+    )
+    page.click("#group-config-form button[type=submit]")
+    wait_message(page, "Nothing changed")
+
+
+def test_add_group_policy(page, server):
+    sign_in(page, server)
+    page.click("#nav-groups")
+    page.wait_for_selector("#groups-list li")
+    page.fill("#group-name", "teens")
+    page.click("#group-add")
+    wait_message(page, "Policy created")
+    # the new group is listed and selected
+    page.wait_for_function(
+        "document.querySelector('#group-title').textContent === 'teens'"
+    )
+    page.wait_for_selector("#group-detail:not([hidden])")
+    assert "teens" in page.locator("#groups-list li .name").all_inner_texts()
+    assert page.inner_text("#groups-list li.selected .name") == "teens"
+    assert page.input_value("#group-name") == ""
+    _result, _message, groups = server.api.getGroupList()
+    assert [group[0] for group in groups] == ["all", "kids", "teens"]
+    _result, _message, info = server.api.getUserConfigurationAndInformation(
+        "@teens", "F"
+    )
+    assert list(info["OVERRIDES"]) == []
+
+
+def test_migrate_policies_dry_run(page, server):
+    sign_in(page, server)
+    page.click("#nav-server")
+    page.wait_for_selector("#server-fields tr")
+    page.click("#migrate-dry-run")
+    page.wait_for_function(
+        "document.querySelector('#migrate-result').textContent !== ''"
+    )
+    assert page.inner_text("#migrate-result") == "Would delete the policies of: carol"

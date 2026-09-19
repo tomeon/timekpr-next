@@ -186,12 +186,41 @@ configuration and should be used very seldom in very special cases, however runn
 
 </br>
 
+### Policies: users and groups
+
+Limits are kept in _policies_. A policy is a file an administrator created, nothing is created on its own:
+
+- a **user policy** applies to one user and is created the first time any setting is made for that user (in the administration application,
+  with `timekpra`, or through the web front end), whether or not the user has ever logged in;
+- a **group policy** applies to every member of a system group (local or from a directory such as Kanidm, whatever `id` reports for the user).
+  It is addressed as `@group` wherever a user name is expected, for example `timekpra --settimelimits '@kids' '3600;3600;3600;3600;3600;7200;7200'`.
+  The pseudo-group `all` matches every user.
+
+The policy that applies to a user is decided in this order:
+
+1. the user's own policy, if there is one (group policies are not consulted then);
+2. otherwise the policies of the groups the user is in, merged so that the **most restrictive** value of every setting wins:
+   fewer allowed days and hours, the smaller limits, and idle time counted if any of the policies counts it.
+   A group policy may declare that it **overrides** other groups (`timekpra --setoverrides '@teens' 'kids;all'`): for a user in both, the
+   overridden policy is dropped instead of merged;
+3. otherwise the defaults, which impose no limits.
+
+Hiding the icon is a per-user setting and cannot be part of a group policy; adjusting the time left for today is also per user, since the
+time spent is always accounted per user.
+
+Deleting a user's policy (`timekpra --deletepolicy USER`) puts the user back under their group policies. Deleting a group policy
+(`timekpra --deletepolicy '@kids'`) does the same for its members.
+
+_**Upgrading** from versions that created a configuration file for every user: those files are now user policies, and one that restricts
+nothing keeps the group policies from applying to its user. The daemon warns about them in its log; `timekpra --migratepolicies dry-run`
+lists them and `timekpra --migratepolicies delete` removes them._
+
 ### User configuration
 
-To configure limits and restrictions for user, it has to be selected from the user list. User list is retrieved from your system and initial
-configuration is applied. User list is then stored in configuration directory and configuration is not deleted even when the user itself is deleted!
-
-Yes, that means that OS user can be re-created without loosing its configuration in Timekpr-nExT.
+To configure limits and restrictions for user, it has to be selected from the user list. The list contains the users of your system, the
+users with a policy (a policy is not deleted even when the user itself is deleted, so an OS user can be re-created without loosing its
+configuration in Timekpr-nExT), and the known members of groups with a policy. A user without a policy of their own shows the settings that
+apply to them from their groups or the defaults; changing anything creates the user's own policy.
 
 _**Please note**: when opening administration application no user is pre-selected, this is by design to force a supervisor to choose a correct
 user to configure and avoid unintentional misconfiguration._
@@ -725,19 +754,20 @@ This method is NOT recommnended, do not edit files manually because you can, pre
 **Note**: please be aware that configuration files are structured in particular way, have internal representation of values and one can break the configuration
 if not being careful. You have been warned!
 
-**Note**: if configuration files are borked, e.g. Timekpr-nExT can not interpret them properly, it will try to salvage options it can and it will recreate the
-config file with defaults for damaged options.
+**Note**: if the main configuration file is borked, e.g. Timekpr-nExT can not interpret it properly, it will try to salvage options it can and it will recreate the
+config file with defaults for damaged options. A policy file it cannot read is set aside (renamed `.invalid`) and no longer applies.
 
 </br>
 
 **Configuration files (be careful editing them)**
 
-|                 The purpose of the file | File location                            |
-| --------------------------------------: | :--------------------------------------- |
-|    Timekpr-nExT main configuration file | `/etc/timekpr/timekpr.conf`              |
-| User configuration files (one per user) | `/var/lib/timekpr/config/timekpr.*.conf` |
-|       User control files (one per user) | `/var/lib/timekpr/work/timekpr.*.conf`   |
-|               Client configuration file | `$HOME/.config/timekpr/timekpr.conf`     |
+|                          The purpose of the file | File location                                   |
+| -----------------------------------------------: | :---------------------------------------------- |
+|             Timekpr-nExT main configuration file | `/etc/timekpr/timekpr.conf`                     |
+|   User policy files (one per user with a policy) | `/var/lib/timekpr/config/timekpr.*.conf`        |
+| Group policy files (one per group with a policy) | `/var/lib/timekpr/config/groups/timekpr.*.conf` |
+|                User control files (one per user) | `/var/lib/timekpr/work/*.time`                  |
+|                        Client configuration file | `$HOME/.config/timekpr/timekpr.conf`            |
 
 </br>
 

@@ -44,6 +44,8 @@ class timekprAdminGUI:
         self._resourcePath = pResourcePath
         self._timekprAdminConnector = None
         self._isConnected = False
+        # groups with a policy, as retrieved with the user list: {group: {"overrides": [...], "members": [...]}}
+        self._timekprGroupInfo = {}
         self._ROWCOL_OK = "#FFFFFF"
         self._ROWSTYLE_OK = False
         self._ROWCOL_NOK = "Yellow"
@@ -387,6 +389,13 @@ class timekprAdminGUI:
             "TimekprUserSelectionCB",
             # combom refresh
             "TimekprUserSelectionRefreshBT",
+            # new group policy
+            "TimekprNewGroupEntry",
+            "TimekprNewGroupBT",
+            # policy deletion
+            "TimekprUserPolicyDeleteBT",
+            # group overrides
+            "TimekprUserConfAddOptsOverridesEntry",
             # control buttons
             "TimekprUserConfDaySettingsApplyBT",
             "TimekprUserConfTodaySettingsSetAddBT",
@@ -435,6 +444,10 @@ class timekprAdminGUI:
         self._tkSavedCfg = {}
         self._tkSavedCfg["timeTrackInactive"] = False
         self._tkSavedCfg["timeHideTrayIcon"] = False
+        # policies: where a user's effective policy comes from, a group policy's overrides
+        self._tkSavedCfg["policySource"] = ""
+        self._tkSavedCfg["policyGroups"] = []
+        self._tkSavedCfg["timeOverrides"] = []
         self._tkSavedCfg["timeLimitWeek"] = 0
         self._tkSavedCfg["timeLimitMonth"] = 0
         self._tkSavedCfg["timeLimitDays"] = []
@@ -512,6 +525,26 @@ class timekprAdminGUI:
         # clear day config
         self._tkSavedCfg["timeLimitWeek"] = 0
         self._tkSavedCfg["timeLimitMonth"] = 0
+        # policy information (source label, deletion, group overrides)
+        self._tkSavedCfg["policySource"] = ""
+        self._tkSavedCfg["policyGroups"] = []
+        self._tkSavedCfg["timeOverrides"] = []
+        self._timekprAdminFormBuilder.get_object("TimekprUserPolicySourceLB").set_text(
+            "Policy: -"
+        )
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserPolicyDeleteBT"
+        ).set_sensitive(False)
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfAddOptsOverridesEntry"
+        ).set_text("")
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfAddOptsOverridesEntry"
+        ).set_sensitive(False)
+        # the info & today page is disabled for groups only, the controls in it are handled individually
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfTodayBox"
+        ).set_sensitive(True)
         # color
         for rCtrl in (
             "TimekprUserConfTodaySettingsSetAddBT",
@@ -642,6 +675,40 @@ class timekprAdminGUI:
 
         # result
         return userName
+
+    def isGroupTarget(self, pName):
+        """Whether the selected name is a group policy (@group) rather than a user"""
+        return pName is not None and pName.startswith("@")
+
+    def selectUserInList(self, pName):
+        """Select the user or group row with the given id in the selector, if it is there"""
+        # get object
+        userCombobox = self._timekprAdminFormBuilder.get_object(
+            "TimekprUserSelectionCB"
+        )
+        # find the row
+        for rIdx, rRow in enumerate(userCombobox.get_model()):
+            # this is it
+            if rRow[0] == pName:
+                # select
+                userCombobox.set_active(rIdx)
+                # found
+                return True
+        # not found
+        return False
+
+    def getOverridesFromEntry(self):
+        """Get the group names entered in the overrides entry as a list"""
+        # ";" separated names, spaces and empty items are ignored
+        return [
+            rGroup.strip()
+            for rGroup in self._timekprAdminFormBuilder.get_object(
+                "TimekprUserConfAddOptsOverridesEntry"
+            )
+            .get_text()
+            .split(";")
+            if rGroup.strip() != ""
+        ]
 
     def toggleUserConfigControls(self, pEnable=True, pLeaveUserList=False):
         """Enable or disable all user controls for the form"""
@@ -977,19 +1044,47 @@ class timekprAdminGUI:
                 widthInChars = max(widthInChars, len(userName) - 3)
                 # add user
                 userStore.append([rUser[0], userName])
-            # status
-            self.setTimekprStatus(False, "User list retrieved")
+            # groups with a policy go after the users, as @group
+            self._timekprGroupInfo = {}
+            result, message, groupList = self._timekprAdminConnector.getGroupList()
+            # all ok
+            if result == 0:
+                # loop and print
+                for rGroup in groupList:
+                    # name
+                    groupName = f"@{rGroup[0]}"
+                    # remember overrides and members (for the policy label)
+                    self._timekprGroupInfo[str(rGroup[0])] = {
+                        "overrides": [
+                            rIt for rIt in str(rGroup[1]).split(";") if rIt != ""
+                        ],
+                        "members": [
+                            rIt for rIt in str(rGroup[2]).split(";") if rIt != ""
+                        ],
+                    }
+                    # determine maxlen
+                    widthInChars = max(widthInChars, len(groupName) - 3)
+                    # add group
+                    userStore.append([groupName, groupName])
+                # status
+                self.setTimekprStatus(False, "User and group list retrieved")
+            else:
+                # status (the users are still usable)
+                self.setTimekprStatus(False, message)
             # enable
             self._timekprAdminFormBuilder.get_object(
                 "TimekprUserSelectionCB"
             ).set_sensitive(True)
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserSelectionRefreshBT"
-            ).set_sensitive(
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserSelectionCB"
-                ).get_sensitive()
-            )
+            for rCtrl in (
+                "TimekprUserSelectionRefreshBT",
+                "TimekprNewGroupEntry",
+                "TimekprNewGroupBT",
+            ):
+                self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(
+                    self._timekprAdminFormBuilder.get_object(
+                        "TimekprUserSelectionCB"
+                    ).get_sensitive()
+                )
             # adjust widht
             self._timekprAdminFormBuilder.get_object(
                 "TimekprUserSelectionCBEntry"
@@ -1115,6 +1210,13 @@ class timekprAdminGUI:
                         self._timekprAdminFormBuilder.get_object(rCtrl).set_text(
                             _NO_TIME_LIMIT_LABEL
                         )
+
+                # the policy keys are not there for every target (groups have no POLICY_*, users no OVERRIDES)
+                if pInfoLvl == cons.TK_CL_INF_FULL:
+                    self._tkSavedCfg["policySource"] = ""
+                    self._tkSavedCfg["policyGroups"] = []
+                    self._tkSavedCfg["timeOverrides"] = []
+                    self._tkSavedCfg["timeHideTrayIcon"] = False
 
                 # loop and print
                 for rKey, rValue in userConfig.items():
@@ -1252,6 +1354,19 @@ class timekprAdminGUI:
                         elif rKey == "LIMIT_PER_MONTH":
                             # value
                             self._tkSavedCfg["timeLimitMonth"] = int(rValue)
+                        elif rKey == "POLICY_SOURCE":
+                            # where a user's effective policy comes from
+                            self._tkSavedCfg["policySource"] = str(rValue)
+                        elif rKey == "POLICY_GROUPS":
+                            # the groups whose policies are merged for the user
+                            self._tkSavedCfg["policyGroups"] = [
+                                str(rGroup) for rGroup in rValue
+                            ]
+                        elif rKey == "OVERRIDES":
+                            # the groups a group policy takes precedence over
+                            self._tkSavedCfg["timeOverrides"] = [
+                                str(rGroup) for rGroup in rValue
+                            ]
                         elif "ALLOWED_HOURS_" in rKey:
                             # determine the day
                             day = rKey[-1:]
@@ -1534,6 +1649,75 @@ class timekprAdminGUI:
             )
             # enable field & set button
             self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(True)
+
+        # ## policy information ##
+        self.applyUserPolicyInfo()
+
+    def applyUserPolicyInfo(self):
+        """Show where the policy comes from and adjust the controls that differ between users and groups"""
+        # what is selected
+        userName = self.getSelectedUserName()
+        isGroup = self.isGroupTarget(userName)
+        policySource = self._tkSavedCfg["policySource"]
+
+        # ## policy source label ##
+        if isGroup:
+            # group policy, with its known members
+            members = self._timekprGroupInfo.get(userName[1:], {}).get("members", [])
+            policyText = (
+                f"Policy: group {userName} (members: {', '.join(members)})"
+                if len(members) > 0
+                else f"Policy: group {userName}"
+            )
+        elif policySource == "user":
+            # own policy
+            policyText = "Policy: own"
+        elif policySource == "group":
+            # policies of the groups
+            policyText = "Policy: from groups {}".format(
+                ", ".join(self._tkSavedCfg["policyGroups"])
+            )
+        elif policySource == "default":
+            # nothing set up
+            policyText = "Policy: defaults"
+        else:
+            # server did not say
+            policyText = "Policy: -"
+        self._timekprAdminFormBuilder.get_object("TimekprUserPolicySourceLB").set_text(
+            policyText
+        )
+
+        # ## delete policy ##
+        # only a policy that exists can be deleted (a group in the list has one)
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserPolicyDeleteBT"
+        ).set_sensitive(isGroup or policySource == "user")
+
+        # ## info & today page ##
+        # groups have no counters and no time for today
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfTodayBox"
+        ).set_sensitive(not isGroup)
+
+        # ## hide tray icon ##
+        # user only, so for a group it is unchecked and disabled (and never a change)
+        if isGroup:
+            self._tkSavedCfg["timeHideTrayIcon"] = False
+            self._timekprAdminFormBuilder.get_object(
+                "TimekprUserConfTodaySettingsHideTrayIconCB"
+            ).set_active(False)
+            self._timekprAdminFormBuilder.get_object(
+                "TimekprUserConfTodaySettingsHideTrayIconCB"
+            ).set_sensitive(False)
+
+        # ## overrides ##
+        # group only, so for a user it is empty and disabled (and never a change)
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfAddOptsOverridesEntry"
+        ).set_text(";".join(self._tkSavedCfg["timeOverrides"]) if isGroup else "")
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfAddOptsOverridesEntry"
+        ).set_sensitive(isGroup)
 
     # --------------- change detection and GUI action control methods --------------- #
 
@@ -1830,6 +2014,15 @@ class timekprAdminGUI:
         value = self._timekprAdminFormBuilder.get_object(control).get_active()
         changeControl[control] = {
             "st": value != self._tkSavedCfg["timeHideTrayIcon"],
+            "val": value,
+        }
+
+        # ## Overrides (group policies only, the entry is disabled and empty for users) ##
+        control = "TimekprUserConfAddOptsOverridesEntry"
+        value = self.getOverridesFromEntry()
+        changeControl[control] = {
+            "st": self._timekprAdminFormBuilder.get_object(control).get_sensitive()
+            and value != self._tkSavedCfg["timeOverrides"],
             "val": value,
         }
 
@@ -2249,6 +2442,20 @@ class timekprAdminGUI:
                             False,
                             msg.getTranslation("TK_MSG_STATUS_HIDETRAYICON_PROCESSED"),
                         )
+                # ## Overrides (group policies) ##
+                elif rKey == "TimekprUserConfAddOptsOverridesEntry":
+                    # call server
+                    result, message = self._timekprAdminConnector.setOverrides(
+                        userName, rVal["val"]
+                    )
+                    # successful call
+                    if result == 0:
+                        # cnt
+                        changeCnt += 1
+                        # set internal state
+                        self._tkSavedCfg["timeOverrides"] = rVal["val"]
+                        # print success message
+                        self.setTimekprStatus(False, "Overrides processed")
                 # if all ok
                 if result != 0:
                     # status
@@ -2421,6 +2628,108 @@ class timekprAdminGUI:
         self._timekprAdminFormBuilder.get_object("TimekprUserSelectionCB").emit(
             "changed"
         )
+
+    def deletePolicyClicked(self, evt):
+        """Delete the selected user's own policy or the selected group policy, after confirmation"""
+        # get username
+        userName = self.getSelectedUserName()
+        # nothing selected
+        if userName is None or userName == "":
+            return
+
+        # what is going away
+        isGroup = self.isGroupTarget(userName)
+        question = (
+            f"Delete the group policy {userName}?\n\nIts members will follow their remaining group policies or the defaults."
+            if isGroup
+            else f'Delete the own policy of user "{userName}"?\n\nThe policies of the user\'s groups or the defaults will apply instead.'
+        )
+        # ask
+        tkrMsg = Gtk.MessageDialog(
+            parent=self._timekprAdminForm,
+            flags=Gtk.DialogFlags.MODAL,
+            type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            message_format=question,
+        )
+        response = tkrMsg.run()
+        tkrMsg.destroy()
+        # not confirmed
+        if response != Gtk.ResponseType.YES:
+            return
+
+        # disable button so it cannot be triggered again
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserPolicyDeleteBT"
+        ).set_sensitive(False)
+
+        # call server
+        result, message = self._timekprAdminConnector.deletePolicy(userName)
+
+        # successful call
+        if result == 0:
+            # status
+            self.setTimekprStatus(False, "Policy deleted")
+            # a deleted group policy leaves the list, a user is shown with its effective policy
+            if isGroup:
+                self.getAdminUserList()
+            else:
+                self.retrieveUserInfoAndConfig(userName, cons.TK_CL_INF_FULL)
+        else:
+            # status
+            self.setTimekprStatus(False, message)
+            # the policy is still there
+            self._timekprAdminFormBuilder.get_object(
+                "TimekprUserPolicyDeleteBT"
+            ).set_sensitive(True)
+            # check the connection
+            self.checkConnection()
+
+    def newGroupPolicyClicked(self, evt):
+        """Create a group policy with the defaults for the group named in the entry and select it"""
+        # the name, with or without the @
+        groupName = (
+            self._timekprAdminFormBuilder.get_object("TimekprNewGroupEntry")
+            .get_text()
+            .strip()
+            .lstrip("@")
+        )
+        # nothing to do
+        if groupName == "":
+            self.setTimekprStatus(False, "Please enter a group name")
+            return
+        # the target
+        target = f"@{groupName}"
+
+        # the policy may already exist, then it is just selected
+        result, message, _ = (
+            self._timekprAdminConnector.getUserConfigurationAndInformation(
+                target, cons.TK_CL_INF_FULL
+            )
+        )
+        # no policy yet: any setter creates one with the defaults
+        if result != 0:
+            # call server
+            result, message = self._timekprAdminConnector.setTrackInactive(
+                target, False
+            )
+            # failed
+            if result != 0:
+                # status
+                self.setTimekprStatus(False, message)
+                # check the connection
+                self.checkConnection()
+                return
+            # status
+            self.setTimekprStatus(False, f"Group policy {target} created")
+
+        # forget the name
+        self._timekprAdminFormBuilder.get_object("TimekprNewGroupEntry").set_text("")
+        # refresh the list and select the group
+        self.getAdminUserList()
+        if not self.selectUserInList(target):
+            # status
+            self.setTimekprStatus(False, f"Group policy {target} is not in the list")
 
     # --------------- today page GTK signal methods --------------- #
 
@@ -2893,6 +3202,11 @@ class timekprAdminGUI:
 
     def hideTrayIconChanged(self, evt):
         """Call control calculations when hide icon has been changed"""
+        # recalc control availability
+        self.calculateUserAdditionalConfigControlAvailability()
+
+    def overridesChanged(self, evt):
+        """Call control calculations when group overrides have been changed"""
         # recalc control availability
         self.calculateUserAdditionalConfigControlAvailability()
 

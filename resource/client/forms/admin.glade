@@ -465,11 +465,100 @@ Please configure carefully: do not lock yourself out!</property>
                         <property name="position">1</property>
                       </packing>
                     </child>
+                    <child>
+                      <object class="GtkEntry" id="TimekprNewGroupEntry">
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">True</property>
+                        <property name="tooltip-text" translatable="yes">Name of a system group to create a group policy for (its members without a policy of their own follow it)</property>
+                        <property name="margin-left">10</property>
+                        <property name="margin-top">5</property>
+                        <property name="margin-bottom">10</property>
+                        <property name="width-chars">12</property>
+                        <property name="placeholder-text" translatable="yes">group name</property>
+                        <signal name="activate" handler="newGroupPolicyClicked" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="TimekprNewGroupBT">
+                        <property name="label" translatable="yes">New group policy</property>
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">True</property>
+                        <property name="receives-default">True</property>
+                        <property name="tooltip-text" translatable="yes">Create a policy with default values for the group named on the left and select it</property>
+                        <property name="margin-left">5</property>
+                        <property name="margin-right">5</property>
+                        <property name="margin-bottom">10</property>
+                        <signal name="clicked" handler="newGroupPolicyClicked" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">3</property>
+                      </packing>
+                    </child>
                   </object>
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
                     <property name="position">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkBox" id="TimekprUserPolicyBox">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <child>
+                      <object class="GtkLabel" id="TimekprUserPolicySourceLB">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="tooltip-text" translatable="yes">Where the shown configuration comes from: the user's own policy, the policies of the user's groups, or the defaults. Applying any change gives the user a policy of their own.</property>
+                        <property name="halign">start</property>
+                        <property name="margin-bottom">5</property>
+                        <property name="label" translatable="yes">Policy: -</property>
+                        <property name="ellipsize">end</property>
+                        <property name="max-width-chars">60</property>
+                        <attributes>
+                          <attribute name="style" value="italic"/>
+                        </attributes>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="padding">10</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="TimekprUserPolicyDeleteBT">
+                        <property name="label" translatable="yes">Delete policy</property>
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">True</property>
+                        <property name="receives-default">True</property>
+                        <property name="tooltip-text" translatable="yes">Delete the selected user's own policy (their group policies or the defaults apply again) or the selected group policy</property>
+                        <property name="margin-left">5</property>
+                        <property name="margin-right">5</property>
+                        <property name="margin-bottom">5</property>
+                        <signal name="clicked" handler="deletePolicyClicked" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">2</property>
                   </packing>
                 </child>
                 <child>
@@ -1732,7 +1821,7 @@ These limits are applied to user together with the rest of limit configuration.<
                             <property name="margin-right">5</property>
                             <property name="spacing">10</property>
                             <child>
-                              <!-- n-columns=2 n-rows=2 -->
+                              <!-- n-columns=2 n-rows=3 -->
                               <object class="GtkGrid" id="TimekprUserConfAddOptsFirstGrid">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
@@ -1824,6 +1913,46 @@ Please note that unchecking this will disable showing all information and notifi
                                     <property name="top-attach">1</property>
                                   </packing>
                                 </child>
+                                <child>
+                                  <object class="GtkLabel" id="TimekprUserConfAddOptsOverridesLabel">
+                                    <property name="visible">True</property>
+                                    <property name="can-focus">False</property>
+                                    <property name="tooltip-text" translatable="yes">Group policies only: the groups this policy takes precedence over.
+
+A user in this group and in one of the listed groups follows this policy alone; otherwise the most restrictive combination of all matching group policies applies. Separate group names with ";".</property>
+                                    <property name="halign">end</property>
+                                    <property name="label" translatable="yes">Overrides groups:</property>
+                                    <property name="justify">right</property>
+                                    <property name="wrap">True</property>
+                                    <property name="ellipsize">end</property>
+                                    <property name="max-width-chars">35</property>
+                                    <attributes>
+                                      <attribute name="weight" value="bold"/>
+                                    </attributes>
+                                  </object>
+                                  <packing>
+                                    <property name="left-attach">0</property>
+                                    <property name="top-attach">2</property>
+                                  </packing>
+                                </child>
+                                <child>
+                                  <object class="GtkEntry" id="TimekprUserConfAddOptsOverridesEntry">
+                                    <property name="visible">True</property>
+                                    <property name="sensitive">False</property>
+                                    <property name="can-focus">True</property>
+                                    <property name="tooltip-text" translatable="yes">Group policies only: the groups this policy takes precedence over.
+
+A user in this group and in one of the listed groups follows this policy alone; otherwise the most restrictive combination of all matching group policies applies. Separate group names with ";".</property>
+                                    <property name="halign">start</property>
+                                    <property name="width-chars">25</property>
+                                    <property name="placeholder-text" translatable="yes">kids;teens</property>
+                                    <signal name="changed" handler="overridesChanged" swapped="no"/>
+                                  </object>
+                                  <packing>
+                                    <property name="left-attach">1</property>
+                                    <property name="top-attach">2</property>
+                                  </packing>
+                                </child>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
@@ -1881,7 +2010,7 @@ Please note that unchecking this will disable showing all information and notifi
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
-                    <property name="position">2</property>
+                    <property name="position">3</property>
                   </packing>
                 </child>
               </object>

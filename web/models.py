@@ -90,9 +90,14 @@ class UserStatus(Model):
     time_inactive_session: int | None = None
 
 
+PolicySource = Literal["user", "group", "default"]
+
+
 class UserSummary(Model):
     username: str
     full_name: str
+    # "user", "group:<g1>;<g2>" or "default", as the daemon lists it
+    policy_source: str
     status: UserStatus | None = None
 
 
@@ -100,11 +105,58 @@ class User(Model):
     username: str
     config: UserConfig
     status: UserStatus
+    # where the effective config comes from: the user's own policy, the
+    # merge of the policies of these groups, or the defaults
+    policy_source: PolicySource
+    policy_groups: list[str]
 
 
 class TimeLeftRequest(Model):
     operation: TimeLeftOperation
     seconds: Seconds
+
+
+# ## group policies ##
+
+
+class GroupSummary(Model):
+    group: str
+    overrides: list[str]
+    # best effort: an identity provider need not enumerate a group
+    members: list[str]
+
+
+class GroupConfig(Model):
+    """A group's policy: a user config without the tray icon (a per-user
+    preference), plus the groups whose policies this one takes precedence
+    over for users in both"""
+
+    allowed_days: list[Weekday]
+    limits_per_day: dict[Weekday, Seconds]
+    allowed_hours: dict[Weekday, list[HourEntry]]
+    limit_per_week: Seconds
+    limit_per_month: Seconds
+    track_inactive: bool
+    overrides: list[str]
+
+
+GroupConfigPatch = partial(GroupConfig, "GroupConfigPatch")
+
+
+class Group(Model):
+    group: str
+    config: GroupConfig
+
+
+class MigrationRequest(Model):
+    """Delete the user policies that restrict nothing (left over from
+    versions that created one per user); dry_run only lists them"""
+
+    dry_run: bool = True
+
+
+class MigrationResult(Model):
+    users: list[str]
 
 
 # ## daemon configuration ##

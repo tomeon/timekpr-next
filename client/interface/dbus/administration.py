@@ -473,6 +473,126 @@ class timekprAdminConnector:
         # result
         return result, message
 
+    # --------------- policy methods --------------- #
+
+    def getGroupList(self):
+        """Get the groups with a policy from server: [group, overrides, known members]"""
+        # defaults
+        result, message = self.initReturnCodes(pInit=True, pCall=False)
+        groupList = []
+
+        # if we have end-point
+        if self._timekprUserAdminDbusInterface is not None:
+            # defaults
+            result, message = self.initReturnCodes(pInit=False, pCall=True)
+
+            # notify through dbus
+            try:
+                # call dbus method
+                result, message, groupList = (
+                    self._timekprUserAdminDbusInterface.getGroupList(
+                        timeout=cons.TK_DBUS_ADMIN_TIMEOUT
+                    )
+                )
+            except Exception as ex:
+                # exception
+                result, message = self.formatException(
+                    str(ex), __name__, self.getGroupList.__name__
+                )
+
+                # we cannot send notif through dbus, we need to reschedule connecton
+                self.initTimekprConnection(False, True)
+
+        # result
+        return result, message, groupList
+
+    def setOverrides(self, pGroupName, pOverrides):
+        """Set the groups a group's policy takes precedence over"""
+        # initial values
+        result, message = self.initReturnCodes(pInit=True, pCall=False)
+
+        # if we have end-point
+        if self._timekprUserAdminDbusInterface is not None:
+            # defaults
+            result, message = self.initReturnCodes(pInit=False, pCall=True)
+
+            # notify through dbus
+            try:
+                # call dbus method
+                result, message = self._timekprUserAdminDbusInterface.setOverrides(
+                    pGroupName, pOverrides, timeout=cons.TK_DBUS_ADMIN_TIMEOUT
+                )
+            except Exception as ex:
+                # exception
+                result, message = self.formatException(
+                    str(ex), __name__, self.setOverrides.__name__
+                )
+
+                # we cannot send notif through dbus, we need to reschedule connecton
+                self.initTimekprConnection(False, True)
+
+        # result
+        return result, message
+
+    def deletePolicy(self, pUserName):
+        """Delete the policy of a user or a group (@group)"""
+        # initial values
+        result, message = self.initReturnCodes(pInit=True, pCall=False)
+
+        # if we have end-point
+        if self._timekprUserAdminDbusInterface is not None:
+            # defaults
+            result, message = self.initReturnCodes(pInit=False, pCall=True)
+
+            # notify through dbus
+            try:
+                # call dbus method
+                result, message = self._timekprUserAdminDbusInterface.deletePolicy(
+                    pUserName, timeout=cons.TK_DBUS_ADMIN_TIMEOUT
+                )
+            except Exception as ex:
+                # exception
+                result, message = self.formatException(
+                    str(ex), __name__, self.deletePolicy.__name__
+                )
+
+                # we cannot send notif through dbus, we need to reschedule connecton
+                self.initTimekprConnection(False, True)
+
+        # result
+        return result, message
+
+    def migratePolicies(self, pDryRun):
+        """Delete (or with pDryRun only list) the user policies that restrict nothing"""
+        # defaults
+        result, message = self.initReturnCodes(pInit=True, pCall=False)
+        users = []
+
+        # if we have end-point
+        if self._timekprUserAdminDbusInterface is not None:
+            # defaults
+            result, message = self.initReturnCodes(pInit=False, pCall=True)
+
+            # notify through dbus
+            try:
+                # call dbus method
+                result, message, users = (
+                    self._timekprUserAdminDbusInterface.migratePolicies(
+                        pDryRun, timeout=cons.TK_DBUS_ADMIN_TIMEOUT
+                    )
+                )
+            except Exception as ex:
+                # exception
+                result, message = self.formatException(
+                    str(ex), __name__, self.migratePolicies.__name__
+                )
+
+                # we cannot send notif through dbus, we need to reschedule connecton
+                self.initTimekprConnection(False, True)
+
+        # result
+        return result, message, users
+
     # --------------- timekpr configuration info population / set methods --------------- #
 
     def getTimekprConfiguration(self):

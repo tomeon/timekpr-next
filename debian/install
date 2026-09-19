@@ -19,6 +19,7 @@ resource/server/timekpr.conf etc/timekpr/
 
 # sample runtime files
 resource/server/timekpr.USER.conf var/lib/timekpr/config/
+resource/server/timekpr.GROUP.conf var/lib/timekpr/config/groups/
 resource/server/USER.time var/lib/timekpr/work/
 
 # icons
@@ -88,6 +89,7 @@ client/timekprc.py usr/lib/python3/dist-packages/timekpr/client/
 
 # python server
 server/config/configprocessor.py usr/lib/python3/dist-packages/timekpr/server/config/
+server/config/policy.py usr/lib/python3/dist-packages/timekpr/server/config/
 server/config/userhelper.py usr/lib/python3/dist-packages/timekpr/server/config/
 server/__init__.py usr/lib/python3/dist-packages/timekpr/server/
 server/interface/dbus/consolekit/__init__.py usr/lib/python3/dist-packages/timekpr/server/interface/dbus/consolekit/

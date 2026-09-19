@@ -351,6 +351,80 @@ class timekprAdminClient:
                 self.processSetTimeLeft(
                     args[paramIdx + 1], args[paramIdx + 2], args[paramIdx + 3]
                 )
+        # this gets the groups with a policy from the server
+        elif adminCmd == "--grouplist":
+            # check param len
+            if paramLen != paramIdx + 1:
+                # fail
+                adminCmdIncorrect = True
+            else:
+                # get list
+                result, message, groupList = self._timekprAdminConnector.getGroupList()
+
+                # process
+                if result == 0:
+                    # process
+                    self.printGroupList(groupList)
+                else:
+                    # log error
+                    log.consoleOut(message)
+        # this gets a group's policy from the server
+        elif adminCmd == "--groupinfo":
+            # check param len
+            if paramLen != paramIdx + 2:
+                # fail
+                adminCmdIncorrect = True
+            else:
+                # the group, with or without its prefix
+                target = self.groupTarget(args[paramIdx + 1])
+                # get group config
+                result, message, groupConfig = (
+                    self._timekprAdminConnector.getUserConfigurationAndInformation(
+                        target, cons.TK_CL_INF_FULL
+                    )
+                )
+
+                # process
+                if result == 0:
+                    # process
+                    self.printUserConfig(target, groupConfig)
+                else:
+                    # log error
+                    log.consoleOut(message)
+        # this sets the groups a group's policy takes precedence over
+        elif adminCmd == "--setoverrides":
+            # check param len
+            if paramLen != paramIdx + 3:
+                # fail
+                adminCmdIncorrect = True
+            else:
+                # set overrides
+                self.processSetOverrides(args[paramIdx + 1], args[paramIdx + 2])
+        # this deletes the policy of a user or a group
+        elif adminCmd == "--deletepolicy":
+            # check param len
+            if paramLen != paramIdx + 2:
+                # fail
+                adminCmdIncorrect = True
+            else:
+                # delete
+                result, message = self._timekprAdminConnector.deletePolicy(
+                    args[paramIdx + 1]
+                )
+
+                # process
+                if result != 0:
+                    # log error
+                    log.consoleOut(message)
+        # this deletes (or lists) the user policies that restrict nothing
+        elif adminCmd == "--migratepolicies":
+            # check param len
+            if paramLen != paramIdx + 2:
+                # fail
+                adminCmdIncorrect = True
+            else:
+                # migrate
+                self.processMigratePolicies(args[paramIdx + 1])
         else:
             # out
             adminCmdIncorrect = True
@@ -375,13 +449,34 @@ class timekprAdminClient:
 
     # --------------- parameter execution methods --------------- #
 
+    def groupTarget(self, pGroup):
+        """The target naming a group (a given prefix is kept)"""
+        return (
+            pGroup
+            if pGroup.startswith(cons.TK_GROUP_TARGET_PREFIX)
+            else f"{cons.TK_GROUP_TARGET_PREFIX}{pGroup}"
+        )
+
     def printUserList(self, pUserList):
         """Format and print userlist"""
         # print to console
         log.consoleOut(msg.getTranslation("TK_MSG_CONSOLE_USERS_TOTAL", len(pUserList)))
-        # loop and print
+        # loop and print, with where each user's policy comes from
         for rUser in pUserList:
-            log.consoleOut(rUser[0])
+            if len(rUser) > 2 and rUser[2] != "":
+                log.consoleOut(f"{rUser[0]}  (policy: {rUser[2]})")
+            else:
+                log.consoleOut(rUser[0])
+
+    def printGroupList(self, pGroupList):
+        """Format and print the groups with a policy"""
+        # loop and print
+        for rGroup in pGroupList:
+            log.consoleOut(rGroup[0])
+            # the groups it overrides and its known members, when any
+            for rLabel, rValue in (("overrides", rGroup[1]), ("members", rGroup[2])):
+                if rValue != "":
+                    log.consoleOut(f"  {rLabel}: {rValue}")
 
     def printUserConfig(self, pUserName, pPrintUserConfig):
         """Format and print user config"""
@@ -392,7 +487,12 @@ class timekprAdminClient:
         # loop and print the same format as ppl will use to set that
         for rUserKey, rUserConfig in pPrintUserConfig.items():
             # join the lists
-            if rUserKey in ("ALLOWED_WEEKDAYS", "LIMITS_PER_WEEKDAYS"):
+            if rUserKey in (
+                "ALLOWED_WEEKDAYS",
+                "LIMITS_PER_WEEKDAYS",
+                "POLICY_GROUPS",
+                "OVERRIDES",
+            ):
                 # print join
                 log.consoleOut(
                     "{}: {}".format(rUserKey, ";".join(list(map(str, rUserConfig))))
@@ -657,3 +757,61 @@ class timekprAdminClient:
         if result != 0:
             # log error
             log.consoleOut(message)
+
+    def processSetOverrides(self, pGroupName, pOverrides):
+        """Process the groups a group's policy takes precedence over"""
+        # defaults
+        overrides = []
+        result = 0
+
+        # overrides
+        try:
+            # allow an empty list too (it clears the overrides)
+            if str(pOverrides) != "":
+                # try to parse parameters
+                overrides = pOverrides.split(";")
+        except Exception as ex:
+            # fail
+            result = -1
+            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (str(ex))
+
+        # preprocess successful
+        if result == 0:
+            # invoke
+            result, message = self._timekprAdminConnector.setOverrides(
+                pGroupName, overrides
+            )
+
+        # process
+        if result != 0:
+            # log error
+            log.consoleOut(message)
+
+    def processMigratePolicies(self, pMode):
+        """Process the migration of user policies that restrict nothing"""
+        # defaults
+        result = 0
+
+        # check
+        if str(pMode).lower() not in ("dry-run", "delete"):
+            # fail
+            result = -1
+            message = msg.getTranslation("TK_MSG_PARSE_ERROR") % (
+                "please specify dry-run or delete"
+            )
+        else:
+            dryRun = str(pMode).lower() == "dry-run"
+
+        # preprocess successful
+        if result == 0:
+            # invoke
+            result, message, users = self._timekprAdminConnector.migratePolicies(dryRun)
+
+        # process
+        if result != 0:
+            # log error
+            log.consoleOut(message)
+        else:
+            # the users concerned, one per line
+            for rUser in users:
+                log.consoleOut(rUser)

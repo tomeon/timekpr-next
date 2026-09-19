@@ -172,7 +172,9 @@ class Bridge:
 
     def list_users(self, include_status=False):
         users = [
-            models.UserSummary(username=user[0], full_name=user[1])
+            models.UserSummary(
+                username=user[0], full_name=user[1], policy_source=user[2]
+            )
             for user in self._call("getUserList")
         ]
         if include_status:
@@ -181,6 +183,9 @@ class Bridge:
         return users
 
     def _require_user(self, username):
+        """The daemon answers an effective policy for any name; only the
+        users it lists (those with a policy, present in the system, or
+        known members of a group with a policy) are resources here"""
         if username not in [user[0] for user in self._call("getUserList")]:
             raise DaemonError(404, f"timekpr has no configuration for user {username}")
 
@@ -194,6 +199,7 @@ class Bridge:
             username=username,
             config=models.UserConfig(**webapi.user_config_from_daemon(info)),
             status=models.UserStatus(**webapi.user_status_from_daemon(info)),
+            **webapi.user_policy_from_daemon(info),
         )
 
     def get_user_config(self, username):
@@ -247,6 +253,114 @@ class Bridge:
             request.seconds,
         )
         return self.get_user_status(username)
+
+    # ## policies ##
+
+    def _delete_policy(self, target, what):
+        try:
+            self._call("deletePolicy", target)
+        except DaemonError as ex:
+            # the only request the daemon refuses here is deleting a policy
+            # that does not exist
+            if ex.status != 400:
+                raise
+            raise DaemonError(404, f"timekpr has no policy for {what}")
+
+    def delete_user_policy(self, username):
+        """The user's group policies (or the defaults) apply again; the
+        counters stay"""
+        self._delete_policy(username, f"user {username}")
+
+    def migrate_policies(self, request):
+        return models.MigrationResult(
+            users=self._call("migratePolicies", request.dry_run)
+        )
+
+    # ## groups ##
+
+    def list_groups(self):
+        return [
+            models.GroupSummary(
+                group=group[0],
+                overrides=split_list(group[1]),
+                members=split_list(group[2]),
+            )
+            for group in self._call("getGroupList")
+        ]
+
+    def _require_group(self, group):
+        if group not in [entry[0] for entry in self._call("getGroupList")]:
+            raise DaemonError(404, f"timekpr has no policy for group {group}")
+
+    def _group_info(self, group):
+        self._require_group(group)
+        return self._call(
+            "getUserConfigurationAndInformation",
+            group_target(group),
+            cons.TK_CL_INF_FULL,
+        )
+
+    def get_group(self, group):
+        return models.Group(group=group, config=self.get_group_config(group))
+
+    def get_group_config(self, group):
+        return models.GroupConfig(
+            **webapi.group_config_from_daemon(self._group_info(group))
+        )
+
+    def patch_group_config(self, group, patch):
+        """A group without a policy gets one from its first setter, so the
+        current values a PATCH is applied against are then the daemon's
+        defaults for a new policy"""
+        try:
+            current = self.get_group_config(group)
+        except DaemonError as ex:
+            if ex.status != 404:
+                raise
+            # no policy yet: have the daemon create one with its defaults
+            # (any setter does; an empty override list changes nothing), so
+            # that even an empty PATCH creates the policy
+            Steps(self, group_target(group)).run("overrides", "setOverrides", [])
+            current = self.get_group_config(group)
+        steps = Steps(self, group_target(group))
+        apply_days_and_limits(
+            steps, "", patch, current, "setAllowedDays", "setTimeLimitForDays"
+        )
+        if patch.allowed_hours is not None:
+            for day, entries in patch.allowed_hours.items():
+                steps.run(
+                    f"allowed_hours.{day}",
+                    "setAllowedHours",
+                    str(day),
+                    webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
+                )
+        apply_scalars(steps, "", patch, webapi.GROUP_FIELDS)
+        if patch.overrides is not None:
+            steps.run("overrides", "setOverrides", list(patch.overrides))
+        return self.get_group_config(group)
+
+    def set_group_allowed_hours(self, group, day, entries):
+        """day is an ISO weekday or "all"; the policy is created if needed"""
+        Steps(self, group_target(group)).run(
+            f"allowed_hours.{day}",
+            "setAllowedHours",
+            "ALL" if day == "all" else str(day),
+            webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
+        )
+        return self.get_group_config(group)
+
+    def delete_group_policy(self, group):
+        self._delete_policy(group_target(group), f"group {group}")
+
+
+def group_target(group):
+    """How the daemon addresses a group wherever it takes a user name"""
+    return cons.TK_GROUP_TARGET_PREFIX + group
+
+
+def split_list(value):
+    """The daemon's ";"-joined lists (an empty string is an empty list)"""
+    return [item for item in value.split(";") if item != ""]
 
 
 class Steps:

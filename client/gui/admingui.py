@@ -1684,6 +1684,9 @@ class timekprAdminGUI:
         elif policySource == "default":
             # nothing set up
             policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_DEFAULTS")
+        elif policySource == "unresolved":
+            # NSS could not say which groups the user is in
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_UNRESOLVED")
         else:
             # server did not say
             policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_NONE")

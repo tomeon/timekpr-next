@@ -191,7 +191,9 @@ configuration and should be used very seldom in very special cases, however runn
 Limits are kept in _policies_. A policy is a file an administrator created, nothing is created on its own:
 
 - a **user policy** applies to one user and is created the first time any setting is made for that user (in the administration application,
-  with `timekpra`, or through the web front end), whether or not the user has ever logged in;
+  with `timekpra`, or through the web front end), whether or not the user has ever logged in. It starts as a copy of what applied to the
+  user at that moment (their group policies or the defaults), so the setting is the only thing that changes; from then on the group
+  policies no longer apply to that user. A setting the daemon refuses creates nothing;
 - a **group policy** applies to every member of a system group (local or from a directory such as Kanidm, whatever `id` reports for the user).
   It is addressed as `@group` wherever a user name is expected, for example `timekpra --settimelimits '@kids' '3600;3600;3600;3600;3600;7200;7200'`.
   The pseudo-group `all` matches every user.
@@ -210,6 +212,10 @@ time spent is always accounted per user.
 
 Deleting a user's policy (`timekpra --deletepolicy USER`) puts the user back under their group policies. Deleting a group policy
 (`timekpra --deletepolicy '@kids'`) does the same for its members.
+
+If the system cannot say which groups a user is in (a directory such as Kanidm that is down), the daemon does not treat that as "no
+groups": a logged-in user keeps the policy that was last resolved for them, a user the daemon never resolved gets every group policy
+until the lookup works again (it is retried at every poll), and the administration tools report the user's policy as unresolved.
 
 _**Upgrading** from versions that created a configuration file for every user: those files are now user policies, and one that restricts
 nothing keeps the group policies from applying to its user. The daemon warns about them in its log; `timekpra --migratepolicies dry-run`

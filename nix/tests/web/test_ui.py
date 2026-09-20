@@ -112,7 +112,7 @@ def test_user_policy_sources(page, server):
     page.click("#user-list li:nth-child(2)")
     page.wait_for_selector("#user-detail:not([hidden])")
     page.wait_for_function(
-        "document.querySelector('#user-policy').textContent === 'Policy: defaults'"
+        "document.querySelector('#user-policy').textContent.startsWith('Policy: defaults (')"
     )
     assert page.locator("#delete-policy").is_disabled()
     page.click("#user-list li:nth-child(1)")

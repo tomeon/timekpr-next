@@ -212,10 +212,12 @@ async function refreshHealth() {
 
 /* ---- users ---- */
 
-/* the user list's policy_source: "user", "group:<g1>;<g2>" or "default" */
+/* the user list's policy_source: "user", "group:<g1>;<g2>", "default" or
+   "unresolved" (the user's groups could not be looked up) */
 function policyTag(source) {
   if (source === "user") return "own policy";
   if (source.startsWith("group:")) return `groups: ${source.slice(6)}`;
+  if (source === "unresolved") return "unresolved";
   return "defaults";
 }
 
@@ -251,12 +253,15 @@ async function selectUser(username) {
 
 async function loadUser() {
   const user = await api("GET", `/users/${encode(state.user)}`);
+  // a user without a policy of their own gets one, copied from the
+  // effective values, the first time a setting is saved
+  const copied = " (a change creates the user's own policy from these values)";
   $("#user-policy").textContent =
     user.policy_source === "user"
       ? "Policy: own"
       : user.policy_source === "group"
-        ? `Policy: from groups ${user.policy_groups.join(", ")}`
-        : "Policy: defaults";
+        ? `Policy: from groups ${user.policy_groups.join(", ")}${copied}`
+        : `Policy: defaults${copied}`;
   $("#delete-policy").disabled = user.policy_source !== "user";
   renderStatus(user.status);
   renderConfig(targets.user, user.config);

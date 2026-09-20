@@ -16,7 +16,7 @@ from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
 from timekpr.common.utils.config import timekprUserConfig, timekprUserControl
 from timekpr.common.utils.notifications import timekprNotificationManager
-from timekpr.server.config.policy import timekprPolicyStore
+from timekpr.server.config.policy import timekprLookupError, timekprPolicyStore
 from timekpr.server.interface.dbus.logind.user import timekprUserManager
 
 
@@ -66,6 +66,8 @@ class timekprUser:
             self._timekprUserData[cons.TK_CTRL_UNAME],
         )
         self._timekprPolicySource = ""
+        # whether the last membership lookup failed (logged once per outage)
+        self._timekprPolicyLookupFailed = False
         # user control
         self._timekprUserControl = timekprUserControl(
             self._timekprConfig.getTimekprWorkDir(),
@@ -366,7 +368,28 @@ class timekprUser:
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "start adjustLimitsFromConfig")
 
         # resolve the effective policy: the user's own, their groups', or the defaults
-        resolution = self._timekprPolicyStore.resolve(self.getUserName())
+        try:
+            resolution = self._timekprPolicyStore.resolve(self.getUserName())
+        except timekprLookupError as ex:
+            # NSS could not say which groups the user is in: a policy
+            # resolved earlier stays in force, a user never resolved gets
+            # every group policy; a failed lookup never lifts a restriction
+            self._notePolicyLookupFailure(ex)
+            if self._timekprPolicySource != "":
+                log.log(
+                    cons.TK_LOG_LEVEL_INFO,
+                    f'user "{self.getUserName()}" keeps the policy from: {self._timekprPolicySource}',
+                )
+                return
+            resolution = self._timekprPolicyStore.resolveUnknownMembership(
+                self.getUserName()
+            )
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f'WARNING: user "{self.getUserName()}" gets every group policy until the groups can be looked up',
+            )
+        else:
+            self._notePolicyLookupSuccess()
         self._timekprUserConfig = resolution.config
         self._timekprPolicySource = resolution.getSourceDescription()
         # remember what it was resolved from, to notice changes
@@ -1075,14 +1098,39 @@ class timekprUser:
             self._timekprUserData[cons.TK_CTRL_SCR_R] = 0
 
     def refreshPolicyIfChanged(self, pSilent=True):
-        """Resolve the policy again if anything it depends on changed; True if it did"""
-        fingerprint = self._timekprPolicyStore.fingerprint(self.getUserName())
+        """Resolve the policy again if anything it depends on changed; True
+        if it did.  While the user's groups cannot be looked up the policy
+        in force stays (the lookup is tried again on every call)."""
+        try:
+            fingerprint = self._timekprPolicyStore.fingerprint(self.getUserName())
+        except timekprLookupError as ex:
+            self._notePolicyLookupFailure(ex)
+            return False
+        self._notePolicyLookupSuccess()
         if fingerprint == self._timekprUserData[cons.TK_CTRL_LCMOD]:
             return False
         log.log(cons.TK_LOG_LEVEL_INFO, f'user "{self.getUserName()}" policy changed')
         # load config
         self.adjustLimitsFromConfig(pSilent=pSilent)
         return True
+
+    def _notePolicyLookupFailure(self, pError):
+        """Log a failed membership lookup once per outage"""
+        if not self._timekprPolicyLookupFailed:
+            self._timekprPolicyLookupFailed = True
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f'WARNING: {pError}; the policy of user "{self.getUserName()}" is not resolved again until the lookup works',
+            )
+
+    def _notePolicyLookupSuccess(self):
+        """Log the end of an outage of the membership lookup"""
+        if self._timekprPolicyLookupFailed:
+            self._timekprPolicyLookupFailed = False
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f'the groups of user "{self.getUserName()}" can be looked up again',
+            )
 
     def getPolicySource(self):
         """Where the effective policy comes from (user, group:..., default)"""

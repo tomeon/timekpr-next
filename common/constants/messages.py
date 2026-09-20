@@ -320,6 +320,9 @@ def initMessages():
     _messages["TK_MSG_CONFIG_LOADER_USER_NOTFOUND"] = {
         "s": _('User "%%s" is not found')
     }
+    _messages["TK_MSG_CONFIG_LOADER_USER_LOOKUP_FAILED"] = {
+        "s": _('The groups of user "%%s" cannot be looked up right now')
+    }
 
     # ## this defines messages for use in notifications ##
     _messages["TK_MSG_STATUS_CONNECTED"] = {"s": _("Connected")}
@@ -359,8 +362,19 @@ def initMessages():
     # where the selected user's or group's policy comes from
     _messages["TK_MSG_ADMIN_POLICY_NONE"] = {"s": _("Policy: -")}
     _messages["TK_MSG_ADMIN_POLICY_OWN"] = {"s": _("Policy: own")}
-    _messages["TK_MSG_ADMIN_POLICY_GROUPS"] = {"s": _("Policy: from groups %%s")}
-    _messages["TK_MSG_ADMIN_POLICY_DEFAULTS"] = {"s": _("Policy: defaults")}
+    _messages["TK_MSG_ADMIN_POLICY_GROUPS"] = {
+        "s": _(
+            "Policy: from groups %%s (a change creates the user's own policy from these values)"
+        )
+    }
+    _messages["TK_MSG_ADMIN_POLICY_DEFAULTS"] = {
+        "s": _(
+            "Policy: defaults (a change creates the user's own policy from these values)"
+        )
+    }
+    _messages["TK_MSG_ADMIN_POLICY_UNRESOLVED"] = {
+        "s": _("Policy: unknown, the user's groups cannot be looked up right now")
+    }
     _messages["TK_MSG_ADMIN_POLICY_GROUP"] = {"s": _("Policy: group %%s")}
     _messages["TK_MSG_ADMIN_POLICY_GROUP_MEMBERS"] = {
         "s": _("Policy: group %%s (members: %%s)")

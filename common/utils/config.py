@@ -1297,11 +1297,19 @@ class timekprUserConfig:
         log.log(cons.TK_LOG_LEVEL_INFO, "finish init default user configuration")
 
     def saveUserConfiguration(self):
-        """Write new sections of the file"""
+        """Write the values into the policy file; a policy that has no file
+        yet is created with them (the setters keep a new policy in memory
+        until its first setting has been validated)"""
         log.log(
             cons.TK_LOG_LEVEL_DEBUG,
             f"start saving new user ({self._userName}) configuration",
         )
+
+        # no file yet: write one with the values held in memory
+        if not self._present or not os.path.isfile(self._configFile):
+            self.initUserConfiguration(pReuseValues=True)
+            log.log(cons.TK_LOG_LEVEL_DEBUG, "finish saving new user configuration")
+            return
 
         # init dict
         values = {}

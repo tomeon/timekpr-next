@@ -223,9 +223,20 @@ Other facts about the sandbox worth knowing before trying something:
 - "Forbid login" is expressed as `timekpra --settimelimits USER
 '0;0;0;0;0;0;0'`; an exemption is `timekpra --settimeleft USER + 300`.
   Settings can be made for a user (or a `@group`) that has never logged
-  in: the setter creates the policy file; nothing is created on its own
-  any more (see `docs/proposals/group-targeting.md` and
-  `server/config/policy.py`). Kanidm does not enumerate accounts, so
+  in: the setter creates the policy file once its input is valid (a
+  user's as a copy of the effective configuration, so a first setting
+  does not drop inherited group limits; a refused setting creates
+  nothing); nothing is created on its own any more (see
+  `docs/proposals/group-targeting.md` and `server/config/policy.py`).
+  A user NSS does not know gets no policy. When NSS cannot answer
+  which groups a user is in, `resolve()` raises `timekprLookupError`:
+  the daemon keeps the last resolved policy (or applies every group
+  policy to a user never resolved) and retries every poll, the admin
+  interfaces report an error and list the user as `unresolved`.
+  `checks.<system>.policy` runs `nix/tests/policy/` (pytest, no VM):
+  the store, the setters and the daemon's refresh on a temporary
+  configuration directory with NSS monkeypatched. Kanidm does not
+  enumerate accounts, so
   `--userlist` shows bob only once he has a policy or is logged in;
   `--userinfo bob@...` works at any time because NSS knows him by name.
 - The daemon's log is `/var/log/timekpr.log` and is flushed lazily;

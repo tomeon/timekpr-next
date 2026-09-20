@@ -20,6 +20,13 @@ For a user the effective policy is:
 Group membership is asked from the user's side (os.getgrouplist), which
 works for domain users whose identity provider does not enumerate.  A
 group's member list is only ever needed for display and is best effort.
+
+When NSS cannot answer (the identity provider is down, or a logged-in
+user is no longer known), the membership is unknown, which is not the
+same as no membership: resolve() and fingerprint() raise
+timekprLookupError instead of answering, and the daemon keeps the
+policy it last resolved (or, for a user it never resolved, applies
+every group policy) until a lookup succeeds again.
 """
 
 import grp
@@ -42,6 +49,20 @@ TK_GROUP_ALL = "all"
 TK_POLICY_SOURCE_USER = "user"
 TK_POLICY_SOURCE_GROUP = "group"
 TK_POLICY_SOURCE_DEFAULT = "default"
+# the membership could not be looked up (see timekprLookupError)
+TK_POLICY_SOURCE_UNRESOLVED = "unresolved"
+
+
+class timekprLookupError(Exception):
+    """NSS could not say who a user is or which groups they are in, so the
+    effective policy cannot be resolved; callers keep what they had or
+    fail closed, never fall back to the defaults.  unknownUser tells a
+    name NSS does not know from a lookup that failed outright; for a
+    logged-in user the first means the second."""
+
+    def __init__(self, pMessage, pUnknownUser=False):
+        super().__init__(pMessage)
+        self.unknownUser = pUnknownUser
 
 
 # the names timekpr accepts for a user or a group, at most 102 characters:
@@ -95,21 +116,38 @@ def userExists(pUserName):
 
 
 def getUserGroups(pUserName):
-    """The names of the groups a user belongs to, as NSS knows them (empty
-    set for a user NSS does not know)"""
+    """The names of the groups a user belongs to, as NSS knows them.  Raises
+    timekprLookupError when NSS does not know the user or cannot answer
+    (Python reports a directory that is down the same way as a name that
+    does not exist, and neither is "no groups")."""
     groups = set()
     try:
         # the primary group is part of the answer
-        gids = os.getgrouplist(pUserName, pwd.getpwnam(pUserName).pw_gid)
-    except (KeyError, OSError):
-        # not a user (any more)
-        return groups
-    # names, for the ones that have one
+        gid = pwd.getpwnam(pUserName).pw_gid
+    except KeyError as ex:
+        raise timekprLookupError(
+            f'user "{pUserName}" is not known to the system', pUnknownUser=True
+        ) from ex
+    except OSError as ex:
+        raise timekprLookupError(
+            f'user "{pUserName}" cannot be looked up: {ex}'
+        ) from ex
+    try:
+        gids = os.getgrouplist(pUserName, gid)
+    except (KeyError, OSError) as ex:
+        raise timekprLookupError(
+            f'the groups of user "{pUserName}" cannot be looked up: {ex}'
+        ) from ex
+    # names, for the ones that have one (a gid without a name is a stale
+    # entry in the user's list, not a failed lookup)
     for rGid in gids:
         try:
             groups.add(grp.getgrgid(rGid).gr_name)
         except KeyError:
-            pass
+            log.log(
+                cons.TK_LOG_LEVEL_DEBUG,
+                f'user "{pUserName}" is in group {rGid}, which has no name',
+            )
     # result
     return groups
 
@@ -129,7 +167,7 @@ class timekprPolicyResolution:
 
     def getSourceDescription(self):
         """The provenance as one string, for logs and the admin tools"""
-        if self.source == TK_POLICY_SOURCE_GROUP:
+        if self.source in (TK_POLICY_SOURCE_GROUP, TK_POLICY_SOURCE_UNRESOLVED):
             return "{}:{}".format(self.source, ";".join(self.groups))
         return self.source
 
@@ -204,7 +242,18 @@ class timekprPolicyStore:
         users = []
         for rUser in self.getUsersWithPolicy():
             config = timekprUserConfig(self._configDir, rUser)
-            if config.loadUserConfiguration() and config.isDefaultPolicy():
+            try:
+                isDefault = config.loadUserConfiguration() and config.isDefaultPolicy()
+            except Exception as ex:
+                # a value that does not parse (a limit that is not a number):
+                # the file is the administrator's to fix, it is neither
+                # migrated nor allowed to stop the daemon
+                log.log(
+                    cons.TK_LOG_LEVEL_INFO,
+                    f'WARNING: the policy of user "{rUser}" ({self.getUserPolicyFile(rUser)}) cannot be read ({ex}); it is left alone',
+                )
+                continue
+            if isDefault:
                 users.append(rUser)
         # result
         return users
@@ -235,7 +284,8 @@ class timekprPolicyStore:
 
     def getUserPolicyGroups(self, pUserName):
         """The groups with a policy that the user belongs to, sorted; the
-        pseudo-group "all" whenever it has a policy"""
+        pseudo-group "all" whenever it has a policy.  Raises
+        timekprLookupError when NSS cannot answer."""
         withPolicy = set(self.getGroupsWithPolicy())
         groups = getUserGroups(pUserName) & withPolicy
         if TK_GROUP_ALL in withPolicy:
@@ -299,7 +349,9 @@ class timekprPolicyStore:
         return [rGroup for rGroup in pGroups if rGroup not in overridden]
 
     def resolve(self, pUserName):
-        """The effective policy of a user, see the module documentation"""
+        """The effective policy of a user, see the module documentation.
+        Raises timekprLookupError when the user has no policy of their own
+        and NSS cannot say which groups they are in."""
         # the user's own policy wins outright (the modification time is read
         # before the file, so that an edit landing in between makes the next
         # fingerprint check resolve again, never the other way round)
@@ -326,26 +378,52 @@ class timekprPolicyStore:
                 (rGroup, _mtime(self.getGroupPolicyFile(rGroup))) for rGroup in groups
             ),
         )
-        configs = {rGroup: self._loadGroupPolicy(rGroup) for rGroup in groups}
+        # result
+        return self._resolveFromGroups(
+            config, groups, fingerprint, TK_POLICY_SOURCE_GROUP
+        )
+
+    def resolveUnknownMembership(self, pUserName):
+        """The policy for a user whose groups cannot be looked up and who was
+        never resolved before: the most restrictive merge of every group
+        policy, since the user may be in any of the groups.  A directory
+        that is down thus never lifts a restriction.  The resolution has no
+        fingerprint, so the next successful lookup replaces it."""
+        config = timekprUserConfig(self._configDir, pUserName)
+        if config.loadUserConfiguration():
+            # the user's own policy needs no lookup
+            return timekprPolicyResolution(config, TK_POLICY_SOURCE_USER, [], None)
+        # result
+        return self._resolveFromGroups(
+            config, self.getGroupsWithPolicy(), None, TK_POLICY_SOURCE_UNRESOLVED
+        )
+
+    def _resolveFromGroups(self, pConfig, pGroups, pFingerprint, pSource):
+        """Merge the given groups' policies into a user's (default-valued)
+        configuration object, so that the rest of the daemon sees one
+        ordinary configuration; the defaults when no group is left"""
+        configs = {rGroup: self._loadGroupPolicy(rGroup) for rGroup in pGroups}
         applied = self._dropOverridden(
-            groups, lambda pGroup: configs[pGroup].getUserOverrides()
+            pGroups, lambda pGroup: configs[pGroup].getUserOverrides()
         )
         if not applied:
-            # defaults (config holds them, nothing was loaded)
+            # defaults (pConfig holds them, nothing was loaded)
             return timekprPolicyResolution(
-                config, TK_POLICY_SOURCE_DEFAULT, [], fingerprint
+                pConfig,
+                TK_POLICY_SOURCE_DEFAULT
+                if pSource == TK_POLICY_SOURCE_GROUP
+                else pSource,
+                [],
+                pFingerprint,
             )
-
-        # merge into the user's (default-valued) configuration object, so
-        # that the rest of the daemon sees one ordinary configuration
-        config.mergeMostRestrictive([configs[rGroup] for rGroup in applied])
-        return timekprPolicyResolution(
-            config, TK_POLICY_SOURCE_GROUP, applied, fingerprint
-        )
+        pConfig.mergeMostRestrictive([configs[rGroup] for rGroup in applied])
+        # result
+        return timekprPolicyResolution(pConfig, pSource, applied, pFingerprint)
 
     def fingerprint(self, pUserName):
         """The fingerprint resolve() would produce now, without loading
-        the policies; cheap enough for a periodic check"""
+        the policies; cheap enough for a periodic check.  Raises
+        timekprLookupError as resolve() does."""
         userMtime = _mtime(self.getUserPolicyFile(pUserName))
         if userMtime is not None:
             return (userMtime, ())
@@ -386,9 +464,14 @@ class timekprPolicyListing:
         return self._groupConfigs[pGroup]
 
     def getUserGroups(self, pUserName):
-        """The names of a user's groups, as NSS knows them (asked once)"""
+        """The names of a user's groups, as NSS knows them (asked once);
+        None when NSS could not answer"""
         if pUserName not in self._userGroups:
-            self._userGroups[pUserName] = getUserGroups(pUserName)
+            try:
+                self._userGroups[pUserName] = getUserGroups(pUserName)
+            except timekprLookupError as ex:
+                log.log(cons.TK_LOG_LEVEL_DEBUG, f"listing: {ex}")
+                self._userGroups[pUserName] = None
         return self._userGroups[pUserName]
 
     def getGroupMembers(self, pGroup, pKnownUsers=()):
@@ -403,7 +486,7 @@ class timekprPolicyListing:
         except KeyError:
             pass
         for rUser in pKnownUsers:
-            if pGroup in self.getUserGroups(rUser):
+            if pGroup in (self.getUserGroups(rUser) or ()):
                 members.add(rUser)
         # result
         return sorted(members)
@@ -414,8 +497,13 @@ class timekprPolicyListing:
         if self._store.hasUserPolicy(pUserName):
             return TK_POLICY_SOURCE_USER
         # the groups with a policy the user is in
+        userGroups = self.getUserGroups(pUserName)
+        if userGroups is None:
+            # NSS could not say (a name nobody knows, or a directory that is
+            # down): not the defaults, whatever the daemon applies meanwhile
+            return TK_POLICY_SOURCE_UNRESOLVED
         withPolicy = set(self._groupsWithPolicy)
-        groups = self.getUserGroups(pUserName) & withPolicy
+        groups = userGroups & withPolicy
         if TK_GROUP_ALL in withPolicy:
             groups.add(TK_GROUP_ALL)
         applied = self._store._dropOverridden(

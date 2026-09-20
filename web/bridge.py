@@ -32,6 +32,9 @@ _DAEMON_FAILURES = (
     "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR",
     "TK_MSG_CONFIG_LOADER_SAVECONTROL_UNEXPECTED_ERROR",
 )
+# the daemon's reply when it cannot answer right now (NSS could not say
+# which groups the user is in)
+_DAEMON_UNAVAILABLE = ("TK_MSG_CONFIG_LOADER_USER_LOOKUP_FAILED",)
 # the daemon's replies when what the request names does not exist
 _DAEMON_NOT_FOUND = (
     "TK_MSG_CONFIG_LOADER_USER_NOTFOUND",
@@ -155,6 +158,10 @@ class Bridge:
             # the daemon could not apply a valid request (its log has the reason,
             # a read-only /etc/timekpr for example)
             raise DaemonError(500, message)
+        if code != 0 and daemon_texts(_DAEMON_UNAVAILABLE).match(message):
+            # the daemon could not resolve the user's policy (the directory
+            # did not answer); try again later
+            raise DaemonError(503, message)
         if code != 0 and daemon_texts(_DAEMON_NOT_FOUND).match(message):
             # what the request names does not exist: a user nobody knows, a
             # group without a policy, a policy that is not there to delete

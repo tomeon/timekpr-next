@@ -118,7 +118,9 @@ module `timekprw` uses in the other direction.
   for a user the daemon does not list (see "Policies") is `404`, as is
   a read of a group that has no policy and a deletion of a policy that
   does not exist; a value the
-  daemon refuses is `400` with its message as `detail`; `500` means
+  daemon refuses is `400` with its message as `detail`; `503` is also
+  a user whose groups the daemon cannot look up right now (see
+  "Policies"); `500` means
   the daemon accepted the request but failed to apply it (its log,
   `/var/log/timekpr.log`, has the reason; on NixOS `/etc/timekpr` is
   a read-only store path, so the daemon-wide settings cannot be
@@ -157,6 +159,13 @@ and every known member of a group with a policy; group membership is
 looked up through NSS, so it reaches domain users too. See
 `server/config/policy.py`.
 
+When NSS cannot say which groups a user is in (a directory that is
+down), the daemon does not guess: a request that needs the user's
+effective configuration is answered `503` and the user list shows
+the user's `policy_source` as `unresolved`. Enforcement keeps the
+policy the daemon last resolved for the user, or applies every group
+policy to a user it never resolved, until a lookup succeeds.
+
 Deleting a user's policy (`DELETE /api/v1/users/{username}/policy`)
 puts them back under their group policies or the defaults; their
 counters stay. Earlier versions created a policy for every user on
@@ -190,16 +199,16 @@ Fields of `/api/v1/config` (names follow `TIMEKPR_*` keys returned by the daemon
 
 ### Users
 
-| Method   | Path                                                  | `timekpra`                    | Purpose                                                                                                                                                                                                                                                |
-| -------- | ----------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET`    | `/api/v1/users`                                       | `--userlist`                  | The users timekpr knows (see "Policies"). Returns `[{"username", "full_name", "policy_source"}]`; `policy_source` is `user`, `group:<g1>;<g2>` or `default`. Query `?include=status` adds each user's `status` object (one extra D-Bus call per user). |
-| `GET`    | `/api/v1/users/{username}`                            | `--userinfo` + `--userinfort` | Full view: `{"username", "config": {...}, "status": {...}, "policy_source", "policy_groups"}` (`getUserInformation(name, "F")`); `config` is the effective configuration.                                                                              |
-| `GET`    | `/api/v1/users/{username}/config`                     | `--userinfo`                  | Saved configuration only (`"S"`).                                                                                                                                                                                                                      |
-| `PATCH`  | `/api/v1/users/{username}/config`                     | all `--set*` except time left | Partial update, see field table below.                                                                                                                                                                                                                 |
-| `GET`    | `/api/v1/users/{username}/status`                     | `--userinfort`                | Realtime counters (`"R"`).                                                                                                                                                                                                                             |
-| `PUT`    | `/api/v1/users/{username}/config/allowed-hours/{day}` | `--setallowedhours`           | Replace the allowed hours for one weekday, or for every weekday when `{day}` is `all`.                                                                                                                                                                 |
-| `POST`   | `/api/v1/users/{username}/time-left`                  | `--settimeleft`               | Add, subtract or set today's remaining time.                                                                                                                                                                                                           |
-| `DELETE` | `/api/v1/users/{username}/policy`                     | `--deletepolicy`              | Delete the user's own policy (`deletePolicy`); `204`, or `404` when there is none. The user's group policies or the defaults apply again; the counters stay.                                                                                           |
+| Method   | Path                                                  | `timekpra`                    | Purpose                                                                                                                                                                                                                                                              |
+| -------- | ----------------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/users`                                       | `--userlist`                  | The users timekpr knows (see "Policies"). Returns `[{"username", "full_name", "policy_source"}]`; `policy_source` is `user`, `group:<g1>;<g2>`, `default` or `unresolved`. Query `?include=status` adds each user's `status` object (one extra D-Bus call per user). |
+| `GET`    | `/api/v1/users/{username}`                            | `--userinfo` + `--userinfort` | Full view: `{"username", "config": {...}, "status": {...}, "policy_source", "policy_groups"}` (`getUserInformation(name, "F")`); `config` is the effective configuration.                                                                                            |
+| `GET`    | `/api/v1/users/{username}/config`                     | `--userinfo`                  | Saved configuration only (`"S"`).                                                                                                                                                                                                                                    |
+| `PATCH`  | `/api/v1/users/{username}/config`                     | all `--set*` except time left | Partial update, see field table below.                                                                                                                                                                                                                               |
+| `GET`    | `/api/v1/users/{username}/status`                     | `--userinfort`                | Realtime counters (`"R"`).                                                                                                                                                                                                                                           |
+| `PUT`    | `/api/v1/users/{username}/config/allowed-hours/{day}` | `--setallowedhours`           | Replace the allowed hours for one weekday, or for every weekday when `{day}` is `all`.                                                                                                                                                                               |
+| `POST`   | `/api/v1/users/{username}/time-left`                  | `--settimeleft`               | Add, subtract or set today's remaining time.                                                                                                                                                                                                                         |
+| `DELETE` | `/api/v1/users/{username}/policy`                     | `--deletepolicy`              | Delete the user's own policy (`deletePolicy`); `204`, or `404` when there is none. The user's group policies or the defaults apply again; the counters stay.                                                                                                         |
 
 There is no `POST /users`: a user is not created, the first setting
 made for a name creates that name's policy (`PATCH .../config` on a
@@ -230,9 +239,12 @@ in both. `PATCH` accepts any subset of them.
 
 `GET /api/v1/users/{username}/config` returns the user's effective
 configuration, and `PATCH` accepts any subset of the fields below;
-a `PATCH` on a user without a policy of their own creates one (from
-the defaults, not from the group policies that applied before). The
-fields are:
+a `PATCH` on a user without a policy of their own creates one as a
+copy of the effective configuration that applied before (their group
+policies or the defaults), so the request changes only what it says;
+from then on the copy is the user's policy and the group policies no
+longer apply to them. A request the daemon refuses creates nothing.
+The fields are:
 
 | Field             | Type                                                     | D-Bus setter                          | Notes                                                                                                                                                                                                                                                                                                                        |
 | ----------------- | -------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

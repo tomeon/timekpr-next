@@ -76,9 +76,16 @@ present" test, and no marker key is needed.
   ([common/utils/config.py:978](../../common/utils/config.py#L978)). An
   unreadable file is set aside as `.invalid` and counts as absent.
 - Admin setters create the file on demand
-  ([configprocessor.py:41](../../server/config/configprocessor.py#L41),
+  ([configprocessor.py:56](../../server/config/configprocessor.py#L56),
   `pCreate=True`). A policy can therefore be set for a user who has
-  never logged in, or for a group none of whose members has.
+  never logged in, or for a group none of whose members has. The
+  setter prepares a missing policy in memory, validates its input, and
+  only then saves, which writes the file: a refused setting creates
+  nothing. A user's new policy starts as a copy of the effective
+  configuration that applied to them (their groups' or the defaults),
+  so the first setting changes only what it says instead of silently
+  replacing inherited limits with the defaults; a group's starts as
+  the defaults. A name NSS does not know gets no policy ("not found").
 - `deletePolicy` removes a user's or a group's policy
   ([configprocessor.py:902](../../server/config/configprocessor.py#L902),
   [daemon.py:778](../../server/interface/dbus/daemon.py#L778)); a user
@@ -105,7 +112,9 @@ files count as user policies with default values and would shadow any
 group policy. `timekpra --migratepolicies dry-run|delete` lists or
 deletes the user policies whose every value is a default
 ([policy.py:168-200](../../server/config/policy.py#L168-L200)), and the
-daemon warns about them at startup. Deleting such a file can only leave
+daemon warns about them at startup. A policy whose values do not parse
+is logged and left alone by that scan, so it can neither be migrated by
+mistake nor keep the daemon from starting. Deleting such a file can only leave
 the user unchanged or bring them under a group policy; it never loosens
 anything. Refusing to start on unmigrated files was rejected: a
 screen-time daemon that does not start enforces nothing.
@@ -127,6 +136,19 @@ listing exists only for display and is best effort
 its groups under their SPN (`kids@idm.nixos.test`), so a policy on a
 domain group is addressed by that name; the NixOS test reads bob's
 group names from `id` rather than assuming them.
+
+A failed lookup is not an empty membership. `getUserGroups` raises
+`timekprLookupError` when NSS does not know the user or cannot answer
+(Python's `pwd`/`grp` report a directory that is down the same way as
+a name that does not exist), and `resolve()`/`fingerprint()` let it
+through. The daemon (`server/user/userdata.py`) then keeps the policy
+it last resolved for the user and retries at every poll, logging the
+outage once; a user it never resolved gets the most restrictive merge
+of every group policy (`resolveUnknownMembership`) until a lookup
+succeeds, since the user may be in any of them and a directory outage
+must never lift a restriction. The admin interfaces answer such a
+request with a "cannot be looked up" error (the web bridge's `503`)
+and list the user's provenance as `unresolved`.
 
 Groups carry policy only. Accounting is per user without exception:
 `setTimeLeft` and `setHideTrayIcon` refuse a group target, and there is

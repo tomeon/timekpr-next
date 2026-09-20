@@ -9,17 +9,13 @@ import fileinput
 import os
 import pwd
 import re
-from glob import glob
 
 # timekpr imports
 from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
-from timekpr.common.utils.config import (
-    timekprConfig,
-    timekprUserConfig,
-    timekprUserControl,
-)
+from timekpr.common.utils.config import timekprConfig
 from timekpr.common.utils.misc import getNormalizedUserNames
+from timekpr.server.config.policy import isValidName, timekprPolicyStore
 
 # user limits
 _limitsConfig = {}
@@ -30,13 +26,7 @@ _loginManagers = [
 # defaults
 _limitsConfig["UID_MIN"] = 1000
 _limitsConfig["UID_MAX"] = 60000
-# username pattern:
-#   all users, max 101 chars
-#   linux users, extended with uppercase characters and first numeric or "." character
-#   domain users, extended with uppercase characters and first numeric or ".", and "@" symbol
-_userNameRegexp = re.compile(
-    r"^[a-zA-Z0-9_\.]([a-zA-Z0-9_\.@-]{0,101}|[a-zA-Z0-9_\.@-]{0,100}\$)$"
-)
+# the user name pattern is shared with the policy targets (policy.isValidName)
 
 
 # some distros are "different", login.defs may be in different dir, config reflects multiple dirs to check for the file
@@ -77,7 +67,7 @@ def isUserValid(pUserId, pUserName=None, pUserShell=None):
             isUIDOK = False
         # check if username is ok
         # uid is ok and name is passed
-        if isUIDOK and pUserName is not None and not _userNameRegexp.match(pUserName):
+        if isUIDOK and pUserName is not None and not isValidName(pUserName):
             # user is not ours
             isUIDOK = False
     # fin
@@ -87,25 +77,6 @@ def isUserValid(pUserId, pUserName=None, pUserShell=None):
 def getTimekprLoginManagers():
     """Get login manager names"""
     return _loginManagers
-
-
-def setWakeUpByRTC(pWkeUpTimeEpoch):
-    """Set wakeup time for computer"""
-    res = False
-    # first check that we can access rtc
-    if os.path.isfile(cons.TK_CTRL_WKUPF):
-        try:
-            # now write wakeup timer
-            with open(cons.TK_CTRL_WKUPF, "w") as wakeFile:
-                # write time
-                wakeFile.write(str(pWkeUpTimeEpoch))
-                # success
-                res = True
-        except Exception:
-            # we only care about this, at least for now, if it succeeds
-            res = False
-    # result
-    return res
 
 
 class timekprUserStore:
@@ -120,7 +91,10 @@ class timekprUserStore:
         log.log(cons.TK_LOG_LEVEL_DEBUG, "de-initializing timekprUserStore")
 
     def checkAndInitUsers(self):
-        """Initialize all users present in the system as per particular config"""
+        """List the users present in the system that timekpr would track.
+        Nothing is created for them: a policy exists only when an
+        administrator makes one, and the counters are created when a
+        user is first tracked."""
         # config
         users = {}
 
@@ -133,52 +107,13 @@ class timekprUserStore:
                 # save ()
                 users[rUser.pw_name] = [rUser.pw_uid, userFName]
 
-        # get user config
-        timekprConfigManager = timekprConfig()
-        # load user config
-        timekprConfigManager.loadMainConfiguration()
-
-        # go through our users
-        for rUser in users:
-            # get path of file
-            file = os.path.join(
-                timekprConfigManager.getTimekprConfigDir(),
-                cons.TK_USER_CONFIG_FILE % (rUser),
-            )
-
-            # check if we have config for them
-            if not os.path.isfile(file):
-                log.log(
-                    cons.TK_LOG_LEVEL_INFO,
-                    f'setting up user "{rUser}" with id {int(users[rUser][0])}',
-                )
-                # user config
-                timekprUserConfig(
-                    timekprConfigManager.getTimekprConfigDir(), rUser
-                ).initUserConfiguration()
-                # user control
-                timekprUserControl(
-                    timekprConfigManager.getTimekprWorkDir(), rUser
-                ).initUserControl()
-
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "finishing setting up users")
+        log.log(cons.TK_LOG_LEVEL_DEBUG, "finishing listing users")
 
         # user list
         return users
 
-    def getSavedUserList(self, pConfigDir=None):
-        """
-        Get user list, this will get user list from config files present in the system:
-          no config - no user
-          leftover config - please set up non-existent user (maybe pre-defined one?)
-        """
-        # initialize username storage
-        filterExistingOnly = False  # this is to filter only existing local users (currently just here, not decided on what to do)
-        userList = []
-
-        # prepare all users in the system
-        users = self.checkAndInitUsers()
-
+    def _getConfigDir(self, pConfigDir):
+        """The configuration directory, from the main configuration if not given"""
         # in case we don't have a dir yet
         if pConfigDir is None:
             # get user config
@@ -186,53 +121,93 @@ class timekprUserStore:
             # load user config
             timekprConfigManager.loadMainConfiguration()
             # config dir
-            configDir = timekprConfigManager.getTimekprConfigDir()
-        else:
-            # use passed value
-            configDir = pConfigDir
+            return timekprConfigManager.getTimekprConfigDir()
+        # use passed value
+        return pConfigDir
 
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "listing user config files")
+    def getSavedUserList(self, pConfigDir=None, pExtraUsers=()):
+        """
+        Get the user list: the users with a policy file (which may name
+        users that do not exist any more), the users present in the
+        system, the known members of the groups with a policy, and the
+        given extra users (the daemon passes the ones it is tracking, so
+        that a directory user, whom the system cannot enumerate, is listed
+        while logged in).  Every entry is [user, full name, where the
+        effective policy comes from].
+        """
+        # initialize username storage
+        userList = []
 
-        # now list the config files
-        userConfigFiles = glob(
-            os.path.join(configDir, cons.TK_USER_CONFIG_FILE % ("*"))
-        )
+        # the users in the system
+        users = self.checkAndInitUsers()
+        # the policies, read once for the whole list
+        policyStore = timekprPolicyStore(self._getConfigDir(pConfigDir))
+        listing = policyStore.startListing()
 
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "traversing user config files")
+        log.log(cons.TK_LOG_LEVEL_DEBUG, "listing user policy files")
+
+        # the users with a policy of their own
+        userNames = set()
+        for rUser in policyStore.getUsersWithPolicy():
+            # whether user is valid in config file
+            userNameValidated = False
+            # try to read the first line with username
+            with open(policyStore.getUserPolicyFile(rUser), "r") as confFile:
+                # read first (x) lines and try to get username
+                for _i in range(cons.TK_UNAME_SRCH_LN_LMT):
+                    # check whether we have correct username
+                    if f"[{rUser}]" in confFile.readline():
+                        # user validated
+                        userNameValidated = True
+                        # found
+                        break
+            # keep the validated ones
+            if userNameValidated:
+                userNames.add(rUser)
+        # the users in the system, and the ones given
+        userNames.update(users)
+        userNames.update(pExtraUsers)
+        # the known members of the groups with a policy (best effort)
+        for rGroup in listing.getGroupsWithPolicy():
+            userNames.update(listing.getGroupMembers(rGroup, users))
+
+        log.log(cons.TK_LOG_LEVEL_DEBUG, "resolving user policies")
 
         # now walk the list
-        for rUserConfigFile in sorted(userConfigFiles):
-            # exclude standard sample file
-            if "timekpr.USER.conf" not in rUserConfigFile:
-                # first get filename and then from filename extract username part (as per cons.TK_USER_CONFIG_FILE)
-                user = re.sub(
-                    cons.TK_USER_CONFIG_FILE.replace(".%s.", r"\.(.*)\."),
-                    r"\1",
-                    os.path.basename(rUserConfigFile),
-                )
-                # whether user is valid in config file
-                userNameValidated = False
-                # try to read the first line with username
-                with open(rUserConfigFile, "r") as confFile:
-                    # read first (x) lines and try to get username
-                    for i in range(cons.TK_UNAME_SRCH_LN_LMT):
-                        # check whether we have correct username
-                        if f"[{user}]" in confFile.readline():
-                            # user validated
-                            userNameValidated = True
-                            # found
-                            break
-                # validate user against valid (existing) users in the system
-                if userNameValidated and (not filterExistingOnly or user in users):
-                    # get actual user name
-                    if user in users:
-                        # add user name and full name
-                        userList.append([user, users[user][1]])
-                    else:
-                        # add user name and full name
-                        userList.append([user, ""])
+        for rUser in sorted(userNames):
+            # user name, full name, and where the policy comes from
+            userList.append(
+                [
+                    rUser,
+                    users[rUser][1] if rUser in users else "",
+                    listing.getSourceDescription(rUser),
+                ]
+            )
 
         log.log(cons.TK_LOG_LEVEL_DEBUG, "finishing user list")
 
         # finish
         return userList
+
+    def getSavedGroupList(self, pConfigDir=None):
+        """
+        Get the list of groups with a policy: every entry is [group, the
+        groups it overrides (; separated), its known members (; separated,
+        best effort)].
+        """
+        # the users in the system
+        users = self.checkAndInitUsers()
+        # the policies, read once for the whole list
+        listing = timekprPolicyStore(self._getConfigDir(pConfigDir)).startListing()
+        # the list
+        groupList = []
+        for rGroup in listing.getGroupsWithPolicy():
+            groupList.append(
+                [
+                    rGroup,
+                    ";".join(listing.getGroupConfig(rGroup).getUserOverrides()),
+                    ";".join(listing.getGroupMembers(rGroup, users)),
+                ]
+            )
+        # finish
+        return groupList

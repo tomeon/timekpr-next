@@ -5,7 +5,6 @@ Created on Aug 28, 2018
 """
 
 # import section
-import signal
 import time
 
 import dbus
@@ -404,9 +403,7 @@ class timekprUserLoginManager:
         # return false for repeat schedule to be discarded
         return False
 
-    def terminateUserSessions(
-        self, pUserName, pUserPath, pTimekprConfig, pRestrictionType
-    ):
+    def terminateUserSessions(self, pUserName, pUserPath, pTimekprConfig):
         """Terminate user sessions"""
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "start terminateUserSessions")
         log.log(
@@ -443,14 +440,6 @@ class timekprUserLoginManager:
                         cons.TK_LOG_LEVEL_INFO,
                         "DEVELOPMENT ACTIVE, not killing myself, sorry...",
                     )
-                elif pRestrictionType == cons.TK_CTRL_RES_K:
-                    GLib.timeout_add_seconds(
-                        0.1,
-                        self._login1ManagerInterface.KillSession,
-                        rUserSession["sessionId"],
-                        "all",
-                        signal.SIGTERM,
-                    )
                 else:
                     GLib.timeout_add_seconds(
                         0.1,
@@ -479,7 +468,7 @@ class timekprUserLoginManager:
                     ),
                 )
 
-        # kill leftover processes (if we are killing smth)
+        # switch TTY (if we are killing smth)
         if sessionsToKill > 0 and userActive and lastSeat is not None:
             # timeout
             tmo = cons.TK_POLLTIME - 1
@@ -493,48 +482,4 @@ class timekprUserLoginManager:
         else:
             log.log(cons.TK_LOG_LEVEL_INFO, f"TTY switch ommitted for user {pUserName}")
 
-        # cleanup
-        if sessionsToKill > 0:
-            # timeout
-            tmo = cons.TK_POLLTIME * 2 + 1
-            # dispatch a killer for leftovers
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f"dipatching a killer for leftover processes after {int(tmo)} seconds",
-            )
-            # schedule leftover processes to be killed (it's rather sophisticated killing and checks whether we need to kill gui or terminal processes)
-            GLib.timeout_add_seconds(
-                tmo, misc.killLeftoverUserProcesses, pUserName, pTimekprConfig
-            )
-
         log.log(cons.TK_LOG_LEVEL_EXTRA_DEBUG, "finish terminateUserSessions")
-
-    def suspendComputer(self, pUserName):
-        """Suspend computer"""
-        # only if we are not in DEV mode
-        if cons.TK_DEV_ACTIVE:
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                "DEVELOPMENT ACTIVE, not suspending myself, sorry...",
-            )
-        else:
-            log.log(
-                cons.TK_LOG_LEVEL_DEBUG,
-                f'start suspendComputer in the name of "{pUserName}"',
-            )
-            GLib.timeout_add_seconds(0.1, self._login1ManagerInterface.Suspend, False)
-
-    def shutdownComputer(self, pUserName):
-        """Shutdown computer"""
-        # only if we are not in DEV mode
-        if cons.TK_DEV_ACTIVE:
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                "DEVELOPMENT ACTIVE, not issuing shutdown for myself, sorry...",
-            )
-        else:
-            log.log(
-                cons.TK_LOG_LEVEL_DEBUG,
-                f'start shutdownComputer in the name of "{pUserName}"',
-            )
-            GLib.timeout_add_seconds(0.1, self._login1ManagerInterface.PowerOff, False)

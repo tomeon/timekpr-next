@@ -192,16 +192,6 @@
     <property name="step-increment">1</property>
     <property name="page-increment">5</property>
   </object>
-  <object class="GtkAdjustment" id="TimekprTodayPlayTimeHrAdjustment">
-    <property name="upper">23</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">5</property>
-  </object>
-  <object class="GtkAdjustment" id="TimekprTodayPlayTimeMinAdjustment">
-    <property name="upper">60</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">5</property>
-  </object>
   <object class="GtkListStore" id="TimekprTrackingSessionsLS">
     <columns>
       <!-- column-name trackedSession -->
@@ -245,69 +235,10 @@
       <column type="gchararray"/>
     </columns>
   </object>
-  <object class="GtkImage" id="TimekprUserPlayTimeLimitsAddButtonImage">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="stock">gtk-add</property>
-  </object>
-  <object class="GtkAdjustment" id="TimekprUserPlayTimeLimitsHrAdjustment">
-    <property name="upper">24</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">4</property>
-  </object>
-  <object class="GtkListStore" id="TimekprUserPlayTimeLimitsLS">
-    <columns>
-      <!-- column-name dayIdx -->
-      <column type="gchararray"/>
-      <!-- column-name dayName -->
-      <column type="gchararray"/>
-      <!-- column-name dayEnabled -->
-      <column type="gboolean"/>
-      <!-- column-name dayLimitSecs -->
-      <column type="guint"/>
-      <!-- column-name limitStr -->
-      <column type="gchararray"/>
-    </columns>
-  </object>
-  <object class="GtkAdjustment" id="TimekprUserPlayTimeLimitsMinAdjustment">
-    <property name="upper">24</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">4</property>
-  </object>
-  <object class="GtkImage" id="TimekprUserPlayTimeLimitsRemoveButtonImage">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="stock">gtk-remove</property>
-  </object>
-  <object class="GtkImage" id="TimekprUserPlayTimeProcessesAdjustmentAddButtonImage">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="stock">gtk-new</property>
-  </object>
-  <object class="GtkImage" id="TimekprUserPlayTimeProcessesAdjustmentRemoveButtonImage">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="stock">gtk-delete</property>
-  </object>
-  <object class="GtkImage" id="TimekprUserPlayTimeProcessesApplyImage">
+  <object class="GtkImage" id="TimekprUserConfAddOptsApplyImage">
     <property name="visible">True</property>
     <property name="can-focus">False</property>
     <property name="stock">gtk-apply</property>
-  </object>
-  <object class="GtkImage" id="TimekprUserPlayTimeProcessesApplyImage1">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="stock">gtk-apply</property>
-  </object>
-  <object class="GtkListStore" id="TimekprUserPlayTimeProcessesLS">
-    <columns>
-      <!-- column-name processIdx -->
-      <column type="gchararray"/>
-      <!-- column-name processMask -->
-      <column type="gchararray"/>
-      <!-- column-name processDescription -->
-      <column type="gchararray"/>
-    </columns>
   </object>
   <object class="GtkListStore" id="TimekprUserSelectionLS">
     <columns>
@@ -347,17 +278,6 @@
     <property name="upper">60</property>
     <property name="step-increment">1</property>
     <property name="page-increment">5</property>
-  </object>
-  <object class="GtkAdjustment" id="TimekprWakeUpHourFromAdjustment">
-    <property name="upper">23</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">3</property>
-  </object>
-  <object class="GtkAdjustment" id="TimekprWakeUpHourToAdjustment">
-    <property name="upper">23</property>
-    <property name="value">23</property>
-    <property name="step-increment">1</property>
-    <property name="page-increment">3</property>
   </object>
   <object class="GtkAdjustment" id="TimekprWarningAdjustment">
     <property name="lower">5</property>
@@ -545,11 +465,100 @@ Please configure carefully: do not lock yourself out!</property>
                         <property name="position">1</property>
                       </packing>
                     </child>
+                    <child>
+                      <object class="GtkEntry" id="TimekprNewGroupEntry">
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">True</property>
+                        <property name="tooltip-text" translatable="yes">Name of a system group to create a group policy for (its members without a policy of their own follow it)</property>
+                        <property name="margin-left">10</property>
+                        <property name="margin-top">5</property>
+                        <property name="margin-bottom">10</property>
+                        <property name="width-chars">12</property>
+                        <property name="placeholder-text" translatable="yes">group name</property>
+                        <signal name="activate" handler="newGroupPolicyClicked" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="TimekprNewGroupBT">
+                        <property name="label" translatable="yes">New group policy</property>
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">True</property>
+                        <property name="receives-default">True</property>
+                        <property name="tooltip-text" translatable="yes">Create a policy with default values for the group named on the left and select it</property>
+                        <property name="margin-left">5</property>
+                        <property name="margin-right">5</property>
+                        <property name="margin-bottom">10</property>
+                        <signal name="clicked" handler="newGroupPolicyClicked" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">3</property>
+                      </packing>
+                    </child>
                   </object>
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
                     <property name="position">1</property>
+                  </packing>
+                </child>
+                <child>
+                  <object class="GtkBox" id="TimekprUserPolicyBox">
+                    <property name="visible">True</property>
+                    <property name="can-focus">False</property>
+                    <child>
+                      <object class="GtkLabel" id="TimekprUserPolicySourceLB">
+                        <property name="visible">True</property>
+                        <property name="can-focus">False</property>
+                        <property name="tooltip-text" translatable="yes">Where the shown configuration comes from: the user's own policy, the policies of the user's groups, or the defaults. Applying any change gives the user a policy of their own.</property>
+                        <property name="halign">start</property>
+                        <property name="margin-bottom">5</property>
+                        <property name="label" translatable="yes">Policy: -</property>
+                        <property name="ellipsize">end</property>
+                        <property name="max-width-chars">60</property>
+                        <attributes>
+                          <attribute name="style" value="italic"/>
+                        </attributes>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="padding">10</property>
+                        <property name="position">0</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="TimekprUserPolicyDeleteBT">
+                        <property name="label" translatable="yes">Delete policy</property>
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">True</property>
+                        <property name="receives-default">True</property>
+                        <property name="tooltip-text" translatable="yes">Delete the selected user's own policy (their group policies or the defaults apply again) or the selected group policy</property>
+                        <property name="margin-left">5</property>
+                        <property name="margin-right">5</property>
+                        <property name="margin-bottom">5</property>
+                        <signal name="clicked" handler="deletePolicyClicked" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">1</property>
+                      </packing>
+                    </child>
+                  </object>
+                  <packing>
+                    <property name="expand">False</property>
+                    <property name="fill">True</property>
+                    <property name="position">2</property>
                   </packing>
                 </child>
                 <child>
@@ -875,52 +884,6 @@ Please configure carefully: do not lock yourself out!</property>
                                 <property name="can-focus">False</property>
                                 <property name="orientation">vertical</property>
                                 <child>
-                                  <object class="GtkBox" id="TimekprUserConfTodaySettingsChoiceBX">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="halign">center</property>
-                                    <property name="margin-bottom">10</property>
-                                    <child>
-                                      <object class="GtkRadioButton" id="TimekprUserConfTodaySettingsChoiceTimeRB">
-                                        <property name="label" translatable="yes">today's time</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">Choose this to adjust user's time allowance for today</property>
-                                        <property name="active">True</property>
-                                        <property name="draw-indicator">True</property>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkRadioButton" id="TimekprUserConfTodaySettingsChoicePlayTimeRB">
-                                        <property name="label" translatable="yes">PlayTime</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">Choose this to adjust user's PlayTime allowance for today</property>
-                                        <property name="active">True</property>
-                                        <property name="draw-indicator">True</property>
-                                        <property name="group">TimekprUserConfTodaySettingsChoiceTimeRB</property>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">1</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">0</property>
-                                  </packing>
-                                </child>
-                                <child>
                                   <!-- n-columns=2 n-rows=2 -->
                                   <object class="GtkGrid" id="TimekprUserConfTodaySettingsSetGrid">
                                     <property name="visible">True</property>
@@ -985,7 +948,7 @@ Please configure carefully: do not lock yourself out!</property>
                                   <packing>
                                     <property name="expand">False</property>
                                     <property name="fill">True</property>
-                                    <property name="position">2</property>
+                                    <property name="position">1</property>
                                   </packing>
                                 </child>
                                 <child>
@@ -1047,7 +1010,7 @@ Please configure carefully: do not lock yourself out!</property>
                                   <packing>
                                     <property name="expand">False</property>
                                     <property name="fill">True</property>
-                                    <property name="position">3</property>
+                                    <property name="position">2</property>
                                   </packing>
                                 </child>
                               </object>
@@ -1063,238 +1026,6 @@ Please configure carefully: do not lock yourself out!</property>
                             <property name="expand">False</property>
                             <property name="fill">True</property>
                             <property name="position">2</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkSeparator" id="TimekprUserConfTodaySettingsPTSettingsSeparator">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="margin-left">20</property>
-                            <property name="margin-right">20</property>
-                            <property name="margin-top">15</property>
-                            <property name="margin-bottom">15</property>
-                            <property name="orientation">vertical</property>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">True</property>
-                            <property name="position">3</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkBox" id="TimekprUserConfPlayTimeInfoBox">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="halign">start</property>
-                            <property name="valign">start</property>
-                            <property name="margin-left">5</property>
-                            <property name="margin-right">5</property>
-                            <property name="margin-top">5</property>
-                            <property name="orientation">vertical</property>
-                            <property name="spacing">5</property>
-                            <child>
-                              <object class="GtkLabel" id="TimekprUserPlayTimeTodaySettingsLabel">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="margin-left">5</property>
-                                <property name="margin-right">5</property>
-                                <property name="label" translatable="yes">Information about PlayTime</property>
-                                <property name="wrap">True</property>
-                                <property name="max-width-chars">30</property>
-                                <attributes>
-                                  <attribute name="style" value="italic"/>
-                                </attributes>
-                              </object>
-                              <packing>
-                                <property name="expand">False</property>
-                                <property name="fill">True</property>
-                                <property name="position">0</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <!-- n-columns=1 n-rows=1 -->
-                              <object class="GtkGrid" id="TimekprUserPlayTimeTodaySettingsGrid">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="margin-left">5</property>
-                                <property name="margin-right">5</property>
-                                <property name="row-spacing">5</property>
-                                <child>
-                                  <!-- n-columns=2 n-rows=5 -->
-                                  <object class="GtkGrid" id="TimekprUserPlayTimeTodaySettingsInfoGrid">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="halign">center</property>
-                                    <property name="margin-top">5</property>
-                                    <property name="row-spacing">5</property>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeTodaySettingsLeftActualLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Actual PlayTime available today (realtime, available when user is logged in)</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">PlayTime left (actual):</property>
-                                        <attributes>
-                                          <attribute name="weight" value="bold"/>
-                                        </attributes>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeLeftActualLB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Format: &lt;hours : minutes : seconds&gt;</property>
-                                        <property name="halign">start</property>
-                                        <property name="margin-left">5</property>
-                                        <property name="label">00:00:00</property>
-                                        <property name="ellipsize">end</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeTodaySettingsLeftSavedLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">PlayTime available today (saved stated, not real-time)</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">PlayTime left (today):</property>
-                                        <attributes>
-                                          <attribute name="weight" value="bold"/>
-                                        </attributes>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">2</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeLeftSavedLB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Format: &lt;hours : minutes : seconds&gt;</property>
-                                        <property name="halign">start</property>
-                                        <property name="margin-left">5</property>
-                                        <property name="label">00:00:00</property>
-                                        <property name="ellipsize">end</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">2</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeTodaySettingsActivityCntLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Active PlayTime activity count (realtime, available when user is logged in)</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Running activities (actual):</property>
-                                        <attributes>
-                                          <attribute name="weight" value="bold"/>
-                                        </attributes>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeTodaySettingsActivityCntLB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Active PlayTime activity count (realtime, available when user is logged in)</property>
-                                        <property name="halign">start</property>
-                                        <property name="margin-left">5</property>
-                                        <property name="label">0</property>
-                                        <property name="ellipsize">end</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkSeparator" id="TimekprUserConfTodayInfoPlayTimeLeftSpentSeparator">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="margin-left">5</property>
-                                        <property name="margin-top">5</property>
-                                        <property name="margin-bottom">5</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">3</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkSeparator" id="TimekprUserConfTodayInfoPlayTimeRightSpentSeparator">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="margin-right">5</property>
-                                        <property name="margin-top">5</property>
-                                        <property name="margin-bottom">5</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">3</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeTodaySettingsSpentLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">PlayTime spent today (saved stated, not real-time)</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">PlayTime spent (today):</property>
-                                        <attributes>
-                                          <attribute name="weight" value="bold"/>
-                                        </attributes>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">4</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeSpentLB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Format: &lt;hours : minutes : seconds&gt;</property>
-                                        <property name="halign">start</property>
-                                        <property name="margin-left">5</property>
-                                        <property name="label">00:00:00</property>
-                                        <property name="ellipsize">end</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">4</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="left-attach">0</property>
-                                    <property name="top-attach">0</property>
-                                  </packing>
-                                </child>
-                              </object>
-                              <packing>
-                                <property name="expand">False</property>
-                                <property name="fill">True</property>
-                                <property name="position">1</property>
-                              </packing>
-                            </child>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">True</property>
-                            <property name="position">4</property>
                           </packing>
                         </child>
                       </object>
@@ -1398,7 +1129,7 @@ Please configure carefully: do not lock yourself out!</property>
                                               </packing>
                                             </child>
                                             <child>
-                                              <object class="GtkBox" id="TimekprUserPlayTimeLimitsAddRemoveControlBox1">
+                                              <object class="GtkBox" id="TimekprUserTimeLimitsAddRemoveControlBox">
                                                 <property name="visible">True</property>
                                                 <property name="can-focus">False</property>
                                                 <property name="homogeneous">True</property>
@@ -2054,536 +1785,6 @@ These limits are applied to user together with the rest of limit configuration.<
                       </packing>
                     </child>
                     <child>
-                      <object class="GtkBox" id="TimekprUserPlayTimeBaseBox">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="halign">center</property>
-                        <property name="margin-left">5</property>
-                        <property name="margin-right">5</property>
-                        <property name="margin-top">5</property>
-                        <property name="margin-bottom">5</property>
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="GtkBox" id="TimekprUserPlayTimeBox">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="tooltip-text" translatable="yes">Settings for PlayTime activities</property>
-                            <property name="margin-left">5</property>
-                            <property name="margin-right">5</property>
-                            <property name="spacing">10</property>
-                            <child>
-                              <object class="GtkBox" id="TimekprUserPlayTimeGenBox">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="margin-left">5</property>
-                                <property name="margin-right">5</property>
-                                <property name="margin-top">10</property>
-                                <property name="margin-bottom">5</property>
-                                <property name="orientation">vertical</property>
-                                <property name="spacing">5</property>
-                                <child>
-                                  <object class="GtkLabel" id="TimekprUserPlayTimeGenLabel">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="halign">start</property>
-                                    <property name="valign">center</property>
-                                    <property name="label" translatable="yes">PlayTime options</property>
-                                    <attributes>
-                                      <attribute name="style" value="italic"/>
-                                    </attributes>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">0</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <!-- n-columns=2 n-rows=3 -->
-                                  <object class="GtkGrid" id="TimekprUserPlayTimeGenGrid">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="margin-top">5</property>
-                                    <property name="vexpand">True</property>
-                                    <property name="row-spacing">5</property>
-                                    <property name="column-spacing">5</property>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeEnableLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Enable PlayTime for selected user</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Enable PlayTime:</property>
-                                        <property name="justify">right</property>
-                                        <property name="wrap">True</property>
-                                        <property name="max-width-chars">30</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeOverrideEnableLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Enable PlayTime override for selected user.
-
-This setting overrides time accounting in a way that time is accounted only when at least one of the applications on the PlayTime activity list are running!
-
-This affects only time accounting, intervals are still fully enforced!
-
-If no processes are running, time is accounted as idle thus effectively it's free time for user!</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Enable PlayTime override:</property>
-                                        <property name="justify">right</property>
-                                        <property name="wrap">True</property>
-                                        <property name="max-width-chars">30</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkCheckButton" id="TimekprUserPlayTimeEnableCB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">Enable PlayTime for selected user</property>
-                                        <property name="draw-indicator">True</property>
-                                        <signal name="toggled" handler="userPlayTimeEnabledChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkCheckButton" id="TimekprUserPlayTimeOverrideEnableCB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">Enable PlayTime override for selected user.
-
-This setting overrides time accounting in a way that time is accounted only when at least one of the applications on the PlayTime activity list are running!
-
-This affects only time accounting, intervals are still fully enforced!
-
-If no processes are running, time is accounted as idle thus effectively it's free time for user!</property>
-                                        <property name="draw-indicator">True</property>
-                                        <signal name="toggled" handler="userPlayTimeOverrideEnabledChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeUnaccountedIntervalsEnabledLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Allow PlayTime activities during unaccounted ("∞") time intervals for selected user.
-
-This setting allows the user to use applications configured in his PlayTime activity list during time intervals which are marked as unaccounted ("∞").
-
-If this setting is enabled, the use of activities will not be accounted towards PlayTime limits, otherwise applications in PlayTime activity list will be terminated as soon as they are started during unaccounted ("∞") time intervals.</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Allowed during "∞" intervals:</property>
-                                        <property name="justify">right</property>
-                                        <property name="wrap">True</property>
-                                        <property name="max-width-chars">30</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">2</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkCheckButton" id="TimekprUserPlayTimeUnaccountedIntervalsEnabledCB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">Allow PlayTime activities during unaccounted ("∞") time intervals for selected user.
-
-This setting allows the user to use applications configured in his PlayTime activity list during time intervals which are marked as unaccounted ("∞").
-
-If this setting is enabled, the use of activities will not be accounted towards PlayTime limits, otherwise applications in PlayTime activity list will be terminated as soon as they are started during unaccounted ("∞") time intervals.</property>
-                                        <property name="draw-indicator">True</property>
-                                        <signal name="toggled" handler="userPlayTimeUnaccountedIntervalsEnabledChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">2</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">1</property>
-                                  </packing>
-                                </child>
-                              </object>
-                              <packing>
-                                <property name="expand">False</property>
-                                <property name="fill">True</property>
-                                <property name="position">0</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <object class="GtkBox" id="TimekprUserPlayTimeLimitsBox">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="margin-left">5</property>
-                                <property name="margin-right">5</property>
-                                <property name="margin-bottom">5</property>
-                                <property name="orientation">vertical</property>
-                                <child>
-                                  <object class="GtkBox" id="TimekprUserPlayTimeLimitsHeaderBox">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="spacing">10</property>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeLimitsLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">This lets you configure PlayTime limits.</property>
-                                        <property name="halign">start</property>
-                                        <property name="label" translatable="yes">PlayTime limits</property>
-                                        <attributes>
-                                          <attribute name="style" value="italic"/>
-                                        </attributes>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkBox" id="TimekprUserPlayTimeLimitsHeaderControlBX">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="halign">end</property>
-                                        <child>
-                                          <object class="GtkRadioButton" id="TimekprUserPlayTimeLimitsHrRB">
-                                            <property name="label" translatable="yes" comments="This is meant for very short (e.g. one letter) abbreviation of hours">h</property>
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">True</property>
-                                            <property name="receives-default">False</property>
-                                            <property name="tooltip-text" translatable="yes">Choose hours to be adjusted for selected days.</property>
-                                            <property name="active">True</property>
-                                            <property name="draw-indicator">True</property>
-                                          </object>
-                                          <packing>
-                                            <property name="expand">False</property>
-                                            <property name="fill">True</property>
-                                            <property name="position">0</property>
-                                          </packing>
-                                        </child>
-                                        <child>
-                                          <object class="GtkRadioButton" id="TimekprUserPlayTimeLimitsMinRB">
-                                            <property name="label" translatable="yes" comments="This is meant for very short (e.g. one letter) abbreviation of minutes">m</property>
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">True</property>
-                                            <property name="receives-default">False</property>
-                                            <property name="tooltip-text" translatable="yes">Choose minutes to be adjusted for selected days.</property>
-                                            <property name="draw-indicator">True</property>
-                                            <property name="group">TimekprUserPlayTimeLimitsHrRB</property>
-                                          </object>
-                                          <packing>
-                                            <property name="expand">False</property>
-                                            <property name="fill">True</property>
-                                            <property name="position">1</property>
-                                          </packing>
-                                        </child>
-                                        <child>
-                                          <object class="GtkBox" id="TimekprUserPlayTimeLimitsAddRemoveControlBox">
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">False</property>
-                                            <property name="homogeneous">True</property>
-                                            <child>
-                                              <object class="GtkButton" id="TimekprUserPlayTimeLimitsAddBT">
-                                                <property name="visible">True</property>
-                                                <property name="can-focus">True</property>
-                                                <property name="receives-default">True</property>
-                                                <property name="tooltip-text" translatable="yes">Increase daily PlayTime allowance by selected time unit (hours or minutes) for selected days.
-
-Please note, that you may select more than one day for the adjustment!</property>
-                                                <property name="image">TimekprUserPlayTimeLimitsAddButtonImage</property>
-                                                <signal name="clicked" handler="playTimeLimitsIncreaseClicked" swapped="no"/>
-                                              </object>
-                                              <packing>
-                                                <property name="expand">False</property>
-                                                <property name="fill">True</property>
-                                                <property name="position">0</property>
-                                              </packing>
-                                            </child>
-                                            <child>
-                                              <object class="GtkButton" id="TimekprUserPlayTimeLimitsRemoveBT">
-                                                <property name="visible">True</property>
-                                                <property name="can-focus">True</property>
-                                                <property name="receives-default">True</property>
-                                                <property name="tooltip-text" translatable="yes">Decrease daily PlayTime allowance by selected time unit (hours or minutes) for selected days.
-
-Please note, that you may select more than one day for the adjustment!</property>
-                                                <property name="image">TimekprUserPlayTimeLimitsRemoveButtonImage</property>
-                                                <signal name="clicked" handler="playTimeLimitsDecreaseClicked" swapped="no"/>
-                                              </object>
-                                              <packing>
-                                                <property name="expand">False</property>
-                                                <property name="fill">True</property>
-                                                <property name="position">1</property>
-                                              </packing>
-                                            </child>
-                                          </object>
-                                          <packing>
-                                            <property name="expand">False</property>
-                                            <property name="fill">True</property>
-                                            <property name="position">2</property>
-                                          </packing>
-                                        </child>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="pack-type">end</property>
-                                        <property name="position">1</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">0</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <!-- n-columns=1 n-rows=1 -->
-                                  <object class="GtkGrid" id="TimekprUserPlayTimeLimitsMainGrid">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <child>
-                                      <object class="GtkScrolledWindow" id="TimekprUserPlayTimeLimitsScrolledWindow">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="hexpand">True</property>
-                                        <property name="vexpand">True</property>
-                                        <property name="shadow-type">in</property>
-                                        <property name="min-content-width">285</property>
-                                        <property name="min-content-height">115</property>
-                                        <child>
-                                          <object class="GtkTreeView" id="TimekprUserPlayTimeLimitsTreeView">
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">True</property>
-                                            <property name="tooltip-text" translatable="yes">Lists day of the week and additional information about the day's PlayTime limit.
-
-Please enable / disable days for the user and set time allowance for PlayTime activities.</property>
-                                            <property name="model">TimekprUserPlayTimeLimitsLS</property>
-                                            <property name="enable-search">False</property>
-                                            <signal name="key-press-event" handler="navigateTreeView" swapped="no"/>
-                                            <child internal-child="selection">
-                                              <object class="GtkTreeSelection" id="TimekprUserPlayTimeLimitsTreeViewSelection">
-                                                <property name="mode">multiple</property>
-                                              </object>
-                                            </child>
-                                          </object>
-                                        </child>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">1</property>
-                                  </packing>
-                                </child>
-                              </object>
-                              <packing>
-                                <property name="expand">False</property>
-                                <property name="fill">True</property>
-                                <property name="position">1</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <object class="GtkBox" id="TimekprUserPlayTimeProcessesBox">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="margin-left">5</property>
-                                <property name="margin-right">5</property>
-                                <property name="margin-bottom">5</property>
-                                <property name="orientation">vertical</property>
-                                <child>
-                                  <object class="GtkBox" id="TimekprUserPlayTimeProcessesHeaderBox">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="spacing">10</property>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserPlayTimeProcessesLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="halign">start</property>
-                                        <property name="label" translatable="yes">PlayTime activities</property>
-                                        <attributes>
-                                          <attribute name="style" value="italic"/>
-                                        </attributes>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkBox" id="TimekprUserPlayTimeProcessesHeaderControlBox">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="valign">center</property>
-                                        <property name="homogeneous">True</property>
-                                        <child>
-                                          <object class="GtkButton" id="TimekprUserPlayTimeProcessesAdjustmentAddBT">
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">True</property>
-                                            <property name="receives-default">True</property>
-                                            <property name="tooltip-text" translatable="yes">Add new PlayTime activity.
-
-Please specify activity mask and user friendly description in the activity list directly.</property>
-                                            <property name="image">TimekprUserPlayTimeProcessesAdjustmentAddButtonImage</property>
-                                            <signal name="clicked" handler="addPlayTimeActivityClicked" swapped="no"/>
-                                          </object>
-                                          <packing>
-                                            <property name="expand">False</property>
-                                            <property name="fill">False</property>
-                                            <property name="position">0</property>
-                                          </packing>
-                                        </child>
-                                        <child>
-                                          <object class="GtkButton" id="TimekprUserPlayTimeProcessesAdjustmentRemoveBT">
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">True</property>
-                                            <property name="receives-default">True</property>
-                                            <property name="tooltip-text" translatable="yes">Remove selected entry from PlayTime activities.</property>
-                                            <property name="image">TimekprUserPlayTimeProcessesAdjustmentRemoveButtonImage</property>
-                                            <signal name="clicked" handler="removePlayTimeActivityClicked" swapped="no"/>
-                                          </object>
-                                          <packing>
-                                            <property name="expand">False</property>
-                                            <property name="fill">True</property>
-                                            <property name="position">1</property>
-                                          </packing>
-                                        </child>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">False</property>
-                                        <property name="pack-type">end</property>
-                                        <property name="position">1</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">0</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <!-- n-columns=1 n-rows=1 -->
-                                  <object class="GtkGrid" id="TimekprUserPlayTimeProcessesMainGrid">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="vexpand">True</property>
-                                    <child>
-                                      <object class="GtkScrolledWindow" id="TimekprUserPlayTimeProcessesScrolledWindow">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="hexpand">True</property>
-                                        <property name="vexpand">True</property>
-                                        <property name="shadow-type">in</property>
-                                        <property name="min-content-width">310</property>
-                                        <property name="min-content-height">90</property>
-                                        <child>
-                                          <object class="GtkTreeView" id="TimekprUserPlayTimeProcessesTreeView">
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">True</property>
-                                            <property name="tooltip-text" translatable="yes">Please specify a list of full process (executable) names without path as case sensitive strings to be monitored in the system.
-
-It's possible to specify RegExp masks for processes too, but please be very careful about them as misusing this setting may lead to killing unwanted processes for the user!
-
-NOTE: RegExp is an expert setting!</property>
-                                            <property name="model">TimekprUserPlayTimeProcessesLS</property>
-                                            <property name="enable-search">False</property>
-                                            <signal name="key-press-event" handler="navigateTreeView" swapped="no"/>
-                                            <child internal-child="selection">
-                                              <object class="GtkTreeSelection" id="TimekprUserPlayTimeProcessesTreeViewSelection"/>
-                                            </child>
-                                          </object>
-                                        </child>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">1</property>
-                                  </packing>
-                                </child>
-                              </object>
-                              <packing>
-                                <property name="expand">False</property>
-                                <property name="fill">True</property>
-                                <property name="position">2</property>
-                              </packing>
-                            </child>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">True</property>
-                            <property name="position">0</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <object class="GtkButton" id="TimekprUserPlayTimeProcessesApplyBT">
-                            <property name="label" translatable="yes">Apply PlayTime configuration</property>
-                            <property name="visible">True</property>
-                            <property name="can-focus">True</property>
-                            <property name="receives-default">True</property>
-                            <property name="tooltip-text" translatable="yes">Apply PlayTime limits and configuration changes on this page</property>
-                            <property name="image">TimekprUserPlayTimeProcessesApplyImage</property>
-                            <signal name="clicked" handler="applyUserPlayTimeConfigurationChangesClicked" swapped="no"/>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">True</property>
-                            <property name="position">1</property>
-                          </packing>
-                        </child>
-                      </object>
-                      <packing>
-                        <property name="position">2</property>
-                      </packing>
-                    </child>
-                    <child type="tab">
-                      <object class="GtkLabel" id="TimekprUserPlayTimeLabel">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="label" translatable="yes">PlayTime configuration</property>
-                      </object>
-                      <packing>
-                        <property name="position">2</property>
-                        <property name="tab-fill">False</property>
-                      </packing>
-                    </child>
-                    <child>
                       <object class="GtkBox" id="TimekprUserConfAddOptsBaseBox">
                         <property name="visible">True</property>
                         <property name="can-focus">False</property>
@@ -2620,7 +1821,7 @@ NOTE: RegExp is an expert setting!</property>
                             <property name="margin-right">5</property>
                             <property name="spacing">10</property>
                             <child>
-                              <!-- n-columns=2 n-rows=2 -->
+                              <!-- n-columns=2 n-rows=3 -->
                               <object class="GtkGrid" id="TimekprUserConfAddOptsFirstGrid">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
@@ -2712,50 +1913,15 @@ Please note that unchecking this will disable showing all information and notifi
                                     <property name="top-attach">1</property>
                                   </packing>
                                 </child>
-                              </object>
-                              <packing>
-                                <property name="expand">False</property>
-                                <property name="fill">True</property>
-                                <property name="position">0</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <object class="GtkSeparator" id="TimekprUserConfAddOptsSeparator">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="margin-left">15</property>
-                                <property name="margin-right">15</property>
-                                <property name="margin-top">15</property>
-                                <property name="margin-bottom">15</property>
-                                <property name="orientation">vertical</property>
-                              </object>
-                              <packing>
-                                <property name="expand">False</property>
-                                <property name="fill">True</property>
-                                <property name="position">1</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <!-- n-columns=3 n-rows=1 -->
-                              <object class="GtkGrid" id="TimekprUserConfAddOptsSecondGrid">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="halign">start</property>
-                                <property name="valign">center</property>
-                                <property name="margin-left">5</property>
-                                <property name="margin-right">5</property>
-                                <property name="margin-top">5</property>
-                                <property name="margin-bottom">5</property>
-                                <property name="column-spacing">5</property>
                                 <child>
-                                  <object class="GtkLabel" id="TimekprUserConfAddOptsLockoutTypeLabel">
+                                  <object class="GtkLabel" id="TimekprUserConfAddOptsOverridesLabel">
                                     <property name="visible">True</property>
                                     <property name="can-focus">False</property>
-                                    <property name="tooltip-text" translatable="yes">Select a restriction / lockout type for the user.
+                                    <property name="tooltip-text" translatable="yes">Group policies only: the groups this policy takes precedence over.
 
-NOTE: please be very careful, think ahead and read every options description when changing this setting from default value!</property>
+A user in this group and in one of the listed groups follows this policy alone; otherwise the most restrictive combination of all matching group policies applies. Separate group names with ";".</property>
                                     <property name="halign">end</property>
-                                    <property name="label" translatable="yes">Restriction / lockout type:</property>
+                                    <property name="label" translatable="yes">Overrides:</property>
                                     <property name="justify">right</property>
                                     <property name="wrap">True</property>
                                     <property name="ellipsize">end</property>
@@ -2766,223 +1932,32 @@ NOTE: please be very careful, think ahead and read every options description whe
                                   </object>
                                   <packing>
                                     <property name="left-attach">0</property>
-                                    <property name="top-attach">0</property>
+                                    <property name="top-attach">2</property>
                                   </packing>
                                 </child>
                                 <child>
-                                  <object class="GtkBox" id="TimekprUserConfAddOptsLockoutTypeChoiceBoxBX">
+                                  <object class="GtkEntry" id="TimekprUserConfAddOptsOverridesEntry">
                                     <property name="visible">True</property>
                                     <property name="sensitive">False</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="orientation">vertical</property>
-                                    <child>
-                                      <object class="GtkRadioButton" id="TimekprUserConfAddOptsLockoutTypeTerminate">
-                                        <property name="label" translatable="yes">terminate sessions</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">When time ends, user sessions will be terminated.
+                                    <property name="can-focus">True</property>
+                                    <property name="tooltip-text" translatable="yes">Group policies only: the groups this policy takes precedence over.
 
-This option is a restriction!
-
-This is the default option and most likely is the one you need!</property>
-                                        <property name="halign">start</property>
-                                        <property name="active">True</property>
-                                        <property name="draw-indicator">True</property>
-                                        <signal name="toggled" handler="lockoutTypeGroupChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkRadioButton" id="TimekprUserConfAddOptsLockoutTypeKill">
-                                        <property name="label" translatable="yes">kill sessions</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">When time ends, user sessions will be killed.
-
-This option is a restriction!
-
-Please evaluate whether you need this type of restriction!</property>
-                                        <property name="halign">start</property>
-                                        <property name="draw-indicator">True</property>
-                                        <property name="group">TimekprUserConfAddOptsLockoutTypeTerminate</property>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkRadioButton" id="TimekprUserConfAddOptsLockoutTypeShutdown">
-                                        <property name="label" translatable="yes">shutdown computer</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">When time ends, computer will be shut down.
-
-This option is a restriction!
-
-Please evaluate whether you need this type of restriction!</property>
-                                        <property name="halign">start</property>
-                                        <property name="active">True</property>
-                                        <property name="draw-indicator">True</property>
-                                        <property name="group">TimekprUserConfAddOptsLockoutTypeTerminate</property>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">2</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkRadioButton" id="TimekprUserConfAddOptsLockoutTypeSuspend">
-                                        <property name="label" translatable="yes">suspend computer</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">When time ends, computer will be suspended (put to sleep).
-
-This option is not a restriction and is more suited for self control purposes.
-
-When woken up when there is still no time left, computer screen will be locked and put to sleep again after some time.</property>
-                                        <property name="halign">start</property>
-                                        <property name="draw-indicator">True</property>
-                                        <property name="group">TimekprUserConfAddOptsLockoutTypeTerminate</property>
-                                        <signal name="toggled" handler="lockoutTypeGroupChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">3</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkRadioButton" id="TimekprUserConfAddOptsLockoutTypeSuspendWake">
-                                        <property name="label" translatable="yes">suspend / wakeup computer</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">When time ends, computer will be suspended (put to sleep) and will be woken up at start of next available time interval for the user.
-
-This option is not a restriction and is more suited for self control purposes.
-
-When woken up when there is still no time left, computer screen will be locked and put to sleep again after some time.</property>
-                                        <property name="halign">start</property>
-                                        <property name="draw-indicator">True</property>
-                                        <property name="group">TimekprUserConfAddOptsLockoutTypeTerminate</property>
-                                        <signal name="toggled" handler="lockoutTypeGroupChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">4</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkRadioButton" id="TimekprUserConfAddOptsLockoutTypeLock">
-                                        <property name="label" translatable="yes">lock screen</property>
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">When time ends, computer screen will be locked.
-
-This option is not a restriction and is more suited for self control purposes.</property>
-                                        <property name="halign">start</property>
-                                        <property name="draw-indicator">True</property>
-                                        <property name="group">TimekprUserConfAddOptsLockoutTypeTerminate</property>
-                                        <signal name="toggled" handler="lockoutTypeGroupChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">5</property>
-                                      </packing>
-                                    </child>
+A user in this group and in one of the listed groups follows this policy alone; otherwise the most restrictive combination of all matching group policies applies. Separate group names with ";".</property>
+                                    <property name="halign">start</property>
+                                    <property name="width-chars">25</property>
+                                    <property name="placeholder-text" translatable="yes">kids;teens</property>
+                                    <signal name="changed" handler="overridesChanged" swapped="no"/>
                                   </object>
                                   <packing>
                                     <property name="left-attach">1</property>
-                                    <property name="top-attach">0</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <object class="GtkBox" id="TimekprUserConfAddOptsLockoutTypeWakeupIntervalsBox">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="valign">end</property>
-                                    <property name="margin-left">5</property>
-                                    <property name="margin-right">5</property>
-                                    <property name="orientation">vertical</property>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserConfAddOptsLockoutTypeWakeupIntervalsLabel">
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Select a time interval when computer can be woken up automatically.
-
-Please note that this option is only effective if wake up by RealTime Clock is supported and enabled in BIOS / UEFI!</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Wakeup hour interval:</property>
-                                        <property name="ellipsize">end</property>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkSpinButton" id="TimekprUserConfAddOptsLockoutTypeSuspendWakeFromSB">
-                                        <property name="can-focus">True</property>
-                                        <property name="tooltip-text" translatable="yes">Enter start hour for the automatic wakeup function.
-
-Please note that this option is only effective if wake up by RealTime Clock is supported and enabled in BIOS / UEFI!</property>
-                                        <property name="max-length">2</property>
-                                        <property name="width-chars">2</property>
-                                        <property name="adjustment">TimekprWakeUpHourFromAdjustment</property>
-                                        <property name="numeric">True</property>
-                                        <property name="update-policy">if-valid</property>
-                                        <signal name="value-changed" handler="wakeUpIntervalChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkSpinButton" id="TimekprUserConfAddOptsLockoutTypeSuspendWakeToSB">
-                                        <property name="can-focus">True</property>
-                                        <property name="tooltip-text" translatable="yes">Enter end hour for the automatic wakeup function.
-
-Please note that this option is only effective if wake up by RealTime Clock is supported and enabled in BIOS / UEFI!</property>
-                                        <property name="max-length">2</property>
-                                        <property name="width-chars">2</property>
-                                        <property name="adjustment">TimekprWakeUpHourToAdjustment</property>
-                                        <property name="numeric">True</property>
-                                        <property name="update-policy">if-valid</property>
-                                        <signal name="value-changed" handler="wakeUpIntervalChanged" swapped="no"/>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">2</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="left-attach">2</property>
-                                    <property name="top-attach">0</property>
+                                    <property name="top-attach">2</property>
                                   </packing>
                                 </child>
                               </object>
                               <packing>
                                 <property name="expand">False</property>
                                 <property name="fill">True</property>
-                                <property name="position">2</property>
+                                <property name="position">0</property>
                               </packing>
                             </child>
                           </object>
@@ -2999,7 +1974,7 @@ Please note that this option is only effective if wake up by RealTime Clock is s
                             <property name="can-focus">True</property>
                             <property name="receives-default">True</property>
                             <property name="tooltip-text" translatable="yes">Apply additional configuration changes on this page</property>
-                            <property name="image">TimekprUserPlayTimeProcessesApplyImage1</property>
+                            <property name="image">TimekprUserConfAddOptsApplyImage</property>
                             <signal name="clicked" handler="applyUserAdditionalConfigurationChangesClicked" swapped="no"/>
                           </object>
                           <packing>
@@ -3010,7 +1985,7 @@ Please note that this option is only effective if wake up by RealTime Clock is s
                         </child>
                       </object>
                       <packing>
-                        <property name="position">3</property>
+                        <property name="position">2</property>
                       </packing>
                     </child>
                     <child type="tab">
@@ -3021,7 +1996,7 @@ Please note that this option is only effective if wake up by RealTime Clock is s
                         <property name="label" translatable="yes">Additional options</property>
                       </object>
                       <packing>
-                        <property name="position">3</property>
+                        <property name="position">2</property>
                         <property name="tab-fill">False</property>
                       </packing>
                     </child>
@@ -3035,7 +2010,7 @@ Please note that this option is only effective if wake up by RealTime Clock is s
                   <packing>
                     <property name="expand">False</property>
                     <property name="fill">True</property>
-                    <property name="position">2</property>
+                    <property name="position">3</property>
                   </packing>
                 </child>
               </object>
@@ -3145,7 +2120,7 @@ Values are: 1 - standard, 2 - debug, 3 - extra debug</property>
                                 <property name="visible">True</property>
                                 <property name="sensitive">False</property>
                                 <property name="can-focus">True</property>
-                                <property name="tooltip-text" translatable="yes">Specify the time in seconds when Timekpr-nExT starts continuous real-time countdown before enforcing a restriction / lockout to user's sessions.</property>
+                                <property name="tooltip-text" translatable="yes">Specify the time in seconds when Timekpr-nExT starts continuous real-time countdown before terminating user's sessions.</property>
                                 <property name="width-chars">2</property>
                                 <property name="adjustment">TimekprWarningAdjustment</property>
                                 <property name="numeric">True</property>
@@ -3195,9 +2170,9 @@ To improve performance and still have great accuracy, Timekpr-nExT accounts time
                               <object class="GtkLabel" id="TimekprConfigurationTerminationTimeLabel">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
-                                <property name="tooltip-text" translatable="yes">Number of seconds left for user before enforcing a configured restriction / lockout to his sessions.
+                                <property name="tooltip-text" translatable="yes">Number of seconds left for user before his sessions are terminated.
 
-After this is reached and user is still active, the user's sessions will be handled according to specified restriction / lockout, and almost nothing can be done to prevent it.</property>
+After this is reached and user is still active, the user's sessions will be terminated, and almost nothing can be done to prevent it.</property>
                                 <property name="halign">end</property>
                                 <property name="label" translatable="yes">Termination time</property>
                               </object>
@@ -3230,9 +2205,9 @@ To improve performance and still have great accuracy, Timekpr-nExT accounts time
                                 <property name="visible">True</property>
                                 <property name="sensitive">False</property>
                                 <property name="can-focus">True</property>
-                                <property name="tooltip-text" translatable="yes">Number of seconds left for user before enforcing a configured restriction / lockout to his sessions.
+                                <property name="tooltip-text" translatable="yes">Number of seconds left for user before his sessions are terminated.
 
-After this is reached and user is still active, the user's sessions will be handled according to specified restriction / lockout, and almost nothing can be done to prevent it.</property>
+After this is reached and user is still active, the user's sessions will be terminated, and almost nothing can be done to prevent it.</property>
                                 <property name="width-chars">2</property>
                                 <property name="adjustment">TimekprTerminationAdjustment</property>
                                 <property name="numeric">True</property>
@@ -3248,7 +2223,7 @@ After this is reached and user is still active, the user's sessions will be hand
                               <object class="GtkLabel" id="TimekprConfigurationWarningTimeLabel">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
-                                <property name="tooltip-text" translatable="yes">Specify the time in seconds when Timekpr-nExT starts continuous real-time countdown before enforcing a restriction / lockout to user's sessions.</property>
+                                <property name="tooltip-text" translatable="yes">Specify the time in seconds when Timekpr-nExT starts continuous real-time countdown before terminating user's sessions.</property>
                                 <property name="halign">end</property>
                                 <property name="label" translatable="yes">Countdown time</property>
                               </object>
@@ -3677,126 +2652,6 @@ Please specify actual usernames, not real names here. For example, "jsmith", not
                         <property name="expand">False</property>
                         <property name="fill">True</property>
                         <property name="position">1</property>
-                      </packing>
-                    </child>
-                    <child>
-                      <object class="GtkBox" id="TimekprAdditionalOptionsContainerBox">
-                        <property name="visible">True</property>
-                        <property name="can-focus">False</property>
-                        <property name="margin-left">5</property>
-                        <property name="orientation">vertical</property>
-                        <child>
-                          <object class="GtkLabel" id="TimekprAdditionalOptionsLabel">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="halign">start</property>
-                            <property name="margin-left">5</property>
-                            <property name="margin-right">5</property>
-                            <property name="label" translatable="yes">Additional options</property>
-                            <property name="max-width-chars">25</property>
-                            <attributes>
-                              <attribute name="style" value="italic"/>
-                            </attributes>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">True</property>
-                            <property name="position">0</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <!-- n-columns=2 n-rows=2 -->
-                          <object class="GtkGrid" id="TimekprAdditionalOptionsMainGrid">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="margin-left">5</property>
-                            <property name="margin-right">5</property>
-                            <property name="margin-top">10</property>
-                            <property name="margin-bottom">5</property>
-                            <property name="row-spacing">5</property>
-                            <property name="column-spacing">5</property>
-                            <child>
-                              <object class="GtkLabel" id="TimekprPlayTimeGlobalLabel">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="tooltip-text" translatable="yes">This setting controls whether PlayTime functionality is enabled.
-
-This is a PlayTime master switch, if it's turned off, it's turned off for everyone regardless of individual settings!</property>
-                                <property name="halign">end</property>
-                                <property name="label" translatable="yes">PlayTime enabled:</property>
-                                <property name="justify">right</property>
-                                <property name="wrap">True</property>
-                                <property name="max-width-chars">20</property>
-                              </object>
-                              <packing>
-                                <property name="left-attach">0</property>
-                                <property name="top-attach">0</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <object class="GtkCheckButton" id="TimekprPlayTimeEnableGlobalCB">
-                                <property name="visible">True</property>
-                                <property name="can-focus">True</property>
-                                <property name="receives-default">False</property>
-                                <property name="tooltip-text" translatable="yes">This setting controls whether PlayTime functionality is enabled.
-
-This is a PlayTime master switch, if it's turned off, it's turned off for everyone regardless of individual settings!</property>
-                                <property name="draw-indicator">True</property>
-                                <signal name="toggled" handler="configControlSwitchesChanged" swapped="no"/>
-                              </object>
-                              <packing>
-                                <property name="left-attach">1</property>
-                                <property name="top-attach">0</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <object class="GtkLabel" id="TimekprPlayTimeEnhancedActivityMonitorLabel">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="tooltip-text" translatable="yes">This setting controls whether PlayTime activity monitor will use process command line, including arguments, for monitoring processes (by default only uses the process name).
-
-When this setting is enabled Timekpr-nExT will perform a match against full command line up to 512 characters enabling enhanced process monitoring capabilities.
-
-Please be careful and double check your RegExp patterns in each individual user's PlayTime activity masks!</property>
-                                <property name="halign">end</property>
-                                <property name="label" translatable="yes">Enhanced activity monitor:</property>
-                                <property name="justify">right</property>
-                                <property name="wrap">True</property>
-                                <property name="max-width-chars">20</property>
-                              </object>
-                              <packing>
-                                <property name="left-attach">0</property>
-                                <property name="top-attach">1</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <object class="GtkCheckButton" id="TimekprPlayTimeEnhancedActivityMonitorCB">
-                                <property name="visible">True</property>
-                                <property name="can-focus">True</property>
-                                <property name="receives-default">False</property>
-                                <property name="tooltip-text" translatable="yes">This setting controls whether PlayTime functionality is enabled.
-
-This is a PlayTime master switch, if it's turned off, it's turned off for everyone regardless of individual settings!</property>
-                                <property name="draw-indicator">True</property>
-                                <signal name="toggled" handler="configControlSwitchesChanged" swapped="no"/>
-                              </object>
-                              <packing>
-                                <property name="left-attach">1</property>
-                                <property name="top-attach">1</property>
-                              </packing>
-                            </child>
-                          </object>
-                          <packing>
-                            <property name="expand">False</property>
-                            <property name="fill">True</property>
-                            <property name="position">1</property>
-                          </packing>
-                        </child>
-                      </object>
-                      <packing>
-                        <property name="expand">False</property>
-                        <property name="fill">True</property>
-                        <property name="position">2</property>
                       </packing>
                     </child>
                   </object>

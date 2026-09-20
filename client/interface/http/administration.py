@@ -15,6 +15,7 @@ import socket
 from urllib.parse import quote, urlsplit
 
 from timekpr.common.constants import constants as cons
+from timekpr.common.constants import messages as msg
 from timekpr.common.log import log
 from timekpr.common.utils import webapi
 
@@ -35,8 +36,31 @@ class _UnixHTTPConnection(http.client.HTTPConnection):
         self.sock.connect(self._path)
 
 
+def is_group(target):
+    """Whether a target names a group (@group) rather than a user"""
+    return len(target) > 1 and target.startswith(cons.TK_GROUP_TARGET_PREFIX)
+
+
+def group_name(target):
+    """The group a target names (a plain name is returned unchanged)"""
+    if is_group(target):
+        return target[len(cons.TK_GROUP_TARGET_PREFIX) :]
+    return target
+
+
 def user_path(username, suffix=""):
     return "/users/{}{}".format(quote(username, safe=""), suffix)
+
+
+def group_path(group, suffix=""):
+    return "/groups/{}{}".format(quote(group, safe=""), suffix)
+
+
+def target_path(target, suffix=""):
+    """The resource of a user or of a group (@group)"""
+    if is_group(target):
+        return group_path(group_name(target), suffix)
+    return user_path(target, suffix)
 
 
 class timekprAdminHttpConnector:
@@ -152,18 +176,32 @@ class timekprAdminHttpConnector:
         return (
             result,
             message,
-            [[user["username"], user["full_name"]] for user in users or []],
+            [
+                [user["username"], user["full_name"], user["policy_source"]]
+                for user in users or []
+            ],
         )
 
     def getUserConfigurationAndInformation(self, pUserName, pInfoLvl):
+        # a group's policy has no counters
+        if is_group(pUserName):
+            result, message, group = self._call("GET", target_path(pUserName))
+            if result != 0:
+                return result, message, {}
+            return (
+                result,
+                message,
+                webapi.group_config_to_daemon(group["config"])
+                if pInfoLvl == cons.TK_CL_INF_FULL
+                else {},
+            )
         result, message, user = self._call("GET", user_path(pUserName))
         if result != 0:
             return result, message, {}
-        info = (
-            webapi.user_config_to_daemon(user["config"])
-            if pInfoLvl == cons.TK_CL_INF_FULL
-            else {}
-        )
+        info = {}
+        if pInfoLvl == cons.TK_CL_INF_FULL:
+            info.update(webapi.user_config_to_daemon(user["config"]))
+            info.update(webapi.user_policy_to_daemon(user))
         info.update(
             webapi.user_status_to_daemon(
                 user["status"],
@@ -173,6 +211,21 @@ class timekprAdminHttpConnector:
         )
         return result, message, info
 
+    def getGroupList(self):
+        result, message, groups = self._call("GET", "/groups")
+        return (
+            result,
+            message,
+            [
+                [
+                    group["group"],
+                    ";".join(group["overrides"]),
+                    ";".join(group["members"]),
+                ]
+                for group in groups or []
+            ],
+        )
+
     def getTimekprConfiguration(self):
         result, message, config = self._call("GET", "/config")
         return (
@@ -181,11 +234,26 @@ class timekprAdminHttpConnector:
             webapi.server_config_to_daemon(config) if result == 0 else {},
         )
 
+    def _usersOnly(self, pUserName):
+        """The daemon's answer to a per-user setting for a group"""
+        return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_GROUP_NOT_USER") % (
+            group_name(pUserName)
+        )
+
+    def _groupsOnly(self, pUserName):
+        """The daemon's answer to a per-group setting for a user"""
+        return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_USER_NOT_GROUP") % (
+            pUserName
+        )
+
     def _patchUser(self, pUserName, body):
-        return self._call("PATCH", user_path(pUserName, "/config"), body)[:2]
+        # the one per-user setting a group policy does not have
+        if is_group(pUserName) and "hide_tray_icon" in body:
+            return self._usersOnly(pUserName)
+        return self._call("PATCH", target_path(pUserName, "/config"), body)[:2]
 
     def _userConfig(self, pUserName):
-        result, message, config = self._call("GET", user_path(pUserName, "/config"))
+        result, message, config = self._call("GET", target_path(pUserName, "/config"))
         return result, message, config or {}
 
     def setAllowedDays(self, pUserName, pDayList):
@@ -197,14 +265,18 @@ class timekprAdminHttpConnector:
         day = "all" if pDayNumber == "ALL" else str(pDayNumber)
         return self._call(
             "PUT",
-            user_path(pUserName, f"/config/allowed-hours/{day}"),
+            target_path(pUserName, f"/config/allowed-hours/{day}"),
             webapi.hours_from_daemon(pHourList),
         )[:2]
 
     def setTimeLimitForDays(self, pUserName, pDayLimits):
         """Limits are positional against the allowed days, as for the daemon"""
         result, message, config = self._userConfig(pUserName)
-        if result != 0:
+        if result != 0 and is_group(pUserName):
+            # a group without a policy has no config to read; the daemon
+            # creates the policy with every day allowed on the first setting
+            config = {"allowed_days": webapi.WEEKDAYS}
+        elif result != 0:
             return result, message
         return self._patchUser(
             pUserName,
@@ -215,67 +287,35 @@ class timekprAdminHttpConnector:
             },
         )
 
-    def setLockoutType(self, pUserName, pLockoutType, pWakeFrom, pWakeTo):
-        lockout = {"type": pLockoutType}
-        if pLockoutType == cons.TK_CTRL_RES_W:
-            lockout.update(wake_from=int(pWakeFrom), wake_to=int(pWakeTo))
-        return self._patchUser(pUserName, {"lockout": lockout})
-
     def setTimeLeft(self, pUserName, pOperation, pTimeLeft):
+        if is_group(pUserName):
+            return self._usersOnly(pUserName)
         return self._call(
             "POST",
             user_path(pUserName, "/time-left"),
             {"operation": DAEMON_OPERATIONS[pOperation], "seconds": int(pTimeLeft)},
         )[:2]
 
-    def setPlayTimeAllowedDays(self, pUserName, pPlayTimeAllowedDays):
+    def setOverrides(self, pUserName, pOverrides):
+        if not is_group(pUserName):
+            return self._groupsOnly(pUserName)
         return self._patchUser(
-            pUserName,
-            {"playtime": {"allowed_days": [int(day) for day in pPlayTimeAllowedDays]}},
+            pUserName, {"overrides": [group_name(str(group)) for group in pOverrides]}
         )
 
-    def setPlayTimeLimitsForDays(self, pUserName, pPlayTimeLimits):
-        result, message, config = self._userConfig(pUserName)
-        if result != 0:
-            return result, message
-        return self._patchUser(
-            pUserName,
-            {
-                "playtime": {
-                    "limits_per_day": webapi.limits_by_day(
-                        config["playtime"]["allowed_days"],
-                        [int(limit) for limit in pPlayTimeLimits],
-                    )
-                }
-            },
+    def deletePolicy(self, pUserName):
+        return self._call("DELETE", target_path(pUserName, "/policy"))[:2]
+
+    def migratePolicies(self, pDryRun):
+        result, message, migrated = self._call(
+            "POST", "/policies/migrate", {"dry_run": bool(pDryRun)}
         )
-
-    def setPlayTimeActivities(self, pUserName, pPlayTimeActivities):
-        activities = [
-            {"process": activity[0], "description": activity[1]}
-            for activity in pPlayTimeActivities
-        ]
-        return self._call(
-            "PUT", user_path(pUserName, "/config/playtime/activities"), activities
-        )[:2]
-
-    def setPlayTimeLeft(self, pUserName, pOperation, pTimeLeft):
-        return self._call(
-            "POST",
-            user_path(pUserName, "/playtime-left"),
-            {"operation": DAEMON_OPERATIONS[pOperation], "seconds": int(pTimeLeft)},
-        )[:2]
+        return result, message, migrated["users"] if result == 0 else []
 
 
 # the scalar setters are one PATCH each; generate them from the field tables
 def _userSetter(field):
     return lambda self, pUserName, value: self._patchUser(pUserName, {field: value})
-
-
-def _playTimeSetter(field):
-    return lambda self, pUserName, value: self._patchUser(
-        pUserName, {"playtime": {field: value}}
-    )
 
 
 def _serverSetter(field):
@@ -284,7 +324,5 @@ def _serverSetter(field):
 
 for _field, (_key, _setter) in webapi.USER_FIELDS.items():
     setattr(timekprAdminHttpConnector, _setter, _userSetter(_field))
-for _field, (_key, _setter) in webapi.PLAYTIME_FIELDS.items():
-    setattr(timekprAdminHttpConnector, _setter, _playTimeSetter(_field))
 for _field, (_key, _setter) in webapi.SERVER_FIELDS.items():
     setattr(timekprAdminHttpConnector, _setter, _serverSetter(_field))

@@ -23,7 +23,6 @@ from timekpr.common.constants import messages as msg
 from timekpr.common.log import log
 
 # constant
-_NO_TIME_LABEL_SHORT = "--:--"
 _NO_TIME_LABEL = "--:--:--"
 _NO_TIME_LIMIT_LABEL = "--:--:--:--"
 _HOUR_REGEXP = re.compile("^([0-9]{1,2}).*$")
@@ -45,6 +44,8 @@ class timekprAdminGUI:
         self._resourcePath = pResourcePath
         self._timekprAdminConnector = None
         self._isConnected = False
+        # groups with a policy, as retrieved with the user list: {group: {"overrides": [...], "members": [...]}}
+        self._timekprGroupInfo = {}
         self._ROWCOL_OK = "#FFFFFF"
         self._ROWSTYLE_OK = False
         self._ROWCOL_NOK = "Yellow"
@@ -379,93 +380,6 @@ class timekprAdminGUI:
                 "TimekprUserConfWkMonLimitsLS"
             ).append([rType[0], rType[1], 0, _NO_TIME_LIMIT_LABEL])
 
-        # ## PlayTime elements ##
-        # day name
-        col = Gtk.TreeViewColumn(
-            msg.getTranslation("TK_MSG_DAY_LIST_DAY_LABEL"),
-            Gtk.CellRendererText(),
-            text=1,
-        )
-        col.set_min_width(115)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsTreeView"
-        ).append_column(col)
-        # day enabled
-        rend = Gtk.CellRendererToggle()
-        rend.connect("toggled", self.dayPlayTimeAvailabilityChanged)
-        col = Gtk.TreeViewColumn(
-            msg.getTranslation("TK_MSG_DAY_LIST_ENABLED_LABEL"), rend, active=2
-        )
-        col.set_min_width(35)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsTreeView"
-        ).append_column(col)
-        # limit
-        rend = Gtk.CellRendererText()
-        rend.set_property("editable", True)
-        rend.connect("edited", self.userLimitsDailyPlayTimeLimitsEdited)
-        col = Gtk.TreeViewColumn(
-            msg.getTranslation("TK_MSG_DAY_LIST_LIMIT_LABEL"), rend, text=4
-        )
-        col.set_min_width(60)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsTreeView"
-        ).append_column(col)
-        # final col
-        col = Gtk.TreeViewColumn("", Gtk.CellRendererText())
-        col.set_min_width(20)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsTreeView"
-        ).append_column(col)
-
-        # PT activity mask
-        rend = Gtk.CellRendererText()
-        rend.set_property("editable", True)
-        rend.set_property(
-            "placeholder-text",
-            msg.getTranslation("TK_MSG_PLAYTIME_ACTIVITY_MASK_PHLD_LABEL"),
-        )
-        rend.connect("edited", self.playTimeActivityMaskEntryEdited)
-        col = Gtk.TreeViewColumn(
-            msg.getTranslation("TK_MSG_PLAYTIME_ACTIVITY_MASK_LABEL"), rend, text=1
-        )
-        col.set_min_width(90)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesTreeView"
-        ).append_column(col)
-        # PT activity name
-        rend = Gtk.CellRendererText()
-        rend.set_property("editable", True)
-        rend.set_property(
-            "placeholder-text",
-            msg.getTranslation("TK_MSG_PLAYTIME_ACTIVITY_DESCRIPTION_PHLD_LABEL"),
-        )
-        rend.connect("edited", self.playTimeActivityDescriptionEntryEdited)
-        col = Gtk.TreeViewColumn(
-            msg.getTranslation("TK_MSG_PLAYTIME_ACTIVITY_DESCRIPTION_LABEL"),
-            rend,
-            text=2,
-        )
-        col.set_min_width(120)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesTreeView"
-        ).append_column(col)
-
-        # lets prepare week days for PlayTime
-        for rDay in range(1, 7 + 1):
-            # fill in the intervals
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserPlayTimeLimitsLS"
-            ).append(
-                [
-                    str(rDay),
-                    (cons.TK_DATETIME_START + timedelta(days=rDay - 1)).strftime("%A"),
-                    False,
-                    0,
-                    _NO_TIME_LABEL,
-                ]
-            )
-
     # --------------- GUI control methods --------------- #
 
     def initInternalConfiguration(self):
@@ -475,49 +389,40 @@ class timekprAdminGUI:
             "TimekprUserSelectionCB",
             # combom refresh
             "TimekprUserSelectionRefreshBT",
+            # new group policy
+            "TimekprNewGroupEntry",
+            "TimekprNewGroupBT",
+            # policy deletion
+            "TimekprUserPolicyDeleteBT",
+            # group overrides
+            "TimekprUserConfAddOptsOverridesEntry",
             # control buttons
             "TimekprUserConfDaySettingsApplyBT",
             "TimekprUserConfTodaySettingsSetAddBT",
             "TimekprUserConfTodaySettingsSetSubractBT",
             "TimekprUserConfTodaySettingsSetSetBT",
-            "TimekprUserPlayTimeProcessesAdjustmentAddBT",
-            "TimekprUserPlayTimeProcessesAdjustmentRemoveBT",
-            "TimekprUserPlayTimeProcessesApplyBT",
             "TimekprUserConfDaySettingsSetDaysIntervalsVerifyBT",
             "TimekprUserConfAddOptsApplyBT",
             # check box
             "TimekprUserConfTodaySettingsTrackInactiveCB",
             "TimekprUserConfTodaySettingsHideTrayIconCB",
-            "TimekprUserPlayTimeEnableCB",
-            "TimekprUserPlayTimeOverrideEnableCB",
-            "TimekprUserPlayTimeUnaccountedIntervalsEnabledCB",
             # spin buttons for adjustments
             "TimekprUserConfTodaySettingsSetMinSB",
             "TimekprUserConfTodaySettingsSetHrSB",
-            "TimekprUserConfAddOptsLockoutTypeSuspendWakeFromSB",
-            "TimekprUserConfAddOptsLockoutTypeSuspendWakeToSB",
             # lists
             "TimekprWeekDaysTreeView",
             "TimekprHourIntervalsTreeView",
             "TimekprUserConfWkMonLimitsTreeView",
-            "TimekprUserPlayTimeLimitsTreeView",
-            "TimekprUserPlayTimeProcessesTreeView",
             # radio / control groups
             "TimekprUserConfDaySettingsSetDaysHeaderControlBX",
             "TimekprUserConfDaySettingsSetDaysIntervalsControlBX",
             "TimekprUserConfWkMonLimitsAdjustmentsBX",
             "TimekprUserConfWkMonLimitsAdjustmentControlButtonsBX",
-            "TimekprUserPlayTimeLimitsHeaderControlBX",
-            "TimekprUserConfAddOptsLockoutTypeChoiceBoxBX",
-            "TimekprUserConfTodaySettingsChoiceBX",
         ]
 
         self._timekprConfigControlElements = [
             # control buttons
             "TimekprConfigurationApplyBT",
-            # check boxes
-            "TimekprPlayTimeEnableGlobalCB",
-            "TimekprPlayTimeEnhancedActivityMonitorCB",
             # spin buttons for adjustments
             "TimekprConfigurationLoglevelSB",
             "TimekprConfigurationWarningTimeSB",
@@ -539,8 +444,10 @@ class timekprAdminGUI:
         self._tkSavedCfg = {}
         self._tkSavedCfg["timeTrackInactive"] = False
         self._tkSavedCfg["timeHideTrayIcon"] = False
-        self._tkSavedCfg["timeLockoutType"] = cons.TK_CTRL_RES_T
-        self._tkSavedCfg["timeWakeInterval"] = "0;23"
+        # policies: where a user's effective policy comes from, a group policy's overrides
+        self._tkSavedCfg["policySource"] = ""
+        self._tkSavedCfg["policyGroups"] = []
+        self._tkSavedCfg["timeOverrides"] = []
         self._tkSavedCfg["timeLimitWeek"] = 0
         self._tkSavedCfg["timeLimitMonth"] = 0
         self._tkSavedCfg["timeLimitDays"] = []
@@ -560,13 +467,6 @@ class timekprAdminGUI:
         self._tkSavedCfg["timeLimitDaysHoursSaved"] = self._tkSavedCfg[
             "timeLimitDaysHoursActual"
         ].copy()
-        # ## set up PlayTime variables ##
-        self._tkSavedCfg["playTimeEnabled"] = False
-        self._tkSavedCfg["playTimeOverrideEnabled"] = False
-        self._tkSavedCfg["playTimeUnaccountedIntervalsEnabled"] = False
-        self._tkSavedCfg["playTimeLimitDays"] = []
-        self._tkSavedCfg["playTimeLimitDaysLimits"] = []
-        self._tkSavedCfg["playTimeActivities"] = []
 
         # sets up limit variables for timekpr configuration
         self._tkSavedCfg["timekprWarningTime"] = 0
@@ -578,8 +478,6 @@ class timekprAdminGUI:
         self._tkSavedCfg["timekprTrackingSessions"] = []
         self._tkSavedCfg["timekprExcludedSessions"] = []
         self._tkSavedCfg["timekprExcludedUsers"] = []
-        self._tkSavedCfg["timekprPlayTimeEnabled"] = False
-        self._tkSavedCfg["timekprPlayTimeEnhancedActivityMonitorEnabled"] = False
 
     def clearAdminForm(self):
         """Clear and default everything to default values"""
@@ -627,57 +525,26 @@ class timekprAdminGUI:
         # clear day config
         self._tkSavedCfg["timeLimitWeek"] = 0
         self._tkSavedCfg["timeLimitMonth"] = 0
-        # hide lockout intervals
-        self.controlSelectedLockoutTypeHourIntervals(None)
-        # reset lockout too
-        self._tkSavedCfg["timeLockoutType"] = cons.TK_CTRL_RES_T
-        self._tkSavedCfg["timeWakeInterval"] = "0;23"
+        # policy information (source label, deletion, group overrides)
+        self._tkSavedCfg["policySource"] = ""
+        self._tkSavedCfg["policyGroups"] = []
+        self._tkSavedCfg["timeOverrides"] = []
+        self._timekprAdminFormBuilder.get_object("TimekprUserPolicySourceLB").set_text(
+            msg.getTranslation("TK_MSG_ADMIN_POLICY_NONE")
+        )
         self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeSuspendWakeFromSB"
-        ).set_value(0)
+            "TimekprUserPolicyDeleteBT"
+        ).set_sensitive(False)
         self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeSuspendWakeToSB"
-        ).set_value(23)
-        # set default lockout type
+            "TimekprUserConfAddOptsOverridesEntry"
+        ).set_text("")
         self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeTerminate"
-        ).set_active(True)
-        # ## PlayTIme reset ##
-        # reset times left
-        for rCtrl in (
-            "TimekprUserPlayTimeLeftActualLB",
-            "TimekprUserPlayTimeLeftSavedLB",
-            "TimekprUserPlayTimeSpentLB",
-        ):
-            self._timekprAdminFormBuilder.get_object(rCtrl).set_text(_NO_TIME_LABEL)
-        # reset activity count
+            "TimekprUserConfAddOptsOverridesEntry"
+        ).set_sensitive(False)
+        # the info & today page is disabled for groups only, the controls in it are handled individually
         self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeTodaySettingsActivityCntLB"
-        ).set_text("---")
-        # reset day limits
-        for rDay in range(1, 7 + 1):
-            # clear list store
-            self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeLimitsLS")[
-                rDay - 1
-            ][2] = False
-            self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeLimitsLS")[
-                rDay - 1
-            ][3] = 0
-            self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeLimitsLS")[
-                rDay - 1
-            ][4] = _NO_TIME_LABEL_SHORT
-        # clear activities and add one placeholder
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesLS"
-        ).clear()
-        # CB not checked
-        for rCtrl in (
-            "TimekprUserPlayTimeEnableCB",
-            "TimekprUserPlayTimeOverrideEnableCB",
-            "TimekprUserPlayTimeUnaccountedIntervalsEnabledCB",
-        ):
-            self._timekprAdminFormBuilder.get_object(rCtrl).set_active(False)
-
+            "TimekprUserConfTodayBox"
+        ).set_sensitive(True)
         # color
         for rCtrl in (
             "TimekprUserConfTodaySettingsSetAddBT",
@@ -687,8 +554,6 @@ class timekprAdminGUI:
             "TimekprUserConfDaySettingsApplyBT",
             "TimekprUserConfDaySettingsSetDaysIntervalsVerifyBT",
             "TimekprUserConfDailyLabel",
-            "TimekprUserPlayTimeProcessesApplyBT",
-            "TimekprUserPlayTimeLabel",
             "TimekprUserConfAddOptsApplyBT",
             "TimekprUserConfAddOptsLabel",
         ):
@@ -711,19 +576,9 @@ class timekprAdminGUI:
                 "TimekprExcludedSessionsButtonControlBX",
                 "TimekprExcludedUsersTreeView",
                 "TimekprExcludedUsersButtonControlBX",
-                "TimekprPlayTimeEnableGlobalCB",
-                "TimekprPlayTimeEnhancedActivityMonitorCB",
             ):
                 # reset
                 self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(False)
-
-            # reset
-            for rCtrl in (
-                "TimekprPlayTimeEnableGlobalCB",
-                "TimekprPlayTimeEnhancedActivityMonitorCB",
-            ):
-                # reset
-                self._timekprAdminFormBuilder.get_object(rCtrl).set_active(False)
 
             # reset
             for rCtrl in (
@@ -752,90 +607,47 @@ class timekprAdminGUI:
     def initDEVDefaultConfig(self):
         """Initialize GUI elements for DEV mode"""
         # DEV
-        if cons.TK_DEV_ACTIVE and 1 == 2:  # noqa: PLR0133 (hand-flipped DEV switch)
-            # if there is date, no need to add one
-            if (
-                len(self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS"))
-                == 0
-            ):
-                # standard time intervals
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprHourIntervalsLS"
-                ).append(
-                    [
-                        0,
-                        "08:00",
-                        "13:00",
-                        "1",
-                        0,
-                        0,
-                        self._ROWCOL_NOK,
-                        self._ROWSTYLE_NOK,
-                    ]
-                )
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprHourIntervalsLS"
-                ).append(
-                    [0, "15:00", "18:00", "1", 0, 0, self._ROWCOL_OK, self._ROWSTYLE_OK]
-                )
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprHourIntervalsLS"
-                ).append(
-                    [0, "18:30", "22:00", "1", 0, 0, self._ROWCOL_OK, self._ROWSTYLE_OK]
-                )
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprHourIntervalsLS"
-                ).append(
-                    [
-                        0,
-                        "22:30",
-                        "23:00",
-                        "1",
-                        0,
-                        0,
-                        self._ROWCOL_NOK,
-                        self._ROWSTYLE_NOK,
-                    ]
-                )
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprHourIntervalsTreeView"
-                ).set_sensitive(True)
-            # if there is date, no need to add one
-            if (
-                len(
-                    self._timekprAdminFormBuilder.get_object(
-                        "TimekprUserPlayTimeProcessesLS"
-                    )
-                )
-                == 0
-            ):
-                # PlayTime activities
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserPlayTimeProcessesLS"
-                ).append(["1", "mask", "Doom Eternal"])
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserPlayTimeProcessesLS"
-                ).append(["2", "mask.*", "The Talos Principle"])
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserPlayTimeProcessesLS"
-                ).append(["3", "mask.*", "Mafia remastered"])
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserPlayTimeProcessesLS"
-                ).append(["4", "csgo_linux", "CS: GO"])
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserPlayTimeProcessesLS"
-                ).append(["5", "kca.*c", "Stupid calculator"])
-
-            # enable certain functionality
-            if 1 == 1:  # noqa: PLR0133 (hand-flipped DEV switch)
-                # enable certain objects (fot testing)
-                for rO in (
-                    "TimekprUserPlayTimeProcessesAdjustmentAddBT",
-                    "TimekprUserPlayTimeProcessesAdjustmentRemoveBT",
-                    "TimekprUserPlayTimeLimitsTreeView",
-                    "TimekprUserPlayTimeProcessesTreeView",
-                ):
-                    self._timekprAdminFormBuilder.get_object(rO).set_sensitive(True)
+        # if there is data, no need to add any
+        if (
+            cons.TK_DEV_ACTIVE
+            and 1 == 2  # noqa: PLR0133 (hand-flipped DEV switch)
+            and len(self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS"))
+            == 0
+        ):
+            # standard time intervals
+            self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS").append(
+                [
+                    0,
+                    "08:00",
+                    "13:00",
+                    "1",
+                    0,
+                    0,
+                    self._ROWCOL_NOK,
+                    self._ROWSTYLE_NOK,
+                ]
+            )
+            self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS").append(
+                [0, "15:00", "18:00", "1", 0, 0, self._ROWCOL_OK, self._ROWSTYLE_OK]
+            )
+            self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS").append(
+                [0, "18:30", "22:00", "1", 0, 0, self._ROWCOL_OK, self._ROWSTYLE_OK]
+            )
+            self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS").append(
+                [
+                    0,
+                    "22:30",
+                    "23:00",
+                    "1",
+                    0,
+                    0,
+                    self._ROWCOL_NOK,
+                    self._ROWSTYLE_NOK,
+                ]
+            )
+            self._timekprAdminFormBuilder.get_object(
+                "TimekprHourIntervalsTreeView"
+            ).set_sensitive(True)
 
         # false
         return False
@@ -863,6 +675,40 @@ class timekprAdminGUI:
 
         # result
         return userName
+
+    def isGroupTarget(self, pName):
+        """Whether the selected name is a group policy (@group) rather than a user"""
+        return pName is not None and pName.startswith("@")
+
+    def selectUserInList(self, pName):
+        """Select the user or group row with the given id in the selector, if it is there"""
+        # get object
+        userCombobox = self._timekprAdminFormBuilder.get_object(
+            "TimekprUserSelectionCB"
+        )
+        # find the row
+        for rIdx, rRow in enumerate(userCombobox.get_model()):
+            # this is it
+            if rRow[0] == pName:
+                # select
+                userCombobox.set_active(rIdx)
+                # found
+                return True
+        # not found
+        return False
+
+    def getOverridesFromEntry(self):
+        """Get the group names entered in the overrides entry as a list"""
+        # ";" separated names, spaces and empty items are ignored
+        return [
+            rGroup.strip()
+            for rGroup in self._timekprAdminFormBuilder.get_object(
+                "TimekprUserConfAddOptsOverridesEntry"
+            )
+            .get_text()
+            .split(";")
+            if rGroup.strip() != ""
+        ]
 
     def toggleUserConfigControls(self, pEnable=True, pLeaveUserList=False):
         """Enable or disable all user controls for the form"""
@@ -917,16 +763,6 @@ class timekprAdminGUI:
         )
         # remove excess elements
         for rElem in ("timeLimitDays", "timeLimitDaysLimits"):
-            for i in range(limitLen, len(self._tkSavedCfg[rElem])):
-                self._tkSavedCfg[rElem].pop()
-
-        # get the least of size
-        limitLen = min(
-            len(self._tkSavedCfg["playTimeLimitDays"]),
-            len(self._tkSavedCfg["playTimeLimitDaysLimits"]),
-        )
-        # remove excess elements
-        for rElem in ("playTimeLimitDays", "playTimeLimitDaysLimits"):
             for i in range(limitLen, len(self._tkSavedCfg[rElem])):
                 self._tkSavedCfg[rElem].pop()
 
@@ -1171,125 +1007,11 @@ class timekprAdminGUI:
 
     # --------------- additional configuration methods --------------- #
 
-    def getSelectedLockoutType(self):
-        """Get selected restriction / lockout type"""
-        # get lockout type
-        lockoutType = None
-        lockoutType = (
-            cons.TK_CTRL_RES_T
-            if lockoutType is None
-            and self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeTerminate"
-            ).get_active()
-            else lockoutType
-        )
-        lockoutType = (
-            cons.TK_CTRL_RES_K
-            if lockoutType is None
-            and self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeKill"
-            ).get_active()
-            else lockoutType
-        )
-        lockoutType = (
-            cons.TK_CTRL_RES_D
-            if lockoutType is None
-            and self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeShutdown"
-            ).get_active()
-            else lockoutType
-        )
-        lockoutType = (
-            cons.TK_CTRL_RES_S
-            if lockoutType is None
-            and self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeSuspend"
-            ).get_active()
-            else lockoutType
-        )
-        lockoutType = (
-            cons.TK_CTRL_RES_W
-            if lockoutType is None
-            and self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeSuspendWake"
-            ).get_active()
-            else lockoutType
-        )
-        lockoutType = (
-            cons.TK_CTRL_RES_L
-            if lockoutType is None
-            and self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeLock"
-            ).get_active()
-            else lockoutType
-        )
-        # result
-        return lockoutType
-
-    def setSelectedLockoutType(self, pLockoutType):
-        """Get selected restriction / lockout type"""
-        # set lockout type
-        if pLockoutType == cons.TK_CTRL_RES_T:
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeTerminate"
-            ).set_active(True)
-        elif pLockoutType == cons.TK_CTRL_RES_K:
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeKill"
-            ).set_active(True)
-        elif pLockoutType == cons.TK_CTRL_RES_D:
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeShutdown"
-            ).set_active(True)
-        elif pLockoutType == cons.TK_CTRL_RES_S:
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeSuspend"
-            ).set_active(True)
-        elif pLockoutType == cons.TK_CTRL_RES_W:
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeSuspendWake"
-            ).set_active(True)
-        elif pLockoutType == cons.TK_CTRL_RES_L:
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeLock"
-            ).set_active(True)
-
-    def controlSelectedLockoutTypeHourIntervals(self, pInterval):
-        """Set selected hour intervals"""
-        # if no interval, just hide them
-        if pInterval is not None:
-            # get split interval
-            hrInterval = pInterval.split(";")
-            # set values
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeSuspendWakeFromSB"
-            ).set_value(int(hrInterval[0]))
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfAddOptsLockoutTypeSuspendWakeToSB"
-            ).set_value(int(hrInterval[1]))
-        # set hours visible only when suspendwake
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeWakeupIntervalsLabel"
-        ).set_visible(pInterval is not None)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeSuspendWakeFromSB"
-        ).set_visible(pInterval is not None)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeSuspendWakeToSB"
-        ).set_visible(pInterval is not None)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeSuspendWakeFromSB"
-        ).set_sensitive(pInterval is not None)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeSuspendWakeToSB"
-        ).set_sensitive(pInterval is not None)
-
     def enableTimeControlToday(self, pEnable=True):
-        """Enable buttons to add time and PlayTime today"""
+        """Enable buttons to add time today"""
         for rCtrl in (
             "TimekprUserConfTodaySettingsSetHrSB",
             "TimekprUserConfTodaySettingsSetMinSB",
-            "TimekprUserConfTodaySettingsChoiceBX",
         ):
             self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(pEnable)
 
@@ -1322,19 +1044,40 @@ class timekprAdminGUI:
                 widthInChars = max(widthInChars, len(userName) - 3)
                 # add user
                 userStore.append([rUser[0], userName])
-            # status
-            self.setTimekprStatus(False, "User list retrieved")
+            # groups with a policy go after the users, as @group
+            self._timekprGroupInfo = {}
+            result, message, groupList = self._timekprAdminConnector.getGroupList()
+            # all ok
+            if result == 0:
+                # loop and print
+                for rGroup in groupList:
+                    # name
+                    groupName = f"@{rGroup[0]}"
+                    # remember overrides and members (for the policy label)
+                    self._timekprGroupInfo[str(rGroup[0])] = {
+                        "overrides": [
+                            rIt for rIt in str(rGroup[1]).split(";") if rIt != ""
+                        ],
+                        "members": [
+                            rIt for rIt in str(rGroup[2]).split(";") if rIt != ""
+                        ],
+                    }
+                    # determine maxlen
+                    widthInChars = max(widthInChars, len(groupName) - 3)
+                    # add group
+                    userStore.append([groupName, groupName])
+                # status
+                self.setTimekprStatus(
+                    False, msg.getTranslation("TK_MSG_STATUS_USERGROUPLIST_RETRIEVED")
+                )
+            else:
+                # status (the users are still usable)
+                self.setTimekprStatus(False, message)
             # enable
             self._timekprAdminFormBuilder.get_object(
                 "TimekprUserSelectionCB"
             ).set_sensitive(True)
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserSelectionRefreshBT"
-            ).set_sensitive(
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserSelectionCB"
-                ).get_sensitive()
-            )
+            self.enableUserListControls()
             # adjust widht
             self._timekprAdminFormBuilder.get_object(
                 "TimekprUserSelectionCBEntry"
@@ -1409,14 +1152,6 @@ class timekprAdminGUI:
                     for rUser in rValue:
                         # add config
                         self._tkSavedCfg["timekprExcludedUsers"].append(str(rUser))
-                elif rKey == "TIMEKPR_PLAYTIME_ENABLED":
-                    # PlayTime enabled
-                    self._tkSavedCfg["timekprPlayTimeEnabled"] = bool(rValue)
-                elif rKey == "TIMEKPR_PLAYTIME_ENHANCED_ACTIVITY_MONITOR_ENABLED":
-                    # PlayTime enhanced activity monitor enabled
-                    self._tkSavedCfg[
-                        "timekprPlayTimeEnhancedActivityMonitorEnabled"
-                    ] = bool(rValue)
 
             # apply config
             self.applyTimekprConfig()
@@ -1468,14 +1203,13 @@ class timekprAdminGUI:
                         self._timekprAdminFormBuilder.get_object(rCtrl).set_text(
                             _NO_TIME_LIMIT_LABEL
                         )
-                    # reset optional information labels for PlayTime
-                    self._timekprAdminFormBuilder.get_object(
-                        "TimekprUserPlayTimeLeftActualLB"
-                    ).set_text(_NO_TIME_LABEL)
-                    # reset activity count
-                    self._timekprAdminFormBuilder.get_object(
-                        "TimekprUserPlayTimeTodaySettingsActivityCntLB"
-                    ).set_text("---")
+
+                # the policy keys are not there for every target (groups have no POLICY_*, users no OVERRIDES)
+                if pInfoLvl == cons.TK_CL_INF_FULL:
+                    self._tkSavedCfg["policySource"] = ""
+                    self._tkSavedCfg["policyGroups"] = []
+                    self._tkSavedCfg["timeOverrides"] = []
+                    self._tkSavedCfg["timeHideTrayIcon"] = False
 
                 # loop and print
                 for rKey, rValue in userConfig.items():
@@ -1547,35 +1281,6 @@ class timekprAdminGUI:
                             self._timekprAdminFormBuilder.get_object(
                                 "TimekprUserConfTodayInfoLeftTodayLB"
                             ).set_text(timeLeftStr)
-                        # show saved PlayTime left
-                        elif rKey == "PLAYTIME_LEFT_DAY":
-                            # PlayTime left
-                            timeLeft = cons.TK_DATETIME_START + timedelta(
-                                seconds=rValue
-                            )
-                            timeLeftStr = "{}:{}:{}".format(
-                                str(timeLeft.hour).rjust(2, "0"),
-                                str(timeLeft.minute).rjust(2, "0"),
-                                str(timeLeft.second).rjust(2, "0"),
-                            )
-                            self._timekprAdminFormBuilder.get_object(
-                                "TimekprUserPlayTimeLeftSavedLB"
-                            ).set_text(timeLeftStr)
-                        # show actual PlayTime left
-                        elif rKey == "PLAYTIME_SPENT_DAY":
-                            # PlayTime left
-                            timeLeft = cons.TK_DATETIME_START + timedelta(
-                                seconds=rValue
-                            )
-                            timeLeftStr = "{}:{}:{}".format(
-                                str(timeLeft.hour).rjust(2, "0"),
-                                str(timeLeft.minute).rjust(2, "0"),
-                                str(timeLeft.second).rjust(2, "0"),
-                            )
-                            self._timekprAdminFormBuilder.get_object(
-                                "TimekprUserPlayTimeSpentLB"
-                            ).set_text(timeLeftStr)
-
                     # refresh only if full or realtime asked
                     if pInfoLvl in (cons.TK_CL_INF_FULL, cons.TK_CL_INF_RT):
                         # show actual time left for continous use
@@ -1612,27 +1317,6 @@ class timekprAdminGUI:
                             self._timekprAdminFormBuilder.get_object(
                                 "TimekprUserConfTodayInfoInactiveLB"
                             ).set_text(timeLeftStr)
-                        # show actual PlayTime left
-                        elif rKey == "ACTUAL_PLAYTIME_LEFT_DAY":
-                            # PlayTime left
-                            timeLeft = cons.TK_DATETIME_START + timedelta(
-                                seconds=rValue
-                            )
-                            timeLeftStr = "{}:{}:{}".format(
-                                str(timeLeft.hour).rjust(2, "0"),
-                                str(timeLeft.minute).rjust(2, "0"),
-                                str(timeLeft.second).rjust(2, "0"),
-                            )
-                            self._timekprAdminFormBuilder.get_object(
-                                "TimekprUserPlayTimeLeftActualLB"
-                            ).set_text(timeLeftStr)
-                        # show actual PlayTime count
-                        elif rKey == "ACTUAL_ACTIVE_PLAYTIME_ACTIVITY_COUNT":
-                            # PlayTime count
-                            self._timekprAdminFormBuilder.get_object(
-                                "TimekprUserPlayTimeTodaySettingsActivityCntLB"
-                            ).set_text(str(rValue))
-
                     # info is needed when full refresh requested
                     if pInfoLvl == cons.TK_CL_INF_FULL:
                         if rKey == "TRACK_INACTIVE":
@@ -1641,12 +1325,6 @@ class timekprAdminGUI:
                         elif rKey == "HIDE_TRAY_ICON":
                             # hide icon and notif
                             self._tkSavedCfg["timeHideTrayIcon"] = bool(rValue)
-                        elif rKey == "LOCKOUT_TYPE":
-                            # set lockout type
-                            self._tkSavedCfg["timeLockoutType"] = rValue
-                        elif rKey == "WAKEUP_HOUR_INTERVAL":
-                            # set interval values
-                            self._tkSavedCfg["timeWakeInterval"] = rValue
                         elif rKey == "ALLOWED_WEEKDAYS":
                             # empty the values
                             self._tkSavedCfg["timeLimitDays"] = []
@@ -1669,6 +1347,19 @@ class timekprAdminGUI:
                         elif rKey == "LIMIT_PER_MONTH":
                             # value
                             self._tkSavedCfg["timeLimitMonth"] = int(rValue)
+                        elif rKey == "POLICY_SOURCE":
+                            # where a user's effective policy comes from
+                            self._tkSavedCfg["policySource"] = str(rValue)
+                        elif rKey == "POLICY_GROUPS":
+                            # the groups whose policies are merged for the user
+                            self._tkSavedCfg["policyGroups"] = [
+                                str(rGroup) for rGroup in rValue
+                            ]
+                        elif rKey == "OVERRIDES":
+                            # the groups a group policy takes precedence over
+                            self._tkSavedCfg["timeOverrides"] = [
+                                str(rGroup) for rGroup in rValue
+                            ]
                         elif "ALLOWED_HOURS_" in rKey:
                             # determine the day
                             day = rKey[-1:]
@@ -1693,57 +1384,9 @@ class timekprAdminGUI:
                             self._tkSavedCfg["timeLimitDaysHoursSaved"][day] = (
                                 self._tkSavedCfg["timeLimitDaysHoursActual"][day].copy()
                             )
-                        # ## PlayTime config ##
-                        elif rKey == "PLAYTIME_ENABLED":
-                            # PlayTime enabled
-                            self._tkSavedCfg["playTimeEnabled"] = bool(rValue)
-                        elif rKey == "PLAYTIME_LIMIT_OVERRIDE_ENABLED":
-                            # PlayTime override enabled
-                            self._tkSavedCfg["playTimeOverrideEnabled"] = bool(rValue)
-                        elif rKey == "PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED":
-                            # PlayTime allowed during unaccounted intervals
-                            self._tkSavedCfg["playTimeUnaccountedIntervalsEnabled"] = (
-                                bool(rValue)
-                            )
-                        elif rKey == "PLAYTIME_ALLOWED_WEEKDAYS":
-                            # empty the values
-                            self._tkSavedCfg["playTimeLimitDays"] = []
-                            # allowed weekdays
-                            for rDay in rValue:
-                                # set values
-                                self._tkSavedCfg["playTimeLimitDays"].append(str(rDay))
-                        elif rKey == "PLAYTIME_LIMITS_PER_WEEKDAYS":
-                            # limits per allowed weekdays
-                            self._tkSavedCfg["playTimeLimitDaysLimits"] = []
-                            # allowed weekdays
-                            for rDay in range(len(rValue)):
-                                # add the value
-                                self._tkSavedCfg["playTimeLimitDaysLimits"].append(
-                                    int(rValue[rDay])
-                                )
-                        elif rKey == "PLAYTIME_ACTIVITIES":
-                            # PlayTime activity list
-                            self._tkSavedCfg["playTimeActivities"] = []
-                            # allowed weekdays
-                            for rDay in range(len(rValue)):
-                                # add the value
-                                self._tkSavedCfg["playTimeActivities"].append(
-                                    [rValue[rDay][0], rValue[rDay][1]]
-                                )
-
                 # clean up limits if full refresh requested
                 if pInfoLvl == cons.TK_CL_INF_FULL:
                     self.normalizeAllowedDaysAndLimits()
-
-                # if PT override is enabled, we do not show time information for PT
-                if self._tkSavedCfg["playTimeOverrideEnabled"]:
-                    # disable time show
-                    self._timekprAdminFormBuilder.get_object(
-                        "TimekprUserPlayTimeLeftSavedLB"
-                    ).set_text(_NO_TIME_LABEL)
-                    self._timekprAdminFormBuilder.get_object(
-                        "TimekprUserPlayTimeLeftActualLB"
-                    ).set_text(_NO_TIME_LABEL)
 
                 # config was updated only when full
                 if pInfoLvl == cons.TK_CL_INF_FULL:
@@ -1755,7 +1398,6 @@ class timekprAdminGUI:
                     self.applyUserConfig()
                     # determine control state
                     self.calculateUserConfigControlAvailability()
-                    self.calculateUserPlayTimeConfigControlAvailability()
                     self.calculateUserAdditionalConfigControlAvailability()
                     # enable adding hours as well
                     self.enableTimeControlToday()
@@ -1888,31 +1530,25 @@ class timekprAdminGUI:
                 "TimekprExcludedUsersTreeView"
             ).scroll_to_cell(0)
 
-        # ## PlayTime ##
-        # global enabled switch
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprPlayTimeEnableGlobalCB"
-        ).set_active(self._tkSavedCfg["timekprPlayTimeEnabled"])
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprPlayTimeEnableGlobalCB"
-        ).set_sensitive(True)
-        # global enhanced activity monitor
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprPlayTimeEnhancedActivityMonitorCB"
-        ).set_active(self._tkSavedCfg["timekprPlayTimeEnhancedActivityMonitorEnabled"])
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprPlayTimeEnhancedActivityMonitorCB"
-        ).set_sensitive(True)
-
         # enable / disable controls
         self.toggleTimekprConfigControls(True)
 
+    def enableUserListControls(self):
+        """Enable the controls next to the user selector (refresh, new group
+        policy): they work whenever the list is there, whether or not an
+        entry is selected, but toggleUserConfigControls disables them along
+        with the rest when the selection is cleared"""
+        for rCtrl in (
+            "TimekprUserSelectionRefreshBT",
+            "TimekprNewGroupEntry",
+            "TimekprNewGroupBT",
+        ):
+            self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(True)
+
     def applyUserConfig(self):
         """Apply user configuration after getting it from server"""
-        # enable refresh
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserSelectionRefreshBT"
-        ).set_sensitive(True)
+        # enable refresh and the new group policy controls
+        self.enableUserListControls()
 
         # ## allowed days ###
         for rDay in range(1, 7 + 1):
@@ -2002,112 +1638,6 @@ class timekprAdminGUI:
             "TimekprWeekDaysTreeView"
         ).get_selection().emit("changed")
 
-        # ## PlayTime config ##
-        # PlayTime and PlayTime options enablement
-        for rCtrl in (
-            ("TimekprUserPlayTimeEnableCB", "playTimeEnabled"),
-            ("TimekprUserPlayTimeOverrideEnableCB", "playTimeOverrideEnabled"),
-            (
-                "TimekprUserPlayTimeUnaccountedIntervalsEnabledCB",
-                "playTimeUnaccountedIntervalsEnabled",
-            ),
-        ):
-            # set value
-            self._timekprAdminFormBuilder.get_object(rCtrl[0]).set_active(
-                self._tkSavedCfg[rCtrl[1]]
-            )
-            # enable field & set button
-            self._timekprAdminFormBuilder.get_object(rCtrl[0]).set_sensitive(True)
-
-        # ## PlayTime limits per allowed days ###
-        # loop through all days
-        for rDay in cons.TK_ALLOWED_WEEKDAYS.split(";"):
-            # day index
-            dayIdx = int(rDay) - 1
-            # check whether this day is enabled
-            if rDay in self._tkSavedCfg["playTimeLimitDays"]:
-                # advance index
-                dayLimitIdx = self._tkSavedCfg["playTimeLimitDays"].index(rDay)
-            else:
-                # day not enabled
-                dayLimitIdx = None
-
-            # calculate time
-            limit = (
-                self.formatTimeStr(
-                    self._tkSavedCfg["playTimeLimitDaysLimits"][dayLimitIdx], True
-                )
-                if dayLimitIdx is not None
-                else _NO_TIME_LABEL
-            )
-            # enable certain days
-            self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeLimitsLS")[
-                dayIdx
-            ][2] = dayLimitIdx is not None
-            # enable time limit
-            self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeLimitsLS")[
-                dayIdx
-            ][3] = (
-                self._tkSavedCfg["playTimeLimitDaysLimits"][dayLimitIdx]
-                if dayLimitIdx is not None
-                else 0
-            )
-            # set appropriate label as well
-            self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeLimitsLS")[
-                dayIdx
-            ][4] = limit
-
-        # determine curent day and point to it
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsTreeView"
-        ).set_cursor(currDay)
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsTreeView"
-        ).scroll_to_cell(currDay)
-
-        # enable PlayTime editing
-        for rCtrl in (
-            "TimekprUserPlayTimeLimitsTreeView",
-            "TimekprUserPlayTimeLimitsHeaderControlBX",
-        ):
-            self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(True)
-
-        # ## PlayTime activities ###
-        activityIdx = -1
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesLS"
-        ).clear()
-        # check whether this day is enabled
-        for rAct in self._tkSavedCfg["playTimeActivities"]:
-            # advance index
-            activityIdx += 1
-            # enable certain days
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserPlayTimeProcessesLS"
-            ).append([str(activityIdx), rAct[0], rAct[1]])
-        # enable PlayTime editing
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesTreeView"
-        ).set_sensitive(True)
-        # if there are activities
-        if activityIdx > -1:
-            # select first row
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserPlayTimeProcessesTreeView"
-            ).set_cursor(0)
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserPlayTimeProcessesTreeView"
-            ).scroll_to_cell(0)
-
-        # set enablement for PlayTime controls
-        for rCtrl in (
-            "TimekprUserPlayTimeProcessesAdjustmentAddBT",
-            "TimekprUserPlayTimeProcessesAdjustmentRemoveBT",
-            "TimekprUserPlayTimeLimitsHeaderControlBX",
-        ):
-            # enable field & set button
-            self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(True)
-
         # ## additional config ##
         # set values for track inactive and disable notifications
         for rCtrl in (
@@ -2123,17 +1653,75 @@ class timekprAdminGUI:
             # enable field & set button
             self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(True)
 
-        # lockout type and intervals
-        # set option
-        self.setSelectedLockoutType(self._tkSavedCfg["timeLockoutType"])
-        # set option
-        self.controlSelectedLockoutTypeHourIntervals(
-            self._tkSavedCfg["timeWakeInterval"]
+        # ## policy information ##
+        self.applyUserPolicyInfo()
+
+    def applyUserPolicyInfo(self):
+        """Show where the policy comes from and adjust the controls that differ between users and groups"""
+        # what is selected
+        userName = self.getSelectedUserName()
+        isGroup = self.isGroupTarget(userName)
+        policySource = self._tkSavedCfg["policySource"]
+
+        # ## policy source label ##
+        if isGroup:
+            # group policy, with its known members
+            members = self._timekprGroupInfo.get(userName[1:], {}).get("members", [])
+            policyText = (
+                msg.getTranslation("TK_MSG_ADMIN_POLICY_GROUP_MEMBERS")
+                % (userName, ", ".join(members))
+                if len(members) > 0
+                else msg.getTranslation("TK_MSG_ADMIN_POLICY_GROUP") % (userName)
+            )
+        elif policySource == "user":
+            # own policy
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_OWN")
+        elif policySource == "group":
+            # policies of the groups
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_GROUPS") % (
+                ", ".join(self._tkSavedCfg["policyGroups"])
+            )
+        elif policySource == "default":
+            # nothing set up
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_DEFAULTS")
+        else:
+            # server did not say
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_NONE")
+        self._timekprAdminFormBuilder.get_object("TimekprUserPolicySourceLB").set_text(
+            policyText
         )
-        # enable editing
+
+        # ## delete policy ##
+        # only a policy that exists can be deleted (a group in the list has one)
         self._timekprAdminFormBuilder.get_object(
-            "TimekprUserConfAddOptsLockoutTypeChoiceBoxBX"
-        ).set_sensitive(True)
+            "TimekprUserPolicyDeleteBT"
+        ).set_sensitive(isGroup or policySource == "user")
+
+        # ## info & today page ##
+        # groups have no counters and no time for today
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfTodayBox"
+        ).set_sensitive(not isGroup)
+
+        # ## hide tray icon ##
+        # user only, so for a group it is unchecked and disabled (and never a change)
+        if isGroup:
+            self._tkSavedCfg["timeHideTrayIcon"] = False
+            self._timekprAdminFormBuilder.get_object(
+                "TimekprUserConfTodaySettingsHideTrayIconCB"
+            ).set_active(False)
+            self._timekprAdminFormBuilder.get_object(
+                "TimekprUserConfTodaySettingsHideTrayIconCB"
+            ).set_sensitive(False)
+
+        # ## overrides ##
+        # group only, so for a user it is empty and disabled (and never a change)
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfAddOptsOverridesEntry"
+        ).set_text(";".join(self._tkSavedCfg["timeOverrides"]) if isGroup else "")
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserConfAddOptsOverridesEntry"
+        ).set_sensitive(isGroup)
 
     # --------------- change detection and GUI action control methods --------------- #
 
@@ -2236,23 +1824,6 @@ class timekprAdminGUI:
         changeControl[control] = {
             "st": tmpArray != self._tkSavedCfg["timekprExcludedUsers"],
             "val": tmpArray.copy(),
-        }
-
-        # ## global PlayTime switch ##
-        control = "TimekprPlayTimeEnableGlobalCB"
-        value = self._timekprAdminFormBuilder.get_object(control).get_active()
-        changeControl[control] = {
-            "st": value != self._tkSavedCfg["timekprPlayTimeEnabled"],
-            "val": value,
-        }
-
-        # ## global PlayTime switch ##
-        control = "TimekprPlayTimeEnhancedActivityMonitorCB"
-        value = self._timekprAdminFormBuilder.get_object(control).get_active()
-        changeControl[control] = {
-            "st": value
-            != self._tkSavedCfg["timekprPlayTimeEnhancedActivityMonitorEnabled"],
-            "val": value,
         }
 
         # if at least one is changed
@@ -2429,112 +2000,6 @@ class timekprAdminGUI:
         # return
         return changeControl
 
-    def calculateUserPlayTimeConfigControlAvailability(self, pApplyControls=True):
-        """Calculate user PlayTime config control availability"""
-        # this duplicates diff control as well
-        changeControl = {}
-
-        # perform?
-        if not self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsTreeView"
-        ).get_sensitive():
-            return changeControl
-
-        # ## PlayTime enabled ##
-        control = "TimekprUserPlayTimeEnableCB"
-        value = self._timekprAdminFormBuilder.get_object(control).get_active()
-        changeControl[control] = {
-            "st": value != self._tkSavedCfg["playTimeEnabled"],
-            "val": value,
-        }
-
-        # ## PlayTime override enabled ##
-        control = "TimekprUserPlayTimeOverrideEnableCB"
-        value = self._timekprAdminFormBuilder.get_object(control).get_active()
-        changeControl[control] = {
-            "st": value != self._tkSavedCfg["playTimeOverrideEnabled"],
-            "val": value,
-        }
-
-        # ## PlayTime allowed during unaccounted intervals ##
-        control = "TimekprUserPlayTimeUnaccountedIntervalsEnabledCB"
-        value = self._timekprAdminFormBuilder.get_object(control).get_active()
-        changeControl[control] = {
-            "st": value != self._tkSavedCfg["playTimeUnaccountedIntervalsEnabled"],
-            "val": value,
-        }
-
-        # get stores (for use later)
-        limitSt = self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsLS"
-        )
-        actSt = self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesLS"
-        )
-        actStLen = len(actSt)
-
-        # ## PlayTime day config ##
-        tmpArray = [str(rIt[0]) for rIt in limitSt if rIt[2]]
-        control = "TimekprUserPlayTimeLimitsLSD"
-        changeControl[control] = {
-            "st": tmpArray != self._tkSavedCfg["playTimeLimitDays"],
-            "val": tmpArray.copy(),
-        }
-
-        # ## PlayTime limits per allowed days ###
-        tmpArray = [rIt[3] for rIt in limitSt if rIt[2]]
-        control = "TimekprUserPlayTimeLimitsLSL"
-        changeControl[control] = {
-            "st": tmpArray != self._tkSavedCfg["playTimeLimitDaysLimits"],
-            "val": tmpArray.copy(),
-        }
-
-        # ## PlayTime activities ###
-        tmpArray = []
-        for idx, rIt in enumerate(actSt, start=1):
-            # do not add, if last line is not filed in properly
-            if not (idx == actStLen and rIt[1] == ""):
-                # add mask and description
-                tmpArray.append([rIt[1], rIt[2]])
-        control = "TimekprUserPlayTimeProcessesLS"
-        changeControl[control] = {
-            "st": tmpArray != self._tkSavedCfg["playTimeActivities"],
-            "val": tmpArray.copy(),
-        }
-
-        # if at least one is changed
-        enable = False
-        if pApplyControls:
-            for rVal in changeControl.values():
-                # one thing changed
-                if rVal["st"]:
-                    # enable
-                    enable = rVal["st"]
-                    # no need to search further
-                    break
-
-            # enabled or not
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserPlayTimeProcessesApplyBT"
-            ).set_sensitive(enable)
-
-            # color the buttons for ppl to see them better
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserPlayTimeProcessesApplyBT"
-            ).modify_fg(
-                Gtk.StateFlags.NORMAL, Gdk.color_parse("red") if enable else None
-            )
-
-            # tab color
-            self._timekprAdminFormBuilder.get_object(
-                "TimekprUserPlayTimeLabel"
-            ).modify_fg(
-                Gtk.StateFlags.NORMAL, Gdk.color_parse("red") if enable else None
-            )
-
-        # return
-        return changeControl
-
     def calculateUserAdditionalConfigControlAvailability(self, pApplyControls=True):
         """Calculate user config control availability"""
         # this duplicates diff control as well
@@ -2556,40 +2021,14 @@ class timekprAdminGUI:
             "val": value,
         }
 
-        # ## Lockout type / interval ##
-        control = "TimekprUserConfAddOptsLockoutType"
-        # get lockout type
-        lockoutType = self.getSelectedLockoutType()
-        # intervals
-        hrFrom = (
-            str(
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserConfAddOptsLockoutTypeSuspendWakeFromSB"
-                ).get_value_as_int()
-            )
-            if lockoutType == cons.TK_CTRL_RES_W
-            else "0"
-        )
-        hrTo = (
-            str(
-                self._timekprAdminFormBuilder.get_object(
-                    "TimekprUserConfAddOptsLockoutTypeSuspendWakeToSB"
-                ).get_value_as_int()
-            )
-            if lockoutType == cons.TK_CTRL_RES_W
-            else "23"
-        )
-        interval = f"{hrFrom};{hrTo}"
-        value = (lockoutType, hrFrom, hrTo)
+        # ## Overrides (group policies only, the entry is disabled and empty for users) ##
+        control = "TimekprUserConfAddOptsOverridesEntry"
+        value = self.getOverridesFromEntry()
         changeControl[control] = {
-            "st": lockoutType != self._tkSavedCfg["timeLockoutType"]
-            or interval != self._tkSavedCfg["timeWakeInterval"],
+            "st": self._timekprAdminFormBuilder.get_object(control).get_sensitive()
+            and value != self._tkSavedCfg["timeOverrides"],
             "val": value,
         }
-        # interval control
-        self.controlSelectedLockoutTypeHourIntervals(
-            interval if self.getSelectedLockoutType() == cons.TK_CTRL_RES_W else None
-        )
 
         # if at least one is changed
         enable = False
@@ -2736,33 +2175,6 @@ class timekprAdminGUI:
                     if result == 0:
                         # set internal state
                         self._tkSavedCfg["timekprExcludedUsers"] = rVal["val"].copy()
-                # ## PlayTime enabled ##
-                elif rKey == "TimekprPlayTimeEnableGlobalCB":
-                    # call server
-                    result, message = (
-                        self._timekprAdminConnector.setTimekprPlayTimeEnabled(
-                            rVal["val"]
-                        )
-                    )
-                    # successful call
-                    if result == 0:
-                        # set internal state
-                        self._tkSavedCfg["timekprPlayTimeEnabled"] = rVal["val"]
-                # ## PlayTime enhanced activity monitor ##
-                elif rKey == "TimekprPlayTimeEnhancedActivityMonitorCB":
-                    # call server
-                    result, message = (
-                        self._timekprAdminConnector.setTimekprPlayTimeEnhancedActivityMonitorEnabled(
-                            rVal["val"]
-                        )
-                    )
-                    # successful call
-                    if result == 0:
-                        # set internal state
-                        self._tkSavedCfg[
-                            "timekprPlayTimeEnhancedActivityMonitorEnabled"
-                        ] = rVal["val"]
-
                 # if all ok
                 if result != 0:
                     # status
@@ -2783,7 +2195,7 @@ class timekprAdminGUI:
         # recalc the control state
         self.calculateTimekprConfigControlAvailability()
 
-    def applyUserTodayConfigurationChanges(self, pType, pOperation):
+    def applyUserTodayConfigurationChanges(self, pOperation):
         """Process actual call to set time for user"""
         # get username
         userName = self.getSelectedUserName()
@@ -2794,7 +2206,7 @@ class timekprAdminGUI:
             result = 0
             message = ""
 
-            # regular time or PlayTime
+            # spin buttons
             hrSb = "TimekprUserConfTodaySettingsSetHrSB"
             minSb = "TimekprUserConfTodaySettingsSetMinSB"
 
@@ -2808,30 +2220,17 @@ class timekprAdminGUI:
                 * cons.TK_LIMIT_PER_MINUTE
             )
 
-            if pType == "Time":
-                # call server
-                result, message = self._timekprAdminConnector.setTimeLeft(
-                    userName, pOperation, timeToAdjust
-                )
-            elif pType == "PlayTime":
-                # call server
-                result, message = self._timekprAdminConnector.setPlayTimeLeft(
-                    userName, pOperation, timeToAdjust
-                )
+            # call server
+            result, message = self._timekprAdminConnector.setTimeLeft(
+                userName, pOperation, timeToAdjust
+            )
 
             # successful call
             if result == 0:
-                if pType == "Time":
-                    # status
-                    self.setTimekprStatus(
-                        False, msg.getTranslation("TK_MSG_STATUS_ADJUSTTIME_PROCESSED")
-                    )
-                elif pType == "PlayTime":
-                    # status
-                    self.setTimekprStatus(
-                        False,
-                        msg.getTranslation("TK_MSG_STATUS_PT_ADJUSTTIME_PROCESSED"),
-                    )
+                # status
+                self.setTimekprStatus(
+                    False, msg.getTranslation("TK_MSG_STATUS_ADJUSTTIME_PROCESSED")
+                )
 
                 # reset values to form
                 for rCtrl in (hrSb, minSb):
@@ -2996,162 +2395,6 @@ class timekprAdminGUI:
         # recalc the control state
         self.calculateUserConfigControlAvailability()
 
-    def applyUserPlayTimeConfigurationChanges(self):
-        """Apply configuration changes to server"""
-        # get what's changed
-        changeControl = self.calculateUserPlayTimeConfigControlAvailability(False)
-
-        # get username
-        userName = self.getSelectedUserName()
-        # initial values
-        result = 0
-        message = ""
-        changeCnt = 0
-
-        # loop through all changes
-        for rKey, rVal in changeControl.items():
-            # changed
-            if rVal["st"]:
-                # check what element we have, depending on that call different interface
-                # ## PlayTime enabled ##
-                if rKey == "TimekprUserPlayTimeEnableCB":
-                    # call server
-                    result, message = self._timekprAdminConnector.setPlayTimeEnabled(
-                        userName, rVal["val"]
-                    )
-                    # successful call
-                    if result == 0:
-                        # cnt
-                        changeCnt += 1
-                        # set internal state
-                        self._tkSavedCfg["playTimeEnabled"] = rVal["val"]
-                        # print success message
-                        self.setTimekprStatus(
-                            False,
-                            msg.getTranslation("TK_MSG_STATUS_PT_ENABLEMENT_PROCESSED"),
-                        )
-                # ## PlayTime override enabled ##
-                elif rKey == "TimekprUserPlayTimeOverrideEnableCB":
-                    # call server
-                    result, message = (
-                        self._timekprAdminConnector.setPlayTimeLimitOverride(
-                            userName, rVal["val"]
-                        )
-                    )
-                    # successful call
-                    if result == 0:
-                        # cnt
-                        changeCnt += 1
-                        # set internal state
-                        self._tkSavedCfg["playTimeOverrideEnabled"] = rVal["val"]
-                        # print success message
-                        self.setTimekprStatus(
-                            False,
-                            msg.getTranslation("TK_MSG_STATUS_PT_OVERRIDE_PROCESSED"),
-                        )
-                # ## PlayTime allowed during unaccounted intervals ##
-                elif rKey == "TimekprUserPlayTimeUnaccountedIntervalsEnabledCB":
-                    # call server
-                    result, message = (
-                        self._timekprAdminConnector.setPlayTimeUnaccountedIntervalsEnabled(
-                            userName, rVal["val"]
-                        )
-                    )
-                    # successful call
-                    if result == 0:
-                        # cnt
-                        changeCnt += 1
-                        # set internal state
-                        self._tkSavedCfg["playTimeUnaccountedIntervalsEnabled"] = rVal[
-                            "val"
-                        ]
-                        # print success message
-                        self.setTimekprStatus(
-                            False,
-                            msg.getTranslation(
-                                "TK_MSG_STATUS_PT_ALLOWED_UNLIMITED_INTERVALS_PROCESSED"
-                            ),
-                        )
-                # ## PlayTime day config ##
-                elif rKey == "TimekprUserPlayTimeLimitsLSD":
-                    # call server
-                    result, message = (
-                        self._timekprAdminConnector.setPlayTimeAllowedDays(
-                            userName, rVal["val"]
-                        )
-                    )
-                    # successful call
-                    if result == 0:
-                        # cnt
-                        changeCnt += 1
-                        # set internal state
-                        self._tkSavedCfg["playTimeLimitDays"] = rVal["val"]
-                        # print success message
-                        self.setTimekprStatus(
-                            False,
-                            msg.getTranslation(
-                                "TK_MSG_STATUS_PT_ALLOWEDDAYS_PROCESSED"
-                            ),
-                        )
-                # ## PlayTime limits per allowed days ###
-                elif rKey == "TimekprUserPlayTimeLimitsLSL":
-                    # call server
-                    result, message = (
-                        self._timekprAdminConnector.setPlayTimeLimitsForDays(
-                            userName, rVal["val"]
-                        )
-                    )
-                    # successful call
-                    if result == 0:
-                        # cnt
-                        changeCnt += 1
-                        # set internal state
-                        self._tkSavedCfg["playTimeLimitDaysLimits"] = rVal["val"]
-                        # print success message
-                        self.setTimekprStatus(
-                            False,
-                            msg.getTranslation("TK_MSG_STATUS_PT_TIMELIMITS_PROCESSED"),
-                        )
-                # ## PlayTime activities ###
-                elif rKey == "TimekprUserPlayTimeProcessesLS":
-                    # call server
-                    result, message = self._timekprAdminConnector.setPlayTimeActivities(
-                        userName, rVal["val"]
-                    )
-                    # successful call
-                    if result == 0:
-                        # cnt
-                        changeCnt += 1
-                        # set internal state
-                        self._tkSavedCfg["playTimeActivities"] = rVal["val"]
-                        # print success message
-                        self.setTimekprStatus(
-                            False,
-                            msg.getTranslation("TK_MSG_STATUS_PT_ACTIVITIES_PROCESSED"),
-                        )
-
-                # if all ok
-                if result != 0:
-                    # status
-                    self.setTimekprStatus(False, message)
-                    # that's it
-                    break
-
-        # fine
-        if result != 0:
-            # check the connection
-            self.checkConnection()
-        # override messages in case more then one option was processed
-        elif changeCnt > 1:
-            # status
-            self.setTimekprStatus(
-                False,
-                msg.getTranslation("TK_MSG_STATUS_USER_PT_LIMIT_CONFIGURATION_SAVED"),
-            )
-
-        # recalc the control state
-        self.calculateUserPlayTimeConfigControlAvailability()
-
     def applyUserAdditionalConfigurationChanges(self):
         """Apply configuration changes to server"""
         # get what's changed
@@ -3203,28 +2446,23 @@ class timekprAdminGUI:
                             False,
                             msg.getTranslation("TK_MSG_STATUS_HIDETRAYICON_PROCESSED"),
                         )
-                # ## Lockout type / interval ##
-                elif rKey == "TimekprUserConfAddOptsLockoutType":
+                # ## Overrides (group policies) ##
+                elif rKey == "TimekprUserConfAddOptsOverridesEntry":
                     # call server
-                    result, message = self._timekprAdminConnector.setLockoutType(
-                        userName, rVal["val"][0], rVal["val"][1], rVal["val"][2]
+                    result, message = self._timekprAdminConnector.setOverrides(
+                        userName, rVal["val"]
                     )
                     # successful call
                     if result == 0:
                         # cnt
                         changeCnt += 1
                         # set internal state
-                        self._tkSavedCfg["timeLockoutType"] = rVal["val"][0]
-                        self._tkSavedCfg["timeWakeInterval"] = "{};{}".format(
-                            rVal["val"][1],
-                            rVal["val"][2],
-                        )
+                        self._tkSavedCfg["timeOverrides"] = rVal["val"]
                         # print success message
                         self.setTimekprStatus(
                             False,
-                            msg.getTranslation("TK_MSG_STATUS_LOCKOUTTYPE_PROCESSED"),
+                            msg.getTranslation("TK_MSG_STATUS_OVERRIDES_PROCESSED"),
                         )
-
                 # if all ok
                 if result != 0:
                     # status
@@ -3391,6 +2629,9 @@ class timekprAdminGUI:
         else:
             # disable all
             self.toggleUserConfigControls(False, True)
+            # but the list is still there to refresh and to add a group to
+            if self._isConnected:
+                self.enableUserListControls()
 
     def userConfigurationRefreshClicked(self, evt):
         """User requested config restore from server"""
@@ -3398,14 +2639,122 @@ class timekprAdminGUI:
             "changed"
         )
 
+    def deletePolicyClicked(self, evt):
+        """Delete the selected user's own policy or the selected group policy, after confirmation"""
+        # get username
+        userName = self.getSelectedUserName()
+        # nothing selected
+        if userName is None or userName == "":
+            return
+
+        # what is going away
+        isGroup = self.isGroupTarget(userName)
+        question = msg.getTranslation(
+            "TK_MSG_ADMIN_DELETE_GROUP_POLICY_QUESTION"
+            if isGroup
+            else "TK_MSG_ADMIN_DELETE_USER_POLICY_QUESTION"
+        ) % (userName)
+        # ask
+        tkrMsg = Gtk.MessageDialog(
+            parent=self._timekprAdminForm,
+            flags=Gtk.DialogFlags.MODAL,
+            type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            message_format=question,
+        )
+        response = tkrMsg.run()
+        tkrMsg.destroy()
+        # not confirmed
+        if response != Gtk.ResponseType.YES:
+            return
+
+        # disable button so it cannot be triggered again
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserPolicyDeleteBT"
+        ).set_sensitive(False)
+
+        # call server
+        result, message = self._timekprAdminConnector.deletePolicy(userName)
+
+        # successful call
+        if result == 0:
+            # status
+            self.setTimekprStatus(
+                False, msg.getTranslation("TK_MSG_STATUS_POLICY_DELETED")
+            )
+            # a deleted group policy leaves the list; a user may too (one the
+            # system cannot enumerate was listed for the policy alone), and
+            # is otherwise shown again with the policy that applies now
+            self.getAdminUserList()
+            if not isGroup:
+                self.selectUserInList(userName)
+        else:
+            # status
+            self.setTimekprStatus(False, message)
+            # the policy is still there
+            self._timekprAdminFormBuilder.get_object(
+                "TimekprUserPolicyDeleteBT"
+            ).set_sensitive(True)
+            # check the connection
+            self.checkConnection()
+
+    def newGroupPolicyClicked(self, evt):
+        """Create a group policy with the defaults for the group named in the entry and select it"""
+        # the name, with or without the @
+        groupName = (
+            self._timekprAdminFormBuilder.get_object("TimekprNewGroupEntry")
+            .get_text()
+            .strip()
+            .lstrip("@")
+        )
+        # nothing to do
+        if groupName == "":
+            self.setTimekprStatus(
+                False, msg.getTranslation("TK_MSG_STATUS_GROUPNAME_MISSING")
+            )
+            return
+        # the target
+        target = f"@{groupName}"
+
+        # the policy may already exist, then it is just selected
+        result, message, _ = (
+            self._timekprAdminConnector.getUserConfigurationAndInformation(
+                target, cons.TK_CL_INF_FULL
+            )
+        )
+        # no policy yet: any setter creates one with the defaults
+        if result != 0:
+            # call server
+            result, message = self._timekprAdminConnector.setTrackInactive(
+                target, False
+            )
+            # failed
+            if result != 0:
+                # status
+                self.setTimekprStatus(False, message)
+                # check the connection
+                self.checkConnection()
+                return
+            # status
+            self.setTimekprStatus(
+                False,
+                msg.getTranslation("TK_MSG_STATUS_GROUPPOLICY_CREATED") % (target),
+            )
+
+        # forget the name
+        self._timekprAdminFormBuilder.get_object("TimekprNewGroupEntry").set_text("")
+        # refresh the list and select the group
+        self.getAdminUserList()
+        if not self.selectUserInList(target):
+            # status
+            self.setTimekprStatus(
+                False,
+                msg.getTranslation("TK_MSG_STATUS_GROUPPOLICY_NOT_LISTED") % (target),
+            )
+
     # --------------- today page GTK signal methods --------------- #
 
     def todayAddTimeChanged(self, evt):
-        """Call control calculations when time has been added"""
-        # recalc control availability
-        self.calculateUserTodayControlAvailability()
-
-    def todayAddPlayTimeChanged(self, evt):
         """Call control calculations when time has been added"""
         # recalc control availability
         self.calculateUserTodayControlAvailability()
@@ -3416,16 +2765,8 @@ class timekprAdminGUI:
         self._timekprAdminFormBuilder.get_object(
             "TimekprUserConfTodaySettingsSetAddBT"
         ).set_sensitive(False)
-        # get choice
-        type = (
-            "Time"
-            if self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfTodaySettingsChoiceTimeRB"
-            ).get_active()
-            else "PlayTime"
-        )
         # process setting
-        self.applyUserTodayConfigurationChanges(type, "+")
+        self.applyUserTodayConfigurationChanges("+")
 
     def todaySubtractTimeClicked(self, evt):
         """Subtract time from user"""
@@ -3433,16 +2774,8 @@ class timekprAdminGUI:
         self._timekprAdminFormBuilder.get_object(
             "TimekprUserConfTodaySettingsSetSubractBT"
         ).set_sensitive(False)
-        # get choice
-        type = (
-            "Time"
-            if self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfTodaySettingsChoiceTimeRB"
-            ).get_active()
-            else "PlayTime"
-        )
         # process setting
-        self.applyUserTodayConfigurationChanges(type, "-")
+        self.applyUserTodayConfigurationChanges("-")
 
     def todaySetTimeClicked(self, evt):
         """Set exact time for user"""
@@ -3450,16 +2783,8 @@ class timekprAdminGUI:
         self._timekprAdminFormBuilder.get_object(
             "TimekprUserConfTodaySettingsSetSetBT"
         ).set_sensitive(False)
-        # get choice
-        type = (
-            "Time"
-            if self._timekprAdminFormBuilder.get_object(
-                "TimekprUserConfTodaySettingsChoiceTimeRB"
-            ).get_active()
-            else "PlayTime"
-        )
         # process setting
-        self.applyUserTodayConfigurationChanges(type, "=")
+        self.applyUserTodayConfigurationChanges("=")
 
     # --------------- limit configuration GTK signal helper methods --------------- #
 
@@ -3511,17 +2836,10 @@ class timekprAdminGUI:
             # calculate control availability
             self.calculateUserConfigControlAvailability()
 
-    def verifyAndSetDayLimits(self, path, text, pIsPlayTime=False):
+    def verifyAndSetDayLimits(self, path, text):
         """Verify and set daily values"""
         # store
-        limitsSt = self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsLS" if pIsPlayTime else "TimekprWeekDaysLS"
-        )
-        controlFnc = (
-            self.calculateUserPlayTimeConfigControlAvailability
-            if pIsPlayTime
-            else self.calculateUserConfigControlAvailability
-        )
+        limitsSt = self._timekprAdminFormBuilder.get_object("TimekprWeekDaysLS")
         # value before
         secsBefore = limitsSt[path][3]
         # def
@@ -3535,7 +2853,7 @@ class timekprAdminGUI:
             limitsSt[path][4] = text
             limitsSt[path][3] = secs
             # calculate control availability
-            controlFnc()
+            self.calculateUserConfigControlAvailability()
 
     def areHoursVerified(self):
         """Return whether all hours have been verified"""
@@ -3791,10 +3109,6 @@ class timekprAdminGUI:
         """Set internal representation of in-place edited value"""
         self.verifyAndSetDayLimits(path, text)
 
-    def userLimitsDailyPlayTimeLimitsEdited(self, widget, path, text):
-        """Set internal representation of in-place edited value"""
-        self.verifyAndSetDayLimits(path, text, pIsPlayTime=True)
-
     def userLimitsHourUnaccountableToggled(self, widget, path):
         """Set internal representation of in-place edited value"""
         # store
@@ -3807,7 +3121,7 @@ class timekprAdminGUI:
         self.calculateUserConfigControlAvailability()
 
     def addHourIntervalClicked(self, evt):
-        """Add PlayTime activity placeholder to the list"""
+        """Add hour interval placeholder to the list"""
         limitsSt = self._timekprAdminFormBuilder.get_object("TimekprHourIntervalsLS")
         limitsTw = self._timekprAdminFormBuilder.get_object(
             "TimekprHourIntervalsTreeView"
@@ -3900,150 +3214,6 @@ class timekprAdminGUI:
         # process setting
         self.applyUserLimitConfigurationChanges()
 
-    # --------------- PlayTime limit configuration GTK signal methods --------------- #
-
-    def userPlayTimeEnabledChanged(self, evt):
-        """PlayTime enablement changed"""
-        self.calculateUserPlayTimeConfigControlAvailability()
-
-    def userPlayTimeOverrideEnabledChanged(self, evt):
-        """PlayTime override enablement changed"""
-        self.calculateUserPlayTimeConfigControlAvailability()
-
-    def userPlayTimeUnaccountedIntervalsEnabledChanged(self, evt):
-        """PlayTime allowed during unaccounted intervals enablement changed"""
-        self.calculateUserPlayTimeConfigControlAvailability()
-
-    def playTimeLimitsIncreaseClicked(self, evt):
-        """Increase PlayTime limits"""
-        self.adjustTimeLimits(pType="PlayTimeLimits", pAdd=True)
-
-    def playTimeLimitsDecreaseClicked(self, evt):
-        """Decrease PlayTime limits"""
-        self.adjustTimeLimits(pType="PlayTimeLimits", pAdd=False)
-
-    def dayPlayTimeAvailabilityChanged(self, widget, path):
-        """Change PlayTime minutes depending on day availability"""
-        # get list store
-        limitSt = self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeLimitsLS"
-        )
-        # flip the checkbox
-        limitSt[path][2] = not limitSt[path][2]
-        # if we have a day, restore limits
-        if limitSt[path][2]:
-            # if we have limits set in background store, restore them
-            if limitSt[path][0] in self._tkSavedCfg["playTimeLimitDays"]:
-                limitSt[path][3] = self._tkSavedCfg["playTimeLimitDaysLimits"][
-                    self._tkSavedCfg["playTimeLimitDays"].index(limitSt[path][0])
-                ]
-            else:
-                limitSt[path][3] = 0
-            # format string too
-            limitSt[path][4] = self.formatTimeStr(limitSt[path][3], True)
-        else:
-            # reset hours & minutes
-            limitSt[path][3] = 0
-            limitSt[path][4] = _NO_TIME_LABEL
-
-        # recalc control availability
-        self.calculateUserPlayTimeConfigControlAvailability()
-
-    def addPlayTimeActivityClicked(self, evt):
-        """Add PlayTime activity placeholder to the list"""
-        limitsSt = self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesLS"
-        )
-        limitsTw = self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesTreeView"
-        )
-        PTActivityLen = len(limitsSt)
-        # add
-        addRow = True
-
-        # check if the last one is not empty (no need to add more empty rows)
-        if PTActivityLen > 0 and limitsSt[PTActivityLen - 1][1] == "":
-            addRow = False
-        # we can add the row
-        if addRow:
-            # get last index
-            PTActivityIdx = str(
-                int(limitsSt[PTActivityLen - 1][0]) + 1 if PTActivityLen > 0 else 1
-            )
-            # add
-            limitsSt.append([PTActivityIdx, "", ""])
-            # scroll to end
-            limitsTw.set_cursor(PTActivityLen)
-            limitsTw.scroll_to_cell(PTActivityLen)
-            limitsTw.get_selection().emit("changed")
-
-    def removePlayTimeActivityClicked(self, evt):
-        """Remove excluded user"""
-        # defaults
-        limitsSt = self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesLS"
-        )
-        elemIdx = self.getSelectedConfigElement("TimekprUserPlayTimeProcessesTreeView")
-        rIdx = 0
-        # only if something is selected
-        if elemIdx is not None:
-            # remove selected item
-            for rIt in limitsSt:
-                if elemIdx == rIdx:
-                    # remove
-                    limitsSt.remove(rIt.iter)
-                elif elemIdx < rIdx:
-                    # adjust next element index
-                    limitsSt[rIdx - 1][0] = str(rIdx)
-                # count further
-                rIdx += 1
-
-            # verify control availability
-            self.calculateUserPlayTimeConfigControlAvailability()
-
-    def playTimeActivityMaskEntryEdited(self, widget, path, text):
-        """Set internal representation of in-place edited value"""
-        # store value
-        self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeProcessesLS")[
-            path
-        ][1] = text
-        # recalc control availability
-        self.calculateUserPlayTimeConfigControlAvailability()
-
-    def playTimeActivityDescriptionEntryEdited(self, widget, path, text):
-        """Set internal representation of in-place edited value"""
-        # store value
-        self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeProcessesLS")[
-            path
-        ][2] = text
-        # recalc control availability
-        self.calculateUserPlayTimeConfigControlAvailability()
-
-    def applyUserPlayTimeConfigurationChangesClicked(self, evt):
-        """Apply PlayTime configuration changes"""
-        # disable button so it cannot be triggered again
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesApplyBT"
-        ).set_sensitive(False)
-
-        # color the buttons for ppl to see them better
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserPlayTimeProcessesApplyBT"
-        ).modify_fg(Gtk.StateFlags.NORMAL, None)
-
-        # tab color
-        self._timekprAdminFormBuilder.get_object("TimekprUserPlayTimeLabel").modify_fg(
-            Gtk.StateFlags.NORMAL,
-            Gdk.color_parse("red")
-            if self._timekprAdminFormBuilder.get_object(
-                "TimekprUserPlayTimeProcessesApplyBT"
-            ).get_sensitive()
-            else None,
-        )
-
-        # process setting
-        self.applyUserPlayTimeConfigurationChanges()
-
     # --------------- additional page configuration GTK signal methods --------------- #
 
     def trackInactiveChanged(self, evt):
@@ -4056,13 +3226,8 @@ class timekprAdminGUI:
         # recalc control availability
         self.calculateUserAdditionalConfigControlAvailability()
 
-    def lockoutTypeGroupChanged(self, evt):
-        """Call control calculations when restriction / lockout type has been changed"""
-        # recalc control availability
-        self.calculateUserAdditionalConfigControlAvailability()
-
-    def wakeUpIntervalChanged(self, evt):
-        """Call control calculations when restriction / lockout wake up hours have been changed"""
+    def overridesChanged(self, evt):
+        """Call control calculations when group overrides have been changed"""
         # recalc control availability
         self.calculateUserAdditionalConfigControlAvailability()
 
@@ -4115,32 +3280,7 @@ class timekprAdminGUI:
         # get objects depending on type
         # rb format:
         #   array of: checkbutton, seconds to add, check limit, seconds in liststore, string secs in liststore, control to execute, format seconds, format days
-        if pType == "PlayTimeLimits":
-            tw = "TimekprUserPlayTimeLimitsTreeView"
-            ls = "TimekprUserPlayTimeLimitsLS"
-            rb = [
-                [
-                    "TimekprUserPlayTimeLimitsHrRB",
-                    cons.TK_LIMIT_PER_HOUR,
-                    cons.TK_LIMIT_PER_DAY,
-                    3,
-                    4,
-                    self.calculateUserPlayTimeConfigControlAvailability,
-                    True,
-                    False,
-                ],
-                [
-                    "TimekprUserPlayTimeLimitsMinRB",
-                    cons.TK_LIMIT_PER_MINUTE,
-                    cons.TK_LIMIT_PER_DAY,
-                    3,
-                    4,
-                    self.calculateUserPlayTimeConfigControlAvailability,
-                    True,
-                    False,
-                ],
-            ]
-        elif pType == "DailyLimits":
+        if pType == "DailyLimits":
             tw = "TimekprWeekDaysTreeView"
             ls = "TimekprWeekDaysLS"
             rb = [
@@ -4264,8 +3404,8 @@ class timekprAdminGUI:
                 for path in paths:
                     # get idx
                     idx = tm.get_path(tm.get_iter(path))[0]
-                    # for DailyLimits and PlayTimeLimits we do not need to adjust inactive rows
-                    if pType in ("DailyLimits", "PlayTimeLimits"):
+                    # for DailyLimits we do not need to adjust inactive rows
+                    if pType == "DailyLimits":
                         # check if day is active
                         if not limitsSt[idx][2]:
                             # we do not process disabled days

@@ -68,19 +68,32 @@ main {
   gap: 1rem;
   align-items: flex-start;
 }
+.page[hidden] {
+  display: none;
+}
 aside {
   flex: 0 0 16rem;
 }
-#user-detail {
+.detail,
+.column {
   flex: 1;
   min-width: 0;
 }
-#user-list {
+.column {
+  max-width: 50rem;
+}
+#user-list,
+#groups-list {
   list-style: none;
   margin: 0;
   padding: 0;
 }
-#user-list li {
+#user-list li,
+#groups-list li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0 0.5rem;
+  align-items: center;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -88,16 +101,41 @@ aside {
   background: var(--card);
   cursor: pointer;
 }
-#user-list li.selected {
+#user-list li.selected,
+#groups-list li.selected {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent) inset;
 }
-#user-list .name {
+#user-list .name,
+#groups-list .name {
   font-weight: 600;
 }
-#user-list .sub {
+#user-list .sub,
+#groups-list .sub {
+  grid-column: 1 / -1;
   color: var(--muted);
   font-size: 0.85rem;
+}
+.tag {
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  color: var(--muted);
+  border: 1px solid var(--line);
+}
+.tag:empty {
+  display: none;
+}
+#group-add-form {
+  margin: 0 0 0.6rem;
+}
+#group-name {
+  flex: 1;
+  min-width: 0;
+}
+#migrate-result {
+  margin: 0.4rem 0 0;
 }
 .dot {
   display: inline-block;
@@ -236,6 +274,10 @@ button {
   background: var(--card);
   color: var(--fg);
   cursor: pointer;
+}
+button:disabled {
+  color: var(--muted);
+  cursor: default;
 }
 button.primary {
   background: var(--accent);

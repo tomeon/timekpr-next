@@ -18,6 +18,10 @@ BOB_PASSWORD = CONFIG["bobPassword"]
 CAROL = CONFIG["carol"]
 DAVE = CONFIG["dave"]
 ERIN = CONFIG["erin"]
+# A group with a timekpr policy; alice is a member locally, bob through a
+# Kanidm group of the same name (which NSS may present under another name,
+# see bob_kids_group).
+KIDS = CONFIG["kids"]
 TIMEKPR_PACKAGE = CONFIG["timekprPackage"]
 TIMEKPRW_TOKEN = CONFIG["timekprwToken"]
 TIMEKPRW_TOKEN_FILE = CONFIG["timekprwTokenFile"]
@@ -41,7 +45,21 @@ NO_TIME_ARG = ";".join(map(str, NO_TIME.values()))
 EXTRA_TIME = 300
 # Per-weekday limits a privileged user sets, distinguishable from NO_TIME.
 SOME_TIME = "60;60;60;60;60;60;60"
+# Per-weekday limits that let a login of HOLD seconds survive comfortably.
+PLENTY_TIME = ";".join(["3600"] * len(ALL_DAYS))
+# The pseudo-group every user belongs to, for a policy on everyone.
+ALL_GROUP = "all"
+# A name no user or group has: the daemon answers a default policy for any
+# user name, so a made-up one is what makes the "not found" cases.
+NOSUCHUSER = "nosuchuser"
+NOSUCHGROUP = "nosuchgroup"
 TIMEKPR_LOG = "/var/log/timekpr.log"
+# Where the policies live; a target that is not a user or group name must
+# never turn into a path under (or outside) it.
+CONFIG_DIR = "/var/lib/timekpr/config"
+# Targets that are not names: path syntax, an empty group, an empty name.
+BAD_TARGETS = ["../x", "a/b", "@../x", "@a/b", "@", "-x", ""]
+NOT_A_NAME = "is not a valid user or group name"
 # What timekpra prints when the daemon refuses a command.  timekpra
 # always exits 0, so this text is the only signal.
 DENIED = "access denied"
@@ -102,11 +120,22 @@ def wait_for_log(*needles):
     machine.wait_until_succeeds(" | ".join([f"{first} {TIMEKPR_LOG}", *rest]))
 
 
-def weekday_limits(user):
-    for line in timekpra("--userinfo", user).splitlines():
-        if line.startswith("LIMITS_PER_WEEKDAYS: "):
+def info_value(info, key, what):
+    """The value of one `KEY: value` line of timekpra --userinfo or
+    --groupinfo output."""
+    for line in info.splitlines():
+        if line.startswith(f"{key}: "):
             return line.split(": ", 1)[1]
-    raise AssertionError(f"no LIMITS_PER_WEEKDAYS in the configuration of {user}")
+    raise AssertionError(f"no {key} in the configuration of {what}:\n{info}")
+
+
+def weekday_limits(user):
+    return DBUS.userinfo_value(user, "LIMITS_PER_WEEKDAYS")
+
+
+def group_target(group):
+    """How timekpra addresses a group wherever it takes a user name."""
+    return f"@{group}"
 
 
 def api(method, path, body=None, token=TIMEKPRW_TOKEN, unix=False):
@@ -121,7 +150,7 @@ def api(method, path, body=None, token=TIMEKPRW_TOKEN, unix=False):
         cmd += ["-H", "Content-Type: application/json", "--data", json.dumps(body)]
     out = machine.succeed(" ".join(map(shlex.quote, cmd + [API + path])))
     body, status = out.rsplit("\n", 1)
-    return int(status), json.loads(body)
+    return int(status), (json.loads(body) if body else None)
 
 
 def expect(method, path, body=None, status=200, token=TIMEKPRW_TOKEN, unix=False):
@@ -132,6 +161,10 @@ def expect(method, path, body=None, status=200, token=TIMEKPRW_TOKEN, unix=False
 
 def user_path(user, suffix):
     return f"/users/{quote(user, safe='')}{suffix}"
+
+
+def group_path(group, suffix=""):
+    return f"/groups/{quote(group, safe='')}{suffix}"
 
 
 class Timekpra:
@@ -149,11 +182,38 @@ class Timekpra:
     def knows(self, user):
         return user in self.run("--userlist")
 
-    def forbid(self, user):
-        self.run("--settimelimits", user, NO_TIME_ARG)
+    def userinfo_value(self, user, key):
+        return info_value(self.run("--userinfo", user), key, user)
+
+    def groupinfo_value(self, group, key):
+        return info_value(self.run("--groupinfo", group), key, group_target(group))
+
+    def policy_source(self, user):
+        """Where the user's effective policy comes from: "user" (a policy
+        of their own), "group" or "default"."""
+        return self.userinfo_value(user, "POLICY_SOURCE")
+
+    def forbid(self, target):
+        """No screen time at all for a user or a group (@group)."""
+        self.run("--settimelimits", target, NO_TIME_ARG)
 
     def grant(self, user, seconds):
         self.run("--settimeleft", user, "+", str(seconds))
+
+    def reset_time(self, user):
+        """Forget any extra time granted earlier: the user's balance for
+        today becomes exactly today's limit under their effective policy.
+        Extra time lives in the user's counters, which a deleted or changed
+        policy does not touch."""
+        self.run("--settimeleft", user, "=", "0")
+
+    def delete_policy(self, target):
+        self.run("--deletepolicy", target)
+
+    def ensure_no_user_policy(self, user):
+        """Leave the user to their group policies or the defaults."""
+        if self.policy_source(user) == "user":
+            self.delete_policy(user)
 
 
 DBUS = Timekpra()
@@ -167,7 +227,7 @@ def config_lines(userinfo):
     return [
         line
         for line in userinfo.splitlines()
-        if not line.startswith(("TIME_", "PLAYTIME_LEFT", "PLAYTIME_SPENT", "ACTUAL_"))
+        if not line.startswith(("TIME_", "ACTUAL_"))
     ]
 
 
@@ -220,14 +280,20 @@ def expect_login_terminated(user, password):
 
 
 def exercise(user, password, admin):
-    with subtest(f"{user}: an unrestricted login survives"):
-        expect_login_survives(user, password)
+    """A user's own policy, made before the user ever logged in: nothing
+    is created on login any more, and a setting creates the policy."""
+    with subtest(f"{user}: the defaults apply before any policy is made"):
+        assert admin.policy_source(user) == "default"
+
+    with subtest(f"{user}: forbid all screen time via {admin.name} before any login"):
+        admin.forbid(user)
+        assert admin.policy_source(user) == "user"
 
     with subtest(f"{user}: {admin.name} knows the user"):
+        # the list holds the users of the system and every user with a
+        # policy: a directory user, whom the system cannot enumerate, is
+        # listed once they have one (or are logged in)
         assert admin.knows(user)
-
-    with subtest(f"{user}: forbid all screen time via {admin.name}"):
-        admin.forbid(user)
 
     with subtest(f"{user}: a restricted login is terminated"):
         expect_login_terminated(user, password)
@@ -236,6 +302,11 @@ def exercise(user, password, admin):
         admin.grant(user, EXTRA_TIME)
 
     with subtest(f"{user}: an exempted login survives"):
+        expect_login_survives(user, password)
+
+    with subtest(f"{user}: deleting the policy via {admin.name} lifts the limits"):
+        admin.delete_policy(user)
+        assert admin.policy_source(user) == "default"
         expect_login_survives(user, password)
 
 
@@ -316,6 +387,7 @@ def exercise_authorization():
         assert status == 0 and "is not found" in out, out
 
     with subtest(f"{DAVE}: a member of the timekpr group may change limits"):
+        # alice has no policy at this point; this creates one
         assert DENIED not in timekpra_as(DAVE, "--settimelimits", ALICE, SOME_TIME)
         assert weekday_limits(ALICE) == SOME_TIME
         assert ALICE in timekpra_as(DAVE, "--userlist")
@@ -358,33 +430,24 @@ def check_web_api():
                     f"{remote.name} {command}:\n{got}\n!=\n{expected}"
                 )
         bad = machine.succeed(
-            f"timekpra --server {TIMEKPRW_UNIX_URL} --userinfo nobody"
+            f"timekpra --server {TIMEKPRW_UNIX_URL} --userinfo {NOSUCHUSER}"
         )
-        assert "no configuration for user nobody" in bad, bad
+        assert "is not found" in bad, bad
 
     with subtest("timekpra --server: settings arrive at the daemon"):
         UNIX.run("--setallowedhours", ALICE, "3", "7;11[0-30];!14")
         UNIX.run("--setalloweddays", ALICE, "2;4")
-        UNIX.run("--settimelimits", ALICE, "0;3600")
-        HTTP.run("--setlockouttype", ALICE, "suspendwake;7;18")
-        HTTP.run("--setplaytimeenabled", ALICE, "true")
-        HTTP.run("--setplaytimeactivities", ALICE, "firefox[Firefox]")
+        HTTP.run("--settimelimits", ALICE, "0;3600")
         info = DBUS.run("--userinfo", ALICE)
         for line in (
             "ALLOWED_HOURS_3: 7;11[0-30];!14",
             "ALLOWED_WEEKDAYS: 2;4",
             "LIMITS_PER_WEEKDAYS: 0;3600",
-            "LOCKOUT_TYPE: suspendwake",
-            "WAKEUP_HOUR_INTERVAL: 7;18",
-            "PLAYTIME_ENABLED: True",
-            "PLAYTIME_ACTIVITIES: firefox[Firefox]",
         ):
             assert line in info, f"{line!r} not in timekpra --userinfo:\n{info}"
         # back to the defaults (keeping "no time"), through D-Bus
         DBUS.run("--setalloweddays", ALICE, ";".join(map(str, ALL_DAYS)))
         DBUS.run("--settimelimits", ALICE, NO_TIME_ARG)
-        DBUS.run("--setlockouttype", ALICE, "terminate")
-        DBUS.run("--setplaytimeenabled", ALICE, "false")
         DBUS.run("--setallowedhours", ALICE, "ALL", ";".join(map(str, range(24))))
         assert config_lines(UNIX.run("--userinfo", ALICE)) == config_lines(
             DBUS.run("--userinfo", ALICE)
@@ -408,41 +471,29 @@ def check_web_api():
         patch = {
             "allowed_days": [4, 2],
             "limits_per_day": {"4": 3600},
-            "lockout": {"type": "suspendwake", "wake_from": 7, "wake_to": 18},
-            "playtime": {
-                "enabled": True,
-                "activities": [{"process": "firefox", "description": "Firefox"}],
-            },
         }
         config = expect("PATCH", config_path, patch)
         assert config["allowed_days"] == [2, 4], config
         assert config["limits_per_day"] == {"2": 0, "4": 3600}, config
-        assert config["lockout"] == patch["lockout"], config
-        assert config["playtime"]["activities"] == patch["playtime"]["activities"]
         info = timekpra("--userinfo", ALICE)
         for line in (
             "ALLOWED_HOURS_3: 7;11[0-30];!14",
             "ALLOWED_WEEKDAYS: 2;4",
             "LIMITS_PER_WEEKDAYS: 0;3600",
-            "LOCKOUT_TYPE: suspendwake",
-            "WAKEUP_HOUR_INTERVAL: 7;18",
-            "PLAYTIME_ENABLED: True",
-            "PLAYTIME_ACTIVITIES: firefox[Firefox]",
         ):
             assert line in info, f"{line!r} not in timekpra --userinfo:\n{info}"
         # restore the defaults, keeping the "no time" limits
         restore = {
             "allowed_days": ALL_DAYS,
             "limits_per_day": NO_TIME,
-            "lockout": {"type": "terminate"},
-            "playtime": {"enabled": False, "activities": []},
         }
         expect("PATCH", config_path, restore)
         all_hours = [{"hour": hour} for hour in range(24)]
         expect("PUT", user_path(ALICE, "/config/allowed-hours/all"), all_hours)
 
     with subtest("timekprw: rejects bad requests as problem details"):
-        expect("GET", "/users/nobody/config", status=404)
+        expect("GET", user_path(NOSUCHUSER, "/config"), status=404)
+        expect("DELETE", user_path(NOSUCHUSER, "/policy"), status=404)
         problem = expect("PATCH", config_path, {"limits_per_day": {"8": 1}}, status=400)
         assert problem["errors"][0]["field"].startswith("limits_per_day"), problem
         body = {"operation": "give", "seconds": 1}
@@ -457,6 +508,173 @@ def check_web_api():
         patch = {"log_level": config["log_level"]}
         problem = expect("PATCH", "/config", patch, status=500)
         assert problem["errors"][0]["field"] == "log_level", problem
+
+
+def bob_kids_group():
+    """The name NSS gives the Kanidm group bob is in.  Kanidm's UNIX
+    daemon most likely presents it as its SPN (kids@idm.nixos.test), so it
+    is read from the system rather than assumed."""
+    groups = machine.succeed(f"id -Gn {shlex.quote(BOB)}").split()
+    matching = [group for group in groups if group.startswith(KIDS)]
+    assert matching, f"{BOB} is in no group named like {KIDS}: {groups}"
+    return matching[0]
+
+
+def exercise_groups():
+    """Group policies: a policy on a group applies to its members until a
+    member gets a policy of their own; several matching groups merge to
+    the most restrictive values unless one overrides the other.  Both
+    users were exercised before, so both have counters (with extra time
+    granted) and neither may have a policy of their own here."""
+    bob_kids = bob_kids_group()
+    # one policy per distinct group name (bob's may or may not be alice's)
+    kids_groups = sorted({KIDS, bob_kids})
+    all_target = group_target(ALL_GROUP)
+
+    with subtest("groups: the users start without a policy of their own"):
+        for user in (ALICE, BOB):
+            DBUS.ensure_no_user_policy(user)
+
+    with subtest(f"groups: forbid all screen time for {', '.join(kids_groups)}"):
+        for group in kids_groups:
+            DBUS.forbid(group_target(group))
+        listing = DBUS.run("--grouplist")
+        for group in kids_groups:
+            assert group in listing.splitlines(), listing
+        assert UNIX.run("--grouplist") == listing
+        assert DBUS.groupinfo_value(KIDS, "LIMITS_PER_WEEKDAYS") == NO_TIME_ARG
+        assert UNIX.run("--groupinfo", KIDS) == DBUS.run("--groupinfo", KIDS)
+        assert DBUS.policy_source(ALICE) == "group"
+        assert DBUS.userinfo_value(ALICE, "POLICY_GROUPS") == KIDS
+        assert DBUS.userinfo_value(BOB, "POLICY_GROUPS") == bob_kids
+        assert f"{ALICE}  (policy: group:{KIDS})" in DBUS.run("--userlist")
+        # the extra time granted earlier would outlast the group policy
+        for user in (ALICE, BOB):
+            DBUS.reset_time(user)
+
+    with subtest("groups: the members' logins are terminated"):
+        expect_login_terminated(ALICE, ALICE_PASSWORD)
+        expect_login_terminated(BOB, BOB_PASSWORD)
+
+    with subtest(f"groups: {ALICE}'s own policy wins over the group's"):
+        DBUS.run("--settimelimits", ALICE, PLENTY_TIME)
+        assert DBUS.policy_source(ALICE) == "user"
+        expect_login_survives(ALICE, ALICE_PASSWORD)
+        expect_login_terminated(BOB, BOB_PASSWORD)
+        DBUS.delete_policy(ALICE)
+        assert DBUS.policy_source(ALICE) == "group"
+        expect_login_terminated(ALICE, ALICE_PASSWORD)
+
+    with subtest("groups: matching groups merge to the most restrictive values"):
+        DBUS.run("--settimelimits", all_target, PLENTY_TIME)
+        assert DBUS.userinfo_value(ALICE, "POLICY_GROUPS") == f"{ALL_GROUP};{KIDS}"
+        assert weekday_limits(ALICE) == NO_TIME_ARG
+
+    with subtest("groups: an override takes a group's policy out of the merge"):
+        DBUS.run("--setoverrides", all_target, KIDS)
+        assert DBUS.groupinfo_value(ALL_GROUP, "OVERRIDES") == KIDS
+        assert DBUS.userinfo_value(ALICE, "POLICY_GROUPS") == ALL_GROUP
+        assert weekday_limits(ALICE) == PLENTY_TIME
+        expect_login_survives(ALICE, ALICE_PASSWORD)
+        DBUS.run("--setoverrides", all_target, "")
+        assert DBUS.groupinfo_value(ALL_GROUP, "OVERRIDES") == ""
+        assert DBUS.userinfo_value(ALICE, "POLICY_GROUPS") == f"{ALL_GROUP};{KIDS}"
+        expect_login_terminated(ALICE, ALICE_PASSWORD)
+
+    with subtest("groups: nothing is left to migrate"):
+        assert DBUS.run("--migratepolicies", "dry-run").strip() == ""
+
+    with subtest("timekprw: group policies"):
+        groups = expect("GET", "/groups")
+        kids = next((entry for entry in groups if entry["group"] == KIDS), None)
+        assert kids is not None and ALICE in kids["members"], groups
+        config = expect("GET", group_path(KIDS, "/config"))
+        assert config["limits_per_day"] == {str(day): 0 for day in ALL_DAYS}, config
+        assert "hide_tray_icon" not in config, config
+        config = expect(
+            "PATCH", group_path(KIDS, "/config"), {"overrides": [ALL_GROUP]}
+        )
+        assert config["overrides"] == [ALL_GROUP], config
+        assert DBUS.groupinfo_value(KIDS, "OVERRIDES") == ALL_GROUP
+        assert DBUS.userinfo_value(ALICE, "POLICY_GROUPS") == KIDS
+        expect("GET", group_path(NOSUCHGROUP, "/config"), status=404)
+        expect("DELETE", group_path(ALL_GROUP, "/policy"), status=204)
+        expect("DELETE", group_path(ALL_GROUP, "/policy"), status=404)
+        expect("GET", group_path(ALL_GROUP), status=404)
+        assert ALL_GROUP not in DBUS.run("--grouplist").splitlines()
+
+    with subtest("groups: deleting the policies lifts the limits"):
+        for group in kids_groups:
+            DBUS.delete_policy(group_target(group))
+        listing = DBUS.run("--grouplist")
+        for group in kids_groups:
+            assert group not in listing.splitlines(), listing
+        assert DBUS.policy_source(ALICE) == "default"
+        assert DBUS.policy_source(BOB) == "default"
+        expect_login_survives(ALICE, ALICE_PASSWORD)
+        expect_login_survives(BOB, BOB_PASSWORD)
+
+
+def policy_files():
+    """Every path under the configuration directory, to compare before and
+    after a refused request."""
+    return machine.succeed(f"find {CONFIG_DIR} | sort")
+
+
+def exercise_invalid_targets():
+    """A target is a file name on the server, so the daemon refuses one
+    that is not a user or group name before touching the file system,
+    over D-Bus and over the web API alike."""
+    with subtest("targets that are not names are refused and create nothing"):
+        before = policy_files()
+        for target in BAD_TARGETS:
+            for command in (
+                ["--settimelimits", target, NO_TIME_ARG],
+                ["--setalloweddays", target, "1"],
+                ["--settrackinactive", target, "true"],
+                ["--settimeleft", target, "+", "60"],
+                ["--deletepolicy", target],
+                ["--userinfo", target],
+            ):
+                out = DBUS.run(*command)
+                assert NOT_A_NAME in out, f"{command} was not refused:\n{out}"
+        # a group whose overrides are not names
+        DBUS.run("--settimelimits", group_target(KIDS), NO_TIME_ARG)
+        for overrides in ("a/b", "x;../y", "kids;"):
+            out = DBUS.run("--setoverrides", group_target(KIDS), overrides)
+            assert "are invalid" in out, f"overrides {overrides!r} not refused:\n{out}"
+        assert DBUS.groupinfo_value(KIDS, "OVERRIDES") == ""
+        DBUS.delete_policy(group_target(KIDS))
+        # the web API (the daemon's message becomes a 400; a name with a
+        # slash does not even reach a route)
+        for target in ("@", "-x"):
+            status, _body = api("PATCH", user_path(target, "/config"), {})
+            assert status == 400, status
+            status, _body = api("PATCH", group_path(target, "/config"), {})
+            assert status == 400, status
+        for target in ("a/b", "../x"):
+            status, _body = api("PATCH", user_path(target, "/config"), {})
+            assert status != 200, status
+        assert policy_files() == before
+
+
+def exercise_time_left_on_restricted_days():
+    """Adjusting today's time left looks the limit up by the allowed days
+    the limits are stored against, not by the weekday's number, so it works
+    when only some days are allowed."""
+    today = machine.succeed("date +%u").strip()
+    with subtest(f"{ALICE}: time left can be adjusted when only today is allowed"):
+        DBUS.run("--setalloweddays", ALICE, today)
+        DBUS.run("--settimelimits", ALICE, "60")
+        # nothing left, then five minutes (over the limit, as extra time is)
+        for operation, amount, expected in (("=", "0", "0"), ("+", "300", "300")):
+            out = DBUS.run("--settimeleft", ALICE, operation, amount)
+            left = DBUS.userinfo_value(ALICE, "TIME_LEFT_DAY")
+            assert left == expected, f"TIME_LEFT_DAY {left} != {expected}:\n{out}"
+        # back to the defaults
+        DBUS.delete_policy(ALICE)
+        DBUS.reset_time(ALICE)
+        assert DBUS.policy_source(ALICE) == "default"
 
 
 def main():
@@ -482,6 +700,9 @@ def main():
         machine.wait_until_succeeds(f"getent passwd {shlex.quote(BOB)}")
 
     exercise(BOB, BOB_PASSWORD, UNIX)
+    exercise_groups()
+    exercise_invalid_targets()
+    exercise_time_left_on_restricted_days()
 
 
 machine.start()

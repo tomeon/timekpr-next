@@ -17,10 +17,19 @@ from timekpr.common.utils.config import (
     timekprUserConfig,
     timekprUserControl,
 )
+from timekpr.server.config.policy import (
+    TK_POLICY_SOURCE_USER,
+    groupName,
+    isGroupTarget,
+    isValidName,
+    isValidTarget,
+    timekprPolicyStore,
+    userExists,
+)
 
 
 class timekprUserConfigurationProcessor:
-    """Validate and update configuration data for timekpr user"""
+    """Validate and update configuration data for timekpr user or group ("@group") policies"""
 
     def __init__(self, pUserName, pTimekprConfig):
         """Initialize all stuff for user"""
@@ -28,48 +37,95 @@ class timekprUserConfigurationProcessor:
         self._configDir = pTimekprConfig.getTimekprConfigDir()
         self._workDir = pTimekprConfig.getTimekprWorkDir()
         self._userName = pUserName
+        self._isGroup = isGroupTarget(pUserName)
+        # the target comes from the admin interfaces and names a file, so
+        # everything below refuses one that is not a user or group name
+        self._isValidTarget = isValidTarget(pUserName)
+        self._policyStore = timekprPolicyStore(self._configDir)
         self._timekprUserConfig = None
         self._timekprUserControl = None
 
-    def loadAndCheckUserConfiguration(self):
-        """Load the user configuration (to verify whether user config exists and is readable)"""
-        # result
-        result = 0
-        message = ""
+    def _requireValidTarget(self):
+        """A (result, message) refusing a target that is not a user or group name"""
+        if not self._isValidTarget:
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_TARGET_INVALID") % (
+                str(self._userName)
+            )
+        return 0, ""
+
+    def loadAndCheckUserConfiguration(self, pCreate=False):
+        """Load the policy of the user or group; with pCreate a missing policy
+        file is created with the defaults (the setters), otherwise a missing
+        group policy is an error and a missing user policy yields the
+        defaults in memory (but see getSavedUserInformation, which resolves
+        the effective policy of a user instead)"""
+        # the target has to be a name before it becomes a file
+        result, message = self._requireValidTarget()
+        if result != 0:
+            return result, message
 
         # user config
         self._timekprUserConfig = timekprUserConfig(self._configDir, self._userName)
 
         # result
-        if not self._timekprUserConfig.loadUserConfiguration(True):
-            # result
-            result = -1
-            message = msg.getTranslation("TK_MSG_CONFIG_LOADER_USERCONFIG_NOTFOUND") % (
-                self._userName
-            )
+        if not self._timekprUserConfig.loadUserConfiguration():
+            # a setter creates the policy
+            if pCreate:
+                self._timekprUserConfig.initUserConfiguration()
+                self._timekprUserConfig.loadUserConfiguration()
+            # a group policy has to exist to be read
+            elif self._isGroup:
+                result = -1
+                message = msg.getTranslation(
+                    "TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND"
+                ) % (groupName(self._userName))
 
         # result
         return result, message
 
-    def loadAndCheckUserControl(self):
-        """Load the user control saved state (to verify whether user control exists and is readable)"""
-        # result
-        result = 0
-        message = ""
+    def loadAndCheckUserControl(self, pCreate=False):
+        """Load the user control saved state; a missing counters file yields
+        zeros in memory, or is created with pCreate (adjusting time left)"""
+        # the target has to be a name before it becomes a file
+        result, message = self._requireValidTarget()
+        if result != 0:
+            return result, message
+
+        # groups have no counters
+        if self._isGroup:
+            result = -1
+            message = msg.getTranslation("TK_MSG_USER_ADMIN_CHK_GROUP_NOT_USER") % (
+                self._userName
+            )
+            return result, message
 
         # user config
         self._timekprUserControl = timekprUserControl(self._workDir, self._userName)
 
-        # result
-        if not self._timekprUserControl.loadUserControl(True):
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_CONFIG_LOADER_USERCONTROL_NOTFOUND"
-            ) % (self._userName)
+        # load (defaults when there is no file)
+        if not self._timekprUserControl.loadUserControl(True) and pCreate:
+            # create the counters file so that the adjustment can be saved
+            self._timekprUserControl.initUserControl()
+            self._timekprUserControl.loadUserControl(True)
 
         # result
         return result, message
+
+    def _requireUser(self):
+        """A (result, message) refusing a group target for user-only settings"""
+        if self._isGroup:
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_GROUP_NOT_USER") % (
+                self._userName
+            )
+        return 0, ""
+
+    def _requireGroup(self):
+        """A (result, message) refusing a user target for group-only settings"""
+        if not self._isGroup:
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_USER_NOT_GROUP") % (
+                self._userName
+            )
+        return 0, ""
 
     def calculateAdjustedDatesForUserControl(self, pCheckDate):
         """Calculate and save proper dates in control file, in case they wastly differ from what as saved"""
@@ -166,47 +222,6 @@ class timekprUserConfigurationProcessor:
         # available seconds
         return availableSeconds
 
-    def calculatePlayTimeAvailableFromSavedConfiguration(self):
-        """Calculate available PlayTime for today from saved config"""
-        # current day
-        currDay = str(datetime.now().isoweekday())
-        # calc
-        availableSeconds = None
-        # allowed week days
-        allowedWeekDays = self._timekprUserConfig.getUserPlayTimeAllowedWeekdays()
-        # only if we have PlayTime information
-        if allowedWeekDays is not None:
-            # calc
-            availableSeconds = 0
-            # limits per week days
-            allowedWeekDayLimits = (
-                self._timekprUserConfig.getUserPlayTimeLimitsPerWeekdays()
-            )
-            #### normalize days
-            # get max of days / limits
-            limitLen = min(len(allowedWeekDays), len(allowedWeekDayLimits))
-            # remove excess elements
-            for i in range(limitLen, len(allowedWeekDays)):
-                allowedWeekDays.pop()
-            # remove excess elements
-            for i in range(limitLen, len(allowedWeekDayLimits)):
-                allowedWeekDayLimits.pop()
-            # calculate available seconds from todays limit
-            if currDay in allowedWeekDays:
-                availableSeconds = allowedWeekDayLimits[allowedWeekDays.index(currDay)]
-            # calculate how much is actually left (from intervals left, time spent and avilable as well as max that's possible to have)
-            availableSeconds = max(
-                min(
-                    availableSeconds
-                    - self._timekprUserControl.getUserPlayTimeSpentBalance(),
-                    cons.TK_LIMIT_PER_DAY,
-                ),
-                0,
-            )
-
-        # available seconds
-        return availableSeconds
-
     def getSavedUserInformation(self, pInfoLvl, pIsUserLoggedIn):
         """Get saved user configuration"""
         """This operates on saved user configuration, it will return all config as big dict"""
@@ -214,11 +229,33 @@ class timekprUserConfigurationProcessor:
         result = 0
         message = ""
 
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
-
         # initialize username storage
         userConfigurationStore = {}
+
+        # a group's policy is its file; a user's policy is resolved (their
+        # own file, the policies of their groups, or the defaults)
+        resolution = None
+        if self._isGroup:
+            result, message = self.loadAndCheckUserConfiguration()
+        else:
+            result, message = self._requireValidTarget()
+        if result != 0:
+            pass
+        elif not self._isGroup:
+            resolution = self._policyStore.resolve(self._userName)
+            self._timekprUserConfig = resolution.config
+            # a name with no policy of its own that neither NSS nor the
+            # daemon knows is not a user (the defaults would apply to any
+            # string otherwise)
+            if (
+                resolution.source != TK_POLICY_SOURCE_USER
+                and not pIsUserLoggedIn
+                and not userExists(self._userName)
+            ):
+                result = -1
+                message = msg.getTranslation("TK_MSG_CONFIG_LOADER_USER_NOTFOUND") % (
+                    self._userName
+                )
 
         # if we are still fine
         if result != 0:
@@ -226,8 +263,9 @@ class timekprUserConfigurationProcessor:
             pass
         # for full and saved info only
         else:
-            # check if we have this user
-            result, message = self.loadAndCheckUserControl()
+            # the counters (zeros for a user who was never tracked, none for a group)
+            if not self._isGroup:
+                result, message = self.loadAndCheckUserControl()
 
             # if we are still fine
             if result != 0:
@@ -270,19 +308,10 @@ class timekprUserConfigurationProcessor:
                     userConfigurationStore["TRACK_INACTIVE"] = (
                         self._timekprUserConfig.getUserTrackInactive()
                     )
-                    # hide icon
-                    userConfigurationStore["HIDE_TRAY_ICON"] = (
-                        self._timekprUserConfig.getUserHideTrayIcon()
-                    )
-                    # restriction / lockout type
-                    userConfigurationStore["LOCKOUT_TYPE"] = (
-                        self._timekprUserConfig.getUserLockoutType()
-                    )
-                    # add wake up intervals if type is wake
-                    if userConfigurationStore["LOCKOUT_TYPE"] == cons.TK_CTRL_RES_W:
-                        # wake up intervals
-                        userConfigurationStore["WAKEUP_HOUR_INTERVAL"] = ";".join(
-                            self._timekprUserConfig.getUserWakeupHourInterval()
+                    # hide icon (a user's setting; a group policy has none)
+                    if not self._isGroup:
+                        userConfigurationStore["HIDE_TRAY_ICON"] = (
+                            self._timekprUserConfig.getUserHideTrayIcon()
                         )
                     # limit per week
                     userConfigurationStore["LIMIT_PER_WEEK"] = (
@@ -292,51 +321,35 @@ class timekprUserConfigurationProcessor:
                     userConfigurationStore["LIMIT_PER_MONTH"] = (
                         self._timekprUserConfig.getUserMonthLimit()
                     )
-                    # ## PlayTime config (if enabled) ##
-                    userConfigurationStore["PLAYTIME_ENABLED"] = (
-                        self._timekprUserConfig.getUserPlayTimeEnabled()
-                    )
-                    # PlayTime override enabled
-                    userConfigurationStore["PLAYTIME_LIMIT_OVERRIDE_ENABLED"] = (
-                        self._timekprUserConfig.getUserPlayTimeOverrideEnabled()
-                    )
-                    # PlayTime allowed during unaccounted intervals
-                    userConfigurationStore["PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED"] = (
-                        self._timekprUserConfig.getUserPlayTimeUnaccountedIntervalsEnabled()
-                    )
-                    # PlayTime allowed week days
-                    allowedWeekDays = (
-                        self._timekprUserConfig.getUserPlayTimeAllowedWeekdays()
-                    )
-                    userConfigurationStore["PLAYTIME_ALLOWED_WEEKDAYS"] = (
-                        list(map(dbus.String, allowedWeekDays))
-                        if len(allowedWeekDays) > 0
-                        else dbus.Array(signature="s")
-                    )
-                    # PlayTime limits per week days
-                    allowedWeekDayLimits = (
-                        self._timekprUserConfig.getUserPlayTimeLimitsPerWeekdays()
-                    )
-                    userConfigurationStore["PLAYTIME_LIMITS_PER_WEEKDAYS"] = (
-                        list(map(dbus.Int32, allowedWeekDayLimits))
-                        if len(allowedWeekDayLimits) > 0
-                        else dbus.Array(signature="i")
-                    )
-                    # PlayTime activities
-                    playTimeActivities = (
-                        self._timekprUserConfig.getUserPlayTimeActivities()
-                    )
-                    userConfigurationStore["PLAYTIME_ACTIVITIES"] = (
-                        playTimeActivities
-                        if len(playTimeActivities) > 0
-                        else dbus.Array(signature="aas")
-                    )
+                    # where the policy comes from
+                    if self._isGroup:
+                        # a group policy: the groups it overrides
+                        overrides = self._timekprUserConfig.getUserOverrides()
+                        userConfigurationStore["OVERRIDES"] = (
+                            list(map(dbus.String, overrides))
+                            if len(overrides) > 0
+                            else dbus.Array(signature="s")
+                        )
+                    else:
+                        # a user: own policy, group policies (which), or the defaults
+                        userConfigurationStore["POLICY_SOURCE"] = resolution.source
+                        userConfigurationStore["POLICY_GROUPS"] = (
+                            list(map(dbus.String, resolution.groups))
+                            if len(resolution.groups) > 0
+                            else dbus.Array(signature="s")
+                        )
 
-                # this goes for full and saved info
-                if pInfoLvl in (cons.TK_CL_INF_FULL, cons.TK_CL_INF_SAVED):
+                # this goes for full and saved info (users only, groups have no counters)
+                if (
+                    pInfoLvl in (cons.TK_CL_INF_FULL, cons.TK_CL_INF_SAVED)
+                    and not self._isGroup
+                ):
                     # before return results, we need to check whether user was active and dates did not change since then
                     # this makes sense only of user is NOT currently logged in
-                    if not pIsUserLoggedIn:
+                    if (
+                        not pIsUserLoggedIn
+                        and self._timekprUserControl.isControlPresent()
+                    ):
                         # calculate
                         self.calculateAdjustedDatesForUserControl(
                             datetime.now().replace(microsecond=0)
@@ -362,14 +375,6 @@ class timekprUserConfigurationProcessor:
                     userConfigurationStore["TIME_LEFT_DAY"] = (
                         self.calculateTimeAvailableFromSavedConfiguration()
                     )
-                    # PlayTime left
-                    userConfigurationStore["PLAYTIME_LEFT_DAY"] = (
-                        self.calculatePlayTimeAvailableFromSavedConfiguration()
-                    )
-                    # PlayTime spent
-                    userConfigurationStore["PLAYTIME_SPENT_DAY"] = (
-                        self._timekprUserControl.getUserPlayTimeSpentDay()
-                    )
 
         # result
         return result, message, userConfigurationStore
@@ -379,8 +384,8 @@ class timekprUserConfigurationProcessor:
         """Validate allowed days for the user
             server expects only the days that are allowed, sorted in ascending order"""
 
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+        # the policy (created with the defaults if there is none yet)
+        result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
         if result != 0:
@@ -443,8 +448,8 @@ class timekprUserConfigurationProcessor:
             please note that this is using 24h format, no AM/PM nonsense expected
             minutes can be specified in brackets after hour, like: 16[00-45], which means until 16:45"""
 
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+        # the policy (created with the defaults if there is none yet)
+        result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # pre-check day number
         isDayNumberValid = False
@@ -530,8 +535,8 @@ class timekprUserConfigurationProcessor:
         """Validate allowable time to user
             server always expects 7 limits, for each day of the week, in the list"""
 
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+        # the policy (created with the defaults if there is none yet)
+        result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
         if result != 0:
@@ -588,8 +593,8 @@ class timekprUserConfigurationProcessor:
             true - logged in user is always tracked (even if switched to console or locked or ...)
             false - user time is not tracked if he locks the session, session is switched to another user, etc."""
 
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+        # the policy (created with the defaults if there is none yet)
+        result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
         if result != 0:
@@ -640,8 +645,11 @@ class timekprUserConfigurationProcessor:
             true - icon and notifications are NOT shown to user
             false - icon and notifications are shown to user"""
 
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+        # this is about one person's desktop, not about a group's policy
+        result, message = self._requireUser()
+        # the policy (created with the defaults if there is none yet)
+        if result == 0:
+            result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
         if result != 0:
@@ -686,77 +694,10 @@ class timekprUserConfigurationProcessor:
         # result
         return result, message
 
-    def checkAndSetLockoutType(self, pLockoutType, pWakeFrom=None, pWakeTo=None):
-        """Validate and set restriction / lockout type for the user"""
-        """Validate the restricton / lockout type:
-            lock - lock the screen
-            suspend - suspend the computer
-            suspendwake - suspend the computer
-            terminate - terminate sessions (default)
-            shutdown - shutdown computer"""
-
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
-
-        # if we are still fine
-        if result != 0:
-            # result
-            pass
-        # if we have no days
-        elif pLockoutType is None:
-            # result
-            result = -1
-            message = msg.getTranslation("TK_MSG_USER_ADMIN_CHK_LOCKOUTTYPE_NONE") % (
-                self._userName
-            )
-        # parse config
-        elif (
-            pLockoutType
-            not in (
-                cons.TK_CTRL_RES_L,
-                cons.TK_CTRL_RES_S,
-                cons.TK_CTRL_RES_W,
-                cons.TK_CTRL_RES_T,
-                cons.TK_CTRL_RES_K,
-                cons.TK_CTRL_RES_D,
-            )
-            or not (pWakeFrom.isnumeric() if pWakeFrom is not None else True)
-            or not (pWakeTo.isnumeric() if pWakeTo is not None else True)
-        ):
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_USER_ADMIN_CHK_LOCKOUTTYPE_INVALID"
-            ) % (self._userName)
-
-        # if all is correct, we update the configuration
-        if result == 0:
-            # set up config
-            try:
-                self._timekprUserConfig.setUserLockoutType(pLockoutType)
-                if pWakeFrom is not None and pWakeTo is not None:
-                    self._timekprUserConfig.setUserWakeupHourInterval(
-                        [pWakeFrom, pWakeTo]
-                    )
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_LOCKOUTTYPE_INVALID_SET"
-                ) % (self._userName)
-
-            # if we are still fine
-            if result == 0:
-                # save config
-                self._timekprUserConfig.saveUserConfiguration()
-
-        # result
-        return result, message
-
     def checkAndSetTimeLimitForWeek(self, pTimeLimitWeek):
         """Validate and set up new timelimit for week for the user"""
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+        # the policy (created with the defaults if there is none yet)
+        result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
         if result != 0:
@@ -803,8 +744,8 @@ class timekprUserConfigurationProcessor:
 
     def checkAndSetTimeLimitForMonth(self, pTimeLimitMonth):
         """Validate and set up new timelimit for month for the user"""
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+        # the policy (created with the defaults if there is none yet)
+        result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
         if result != 0:
@@ -856,13 +797,20 @@ class timekprUserConfigurationProcessor:
             if pOperation is "-" time is subtracted
             if pOperation is "=" or empty, the time is set as it is"""
 
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+        # the target has to be a name before it becomes a file
+        result, message = self._requireValidTarget()
+        # groups have no counters
+        if result == 0:
+            result, message = self._requireUser()
+        # the effective policy (the limits the adjustment is measured against)
+        if result == 0:
+            resolution = self._policyStore.resolve(self._userName)
+            self._timekprUserConfig = resolution.config
 
         # if we are still fine
         if result == 0:
-            # check if we have this user
-            result, message = self.loadAndCheckUserControl()
+            # the counters (created if the user was never tracked)
+            result, message = self.loadAndCheckUserControl(pCreate=True)
 
         # if we are still fine
         if result != 0:
@@ -893,10 +841,11 @@ class timekprUserConfigurationProcessor:
                 setLimit = 0
 
                 try:
-                    # get actual time limit for this day
-                    timeLimit = self._timekprUserConfig.getUserLimitsPerWeekdays()[
-                        datetime.date(datetime.now()).isoweekday() - 1
-                    ]
+                    # get actual time limit for this day (none when the day
+                    # is not allowed)
+                    timeLimit = self._timekprUserConfig.getUserLimitForDay(
+                        str(datetime.now().isoweekday())
+                    )
                     # decode time left (operations are actually technicall reversed, + for ppl is please add more time and minus is subtract,
                     #   but actually it's reverse, because we are dealing with time spent not time left)
                     if pOperation == "+":
@@ -946,51 +895,38 @@ class timekprUserConfigurationProcessor:
         # result
         return result, message
 
-    # ## PlayTime methods ##
-
-    def checkAndSetPlayTimeEnabled(self, pPlayTimeEnabled):
-        """Validate and set whether PlayTime is available for the user"""
-        """Validate whether PlayTime is available
-            true - PlayTime enabled for the user
-            false - PlayTime disabled for the user"""
-
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
+    def checkAndSetOverrides(self, pOverrides):
+        """Validate and set the groups a group policy takes precedence over"""
+        # groups only
+        result, message = self._requireGroup()
+        # the policy (created with the defaults if there is none yet)
+        if result == 0:
+            result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
-        if result != 0:
-            # result
-            pass
-        # if we have no days
-        elif pPlayTimeEnabled is None:
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_USER_ADMIN_CHK_PT_ENABLE_FLAG_NONE"
-            ) % (self._userName)
-        else:
-            # parse config
-            try:
-                if bool(pPlayTimeEnabled):
-                    pass
-            except Exception:
-                # result
+        if result == 0:
+            # group names without the target prefix, not itself
+            overrides = [groupName(str(rGroup)).strip() for rGroup in pOverrides]
+            if any(
+                not isValidName(rGroup) or rGroup == groupName(self._userName)
+                for rGroup in overrides
+            ):
                 result = -1
                 message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_ENABLE_FLAG_INVALID"
-                ) % (self._userName)
+                    "TK_MSG_USER_ADMIN_CHK_OVERRIDES_INVALID"
+                ) % (groupName(self._userName))
 
         # if all is correct, we update the configuration
         if result == 0:
             # set up config
             try:
-                self._timekprUserConfig.setUserPlayTimeEnabled(pPlayTimeEnabled)
+                self._timekprUserConfig.setUserOverrides(overrides)
             except Exception:
                 # result
                 result = -1
                 message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_ENABLE_FLAG_INVALID_SET"
-                ) % (self._userName)
+                    "TK_MSG_USER_ADMIN_CHK_OVERRIDES_INVALID"
+                ) % (groupName(self._userName))
 
             # if we are still fine
             if result == 0:
@@ -1000,390 +936,30 @@ class timekprUserConfigurationProcessor:
         # result
         return result, message
 
-    def checkAndSetPlayTimeLimitOverride(self, pPlayTimeLimitOverride):
-        """Validate and set whether PlayTime override is available for the user"""
-        """Validate whether PlayTime override is available
-            true - PlayTime override enabled for the user
-            false - PlayTime override disabled for the user"""
-
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
-
-        # if we are still fine
+    def deletePolicy(self):
+        """Delete the policy of the user or group (the counters of a user stay)"""
+        # the target has to be a name before it becomes a file
+        result, message = self._requireValidTarget()
         if result != 0:
-            # result
-            pass
-        # if we have no days
-        elif pPlayTimeLimitOverride is None:
+            return result, message
+
+        # the policy
+        self._timekprUserConfig = timekprUserConfig(self._configDir, self._userName)
+        # delete it
+        if not self._timekprUserConfig.deletePolicy():
             # result
             result = -1
-            message = msg.getTranslation(
-                "TK_MSG_USER_ADMIN_CHK_PT_OVERRIDE_FLAG_NONE"
-            ) % (self._userName)
-        else:
-            # parse config
-            try:
-                if bool(pPlayTimeLimitOverride):
-                    pass
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_OVERRIDE_FLAG_INVALID"
-                ) % (self._userName)
-
-        # if all is correct, we update the configuration
-        if result == 0:
-            # set up config
-            try:
-                self._timekprUserConfig.setUserPlayTimeOverrideEnabled(
-                    pPlayTimeLimitOverride
-                )
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_OVERRIDE_FLAG_INVALID_SET"
-                ) % (self._userName)
-
-            # if we are still fine
-            if result == 0:
-                # save config
-                self._timekprUserConfig.saveUserConfiguration()
-
-        # result
-        return result, message
-
-    def checkAndSetPlayTimeUnaccountedIntervalsEnabled(
-        self, pPlayTimeUnaccountedIntervalsEnabled
-    ):
-        """Validate and set whether PlayTime is allowed during unaccounted intervals for the user"""
-        """Validate whether PlayTime allowed during unaccounted intervals
-            true - PlayTime allowed during unaccounted intervals enabled for the user
-            false - PlayTime allowed during unaccounted intervals disabled for the user"""
-
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
-
-        # if we are still fine
-        if result != 0:
-            # result
-            pass
-        # if we have no days
-        elif pPlayTimeUnaccountedIntervalsEnabled is None:
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_USER_ADMIN_CHK_PT_UNACC_INT_FLAG_NONE"
-            ) % (self._userName)
-        else:
-            # parse config
-            try:
-                if bool(pPlayTimeUnaccountedIntervalsEnabled):
-                    pass
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_UNACC_INT_FLAG_INVALID"
-                ) % (self._userName)
-
-        # if all is correct, we update the configuration
-        if result == 0:
-            # set up config
-            try:
-                self._timekprUserConfig.setUserPlayTimeUnaccountedIntervalsEnabled(
-                    pPlayTimeUnaccountedIntervalsEnabled
-                )
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_UNACC_INT_FLAG_INVALID_SET"
-                ) % (self._userName)
-
-            # if we are still fine
-            if result == 0:
-                # save config
-                self._timekprUserConfig.saveUserConfiguration()
-
-        # result
-        return result, message
-
-    def checkAndSetPlayTimeAllowedDays(self, pPlayTimeAllowedDays):
-        """Validate and set up allowed PlayTime days for the user"""
-        """Validate allowed PlayTime days for the user
-            server expects only the days that are allowed, sorted in ascending order"""
-
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
-
-        # if we are still fine
-        if result != 0:
-            # result
-            pass
-        # if we have no days
-        elif pPlayTimeAllowedDays is None:
-            # result
-            result = -1
-            message = msg.getTranslation("TK_MSG_USER_ADMIN_CHK_PT_DAYLIST_NONE") % (
+            message = msg.getTranslation("TK_MSG_CONFIG_LOADER_POLICY_NOTFOUND") % (
                 self._userName
             )
-        else:
-            # days
-            days = []
-
-            # parse config
-            try:
-                for rDay in pPlayTimeAllowedDays:
-                    # empty
-                    if str(rDay) != "":
-                        # try to convert day
-                        tmp = int(rDay)
-                        # only if day is in proper interval
-                        if rDay not in cons.TK_ALLOWED_WEEKDAYS:
-                            tmp = 1 / 0
-                        else:
-                            days.append(tmp)
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_DAYLIST_INVALID"
-                ) % (self._userName)
-
-        # if all is correct, we update the configuration
-        if result == 0:
-            # set up config
-            try:
-                self._timekprUserConfig.setUserPlayTimeAllowedWeekdays(days)
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_DAYLIST_INVALID_SET"
-                ) % (self._userName)
-
-            # if we are still fine
-            if result == 0:
-                # save config
-                self._timekprUserConfig.saveUserConfiguration()
 
         # result
         return result, message
 
-    def checkAndSetPlayTimeLimitsForDays(self, pPlayTimeLimits):
-        """Validate and set up new PlayTime limits for each day for the user"""
-        """Validate allowable PlayTime for the user
-            server always expects 7 limits, for each day of the week, in the list"""
-
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
-
-        # if we are still fine
-        if result != 0:
-            # result
-            pass
-        # if we have no days
-        elif pPlayTimeLimits is None:
-            # result
-            result = -1
-            message = msg.getTranslation("TK_MSG_USER_ADMIN_CHK_PT_DAYLIMITS_NONE") % (
-                self._userName
-            )
-        else:
-            # limits
-            limits = []
-
-            # parse config
-            try:
-                for rLimit in pPlayTimeLimits:
-                    # empty
-                    if str(rLimit) != "":
-                        # try to convert seconds in day and normalize seconds in proper interval
-                        limits.append(max(min(int(rLimit), cons.TK_LIMIT_PER_DAY), 0))
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_DAYLIMITS_INVALID"
-                ) % (self._userName)
-
-        # if all is correct, we update the configuration
-        if result == 0:
-            # set up config
-            try:
-                self._timekprUserConfig.setUserPlayTimeLimitsPerWeekdays(limits)
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_DAYLIMITS_INVALID_SET"
-                ) % (self._userName)
-
-            # if we are still fine
-            if result == 0:
-                # save config
-                self._timekprUserConfig.saveUserConfiguration()
-
+    def migratePolicies(self, pDryRun):
+        """Delete (or with pDryRun only list) the user policies that restrict nothing"""
         # result
-        return result, message
-
-    def checkAndSetPlayTimeActivities(self, pPlayTimeActivities):
-        """Validate and set up allowed PlayTime activities for the user"""
-        """Validate allowed PlayTime activities for the user
-            server expects array of array of masks/descriptions"""
-
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
-
-        # if we are still fine
-        if result != 0:
-            # result
-            pass
-        # if we have no days
-        elif pPlayTimeActivities is None:
-            # result
-            result = -1
-            message = msg.getTranslation("TK_MSG_USER_ADMIN_CHK_PT_ACTIVITIES_NONE") % (
-                self._userName
-            )
-        else:
-            # days
-            activities = []
-
-            # parse config
-            try:
-                for rAct in pPlayTimeActivities:
-                    # set up act
-                    act = (rAct[0], rAct[1])
-                    # add to list
-                    activities.append(act)
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_ACTIVITIES_INVALID"
-                ) % (self._userName)
-
-        # if all is correct, we update the configuration
-        if result == 0:
-            # set up config
-            try:
-                self._timekprUserConfig.setUserPlayTimeAcitivityList(activities)
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_ACTIVITIES_INVALID_SET"
-                ) % (self._userName)
-
-            # if we are still fine
-            if result == 0:
-                # save config
-                self._timekprUserConfig.saveUserConfiguration()
-
-        # result
-        return result, message
-
-    def checkAndSetPlayTimeLeft(self, pOperation, pTimeLeft):
-        """Validate and set time left for today for the user"""
-        """Validate time limits for user for this moment:
-            if pOperation is "+" - more time left is addeed
-            if pOperation is "-" time is subtracted
-            if pOperation is "=" or empty, the time is set as it is"""
-
-        # check if we have this user
-        result, message = self.loadAndCheckUserConfiguration()
-
-        # if we are still fine
-        if result == 0:
-            # check if we have this user
-            result, message = self.loadAndCheckUserControl()
-
-        # if we are still fine
-        if result != 0:
-            # result
-            pass
-        # if we have no days
-        elif pOperation not in ("+", "-", "="):
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_USER_ADMIN_CHK_PT_TIMELIMIT_OPERATION_INVALID"
-            ) % (self._userName)
-        else:
-            # parse config
-            try:
-                if int(pTimeLeft) > 0:
-                    pass
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_USER_ADMIN_CHK_PT_TIMELIMIT_INVALID"
-                ) % (self._userName)
-
-            # if all is correct, we update the configuration
-            if result == 0:
-                # defaults
-                setLimit = 0
-
-                try:
-                    # get actual time limit for this day
-                    playTimeLimit = (
-                        self._timekprUserConfig.getUserPlayTimeLimitsPerWeekdays()[
-                            datetime.date(datetime.now()).isoweekday() - 1
-                        ]
-                    )
-                    # decode time left (operations are actually technicall reversed, + for ppl is please add more time and minus is subtract,
-                    #   but actually it's reverse, because we are dealing with time spent not time left)
-                    if pOperation == "+":
-                        setLimit = min(
-                            max(
-                                min(
-                                    self._timekprUserControl.getUserPlayTimeSpentBalance(),
-                                    playTimeLimit,
-                                )
-                                - pTimeLeft,
-                                -cons.TK_LIMIT_PER_DAY,
-                            ),
-                            cons.TK_LIMIT_PER_DAY,
-                        )
-                    elif pOperation == "-":
-                        setLimit = min(
-                            max(
-                                min(
-                                    self._timekprUserControl.getUserPlayTimeSpentBalance(),
-                                    playTimeLimit,
-                                )
-                                + pTimeLeft,
-                                -cons.TK_LIMIT_PER_DAY,
-                            ),
-                            cons.TK_LIMIT_PER_DAY,
-                        )
-                    elif pOperation == "=":
-                        setLimit = min(
-                            max(playTimeLimit - pTimeLeft, -cons.TK_LIMIT_PER_DAY),
-                            cons.TK_LIMIT_PER_DAY,
-                        )
-
-                    # set up config for day
-                    self._timekprUserControl.setUserPlayTimeSpentBalance(setLimit)
-                except Exception:
-                    # result
-                    result = -1
-                    message = msg.getTranslation(
-                        "TK_MSG_USER_ADMIN_CHK_PT_TIMELIMIT_INVALID_SET"
-                    ) % (self._userName)
-
-                # if we are still fine
-                if result == 0:
-                    # save config
-                    self._timekprUserControl.saveControl()
-
-        # result
-        return result, message
+        return 0, "", self._policyStore.migrateDefaultPolicies(pDryRun)
 
 
 class timekprConfigurationProcessor:
@@ -1460,14 +1036,6 @@ class timekprConfigurationProcessor:
             timekprConfigurationStore["TIMEKPR_USERS_EXCL"] = (
                 self._timekprConfig.getTimekprUsersExcl()
             )
-            # PlayTime enabled
-            timekprConfigurationStore["TIMEKPR_PLAYTIME_ENABLED"] = (
-                self._timekprConfig.getTimekprPlayTimeEnabled()
-            )
-            # PlayTime enhanced activity monitor enabled
-            timekprConfigurationStore[
-                "TIMEKPR_PLAYTIME_ENHANCED_ACTIVITY_MONITOR_ENABLED"
-            ] = self._timekprConfig.getTimekprPlayTimeEnhancedActivityMonitorEnabled()
 
         # result
         return result, message, timekprConfigurationStore
@@ -1936,104 +1504,6 @@ class timekprConfigurationProcessor:
                 # result
                 result = -1
                 message = msg.getTranslation("TK_MSG_ADMIN_CHK_EXCLUSERS_INVALID_SET")
-
-            # if we are still fine
-            if result == 0:
-                # save config
-                self._timekprConfig.saveTimekprConfiguration()
-
-        # result
-        return result, message
-
-    def checkAndSetTimekprPlayTimeEnabled(self, pPlayTimeEnabled):
-        """Check and set the PlayTime global switch"""
-        # load config
-        result, message = self.loadTimekprConfiguration()
-
-        # if we are still fine
-        if result != 0:
-            # result
-            pass
-        elif pPlayTimeEnabled is None:
-            # result
-            result = -1
-            message = msg.getTranslation("TK_MSG_ADMIN_CHK_PLAYTIMEENABLED_NONE")
-        else:
-            # parse
-            try:
-                # try to convert
-                if bool(pPlayTimeEnabled):
-                    pass
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_ADMIN_CHK_PLAYTIMEENABLED_INVALID"
-                ) % (str(pPlayTimeEnabled))
-
-        # if all is correct, we update the configuration
-        if result == 0:
-            # set up config
-            try:
-                self._timekprConfig.setTimekprPlayTimeEnabled(pPlayTimeEnabled)
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_ADMIN_CHK_PLAYTIMEENABLED_INVALID_SET"
-                ) % (str(pPlayTimeEnabled))
-
-            # if we are still fine
-            if result == 0:
-                # save config
-                self._timekprConfig.saveTimekprConfiguration()
-
-        # result
-        return result, message
-
-    def checkAndSetTimekprPlayTimeEnhancedActivityMonitorEnabled(
-        self, pPlayTimeAdvancedSearchEnabled
-    ):
-        """Check and set the PlayTime global enhanced activity monitor switch"""
-        # load config
-        result, message = self.loadTimekprConfiguration()
-
-        # if we are still fine
-        if result != 0:
-            # result
-            pass
-        elif pPlayTimeAdvancedSearchEnabled is None:
-            # result
-            result = -1
-            message = msg.getTranslation(
-                "TK_MSG_ADMIN_CHK_PLAYTIME_ENH_ACT_MON_ENABLED_NONE"
-            )
-        else:
-            # parse
-            try:
-                # try to convert
-                if bool(pPlayTimeAdvancedSearchEnabled):
-                    pass
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_ADMIN_CHK_PLAYTIME_ENH_ACT_MON_ENABLED_INVALID"
-                ) % (str(pPlayTimeAdvancedSearchEnabled))
-
-        # if all is correct, we update the configuration
-        if result == 0:
-            # set up config
-            try:
-                self._timekprConfig.setTimekprPlayTimeEnhancedActivityMonitorEnabled(
-                    pPlayTimeAdvancedSearchEnabled
-                )
-            except Exception:
-                # result
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_ADMIN_CHK_PLAYTIME_ENH_ACT_MON_ENABLED_INVALID_SET"
-                ) % (str(pPlayTimeAdvancedSearchEnabled))
 
             # if we are still fine
             if result == 0:

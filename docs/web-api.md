@@ -115,7 +115,9 @@ module `timekprw` uses in the other direction.
   (<https://www.rfc-editor.org/rfc/rfc9457>):
   `{"type", "title", "status", "detail", "errors": [{"field", "message"}]}`.
   `errors` and `applied` are omitted when empty. A user-scoped request
-  for a user the daemon has no configuration for is `404`; a value the
+  for a user the daemon does not list (see "Policies") is `404`, as is
+  a read of a group that has no policy and a deletion of a policy that
+  does not exist; a value the
   daemon refuses is `400` with its message as `detail`; `500` means
   the daemon accepted the request but failed to apply it (its log,
   `/var/log/timekpr.log`, has the reason; on NixOS `/etc/timekpr` is
@@ -134,6 +136,34 @@ module `timekprw` uses in the other direction.
   response is `400` with `errors` naming the failed field and
   `applied` listing the fields that were written before it.
 
+## Policies
+
+A _policy_ is a configuration file an administrator made. A user
+policy (`timekpr.<user>.conf`) applies to that user alone; a group
+policy (`groups/timekpr.<group>.conf`, addressed as `@<group>` by
+`timekpra` and as `/groups/<group>` here) applies to every member of
+the group that has no policy of their own. Nothing is created on
+login: the first setting for a user or a group creates its policy,
+so limits can be made for users who never logged in. A user's
+effective configuration is, in this order: their own policy; else
+the most-restrictive merge of the policies of the groups they belong
+to (the pseudo-group `all` matches everyone), after dropping every
+group that another matching group `overrides`; else the defaults.
+`GET /api/v1/users/{username}` reports the effective configuration
+with `policy_source` (`user`, `group` or `default`) and
+`policy_groups` (the groups that were merged, in merge order). The
+user list holds every user with a policy, every user of the system
+and every known member of a group with a policy; group membership is
+looked up through NSS, so it reaches domain users too. See
+`server/config/policy.py`.
+
+Deleting a user's policy (`DELETE /api/v1/users/{username}/policy`)
+puts them back under their group policies or the defaults; their
+counters stay. Earlier versions created a policy for every user on
+first login, which now hides that user's group policies;
+`POST /api/v1/policies/migrate` deletes (or, with `dry_run`, only
+lists) the user policies whose every value is a default.
+
 ## Endpoints
 
 ### Service
@@ -146,63 +176,73 @@ module `timekprw` uses in the other direction.
 
 Fields of `/api/v1/config` (names follow `TIMEKPR_*` keys returned by the daemon):
 
-| Field                                | Type                                                  | D-Bus setter                                       |
-| ------------------------------------ | ----------------------------------------------------- | -------------------------------------------------- |
-| `log_level`                          | int (1-3)                                             | `setTimekprLogLevel`                               |
-| `poll_time`                          | seconds                                               | `setTimekprPollTime`                               |
-| `save_time`                          | seconds                                               | `setTimekprSaveTime`                               |
-| `termination_time`                   | seconds                                               | `setTimekprTerminationTime`                        |
-| `final_warning_time`                 | seconds                                               | `setTimekprFinalWarningTime`                       |
-| `final_notification_time`            | seconds                                               | `setTimekprFinalNotificationTime`                  |
-| `session_types_tracked`              | list of strings, e.g. `["x11","wayland","mir","tty"]` | `setTimekprSessionsCtrl`                           |
-| `session_types_excluded`             | list of strings                                       | `setTimekprSessionsExcl`                           |
-| `users_excluded`                     | list of usernames                                     | `setTimekprUsersExcl`                              |
-| `playtime_enabled`                   | bool                                                  | `setTimekprPlayTimeEnabled`                        |
-| `playtime_enhanced_activity_monitor` | bool                                                  | `setTimekprPlayTimeEnhancedActivityMonitorEnabled` |
+| Field                     | Type                                                  | D-Bus setter                      |
+| ------------------------- | ----------------------------------------------------- | --------------------------------- |
+| `log_level`               | int (1-3)                                             | `setTimekprLogLevel`              |
+| `poll_time`               | seconds                                               | `setTimekprPollTime`              |
+| `save_time`               | seconds                                               | `setTimekprSaveTime`              |
+| `termination_time`        | seconds                                               | `setTimekprTerminationTime`       |
+| `final_warning_time`      | seconds                                               | `setTimekprFinalWarningTime`      |
+| `final_notification_time` | seconds                                               | `setTimekprFinalNotificationTime` |
+| `session_types_tracked`   | list of strings, e.g. `["x11","wayland","mir","tty"]` | `setTimekprSessionsCtrl`          |
+| `session_types_excluded`  | list of strings                                       | `setTimekprSessionsExcl`          |
+| `users_excluded`          | list of usernames                                     | `setTimekprUsersExcl`             |
 
 ### Users
 
-| Method  | Path                                                  | `timekpra`                    | Purpose                                                                                                                                                                   |
-| ------- | ----------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET`   | `/api/v1/users`                                       | `--userlist`                  | Users that have a timekpr configuration. Returns `[{"username", "full_name"}]`. Query `?include=status` adds each user's `status` object (one extra D-Bus call per user). |
-| `GET`   | `/api/v1/users/{username}`                            | `--userinfo` + `--userinfort` | Full view: `{"username", "config": {...}, "status": {...}}` (`getUserInformation(name, "F")`).                                                                            |
-| `GET`   | `/api/v1/users/{username}/config`                     | `--userinfo`                  | Saved configuration only (`"S"`).                                                                                                                                         |
-| `PATCH` | `/api/v1/users/{username}/config`                     | all `--set*` except time left | Partial update, see field table below.                                                                                                                                    |
-| `GET`   | `/api/v1/users/{username}/status`                     | `--userinfort`                | Realtime counters (`"R"`).                                                                                                                                                |
-| `PUT`   | `/api/v1/users/{username}/config/allowed-hours/{day}` | `--setallowedhours`           | Replace the allowed hours for one weekday, or for every weekday when `{day}` is `all`.                                                                                    |
-| `PUT`   | `/api/v1/users/{username}/config/playtime/activities` | `--setplaytimeactivities`     | Replace the PlayTime activity list.                                                                                                                                       |
-| `POST`  | `/api/v1/users/{username}/time-left`                  | `--settimeleft`               | Add, subtract or set today's remaining time.                                                                                                                              |
-| `POST`  | `/api/v1/users/{username}/playtime-left`              | `--setplaytimeleft`           | Same for PlayTime.                                                                                                                                                        |
+| Method   | Path                                                  | `timekpra`                    | Purpose                                                                                                                                                                                                                                                |
+| -------- | ----------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`    | `/api/v1/users`                                       | `--userlist`                  | The users timekpr knows (see "Policies"). Returns `[{"username", "full_name", "policy_source"}]`; `policy_source` is `user`, `group:<g1>;<g2>` or `default`. Query `?include=status` adds each user's `status` object (one extra D-Bus call per user). |
+| `GET`    | `/api/v1/users/{username}`                            | `--userinfo` + `--userinfort` | Full view: `{"username", "config": {...}, "status": {...}, "policy_source", "policy_groups"}` (`getUserInformation(name, "F")`); `config` is the effective configuration.                                                                              |
+| `GET`    | `/api/v1/users/{username}/config`                     | `--userinfo`                  | Saved configuration only (`"S"`).                                                                                                                                                                                                                      |
+| `PATCH`  | `/api/v1/users/{username}/config`                     | all `--set*` except time left | Partial update, see field table below.                                                                                                                                                                                                                 |
+| `GET`    | `/api/v1/users/{username}/status`                     | `--userinfort`                | Realtime counters (`"R"`).                                                                                                                                                                                                                             |
+| `PUT`    | `/api/v1/users/{username}/config/allowed-hours/{day}` | `--setallowedhours`           | Replace the allowed hours for one weekday, or for every weekday when `{day}` is `all`.                                                                                                                                                                 |
+| `POST`   | `/api/v1/users/{username}/time-left`                  | `--settimeleft`               | Add, subtract or set today's remaining time.                                                                                                                                                                                                           |
+| `DELETE` | `/api/v1/users/{username}/policy`                     | `--deletepolicy`              | Delete the user's own policy (`deletePolicy`); `204`, or `404` when there is none. The user's group policies or the defaults apply again; the counters stay.                                                                                           |
 
-There is deliberately no `POST /users` or `DELETE /users/{username}`.
-`timekpra` cannot create or remove a user: the daemon writes a user's
-configuration on that user's first tracked login, and `timekpra`
-refuses settings for a user without one. If those operations turn
-out to be needed they require daemon changes first, and the API would
-gain `POST /api/v1/users {"username"}` returning `201` and
-`DELETE /api/v1/users/{username}` returning `204`.
+There is no `POST /users`: a user is not created, the first setting
+made for a name creates that name's policy (`PATCH .../config` on a
+user without one is not `404`; the daemon answers the effective
+configuration for any user it lists).
+
+### Groups
+
+A group is addressed by its plain name (no `@`), percent-encoded like
+a username; `all` is the pseudo-group of everyone.
+
+| Method   | Path                                                | `timekpra`                          | Purpose                                                                                                                                                                                                |
+| -------- | --------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET`    | `/api/v1/groups`                                    | `--grouplist`                       | The groups with a policy (`getGroupList`): `[{"group", "overrides": [...], "members": [...]}]`. `members` is best effort: an identity provider need not enumerate a group.                             |
+| `GET`    | `/api/v1/groups/{group}`                            | `--groupinfo`                       | `{"group", "config": {...}}` (`getUserInformation("@group", "F")`); `404` when the group has no policy.                                                                                                |
+| `GET`    | `/api/v1/groups/{group}/config`                     | `--groupinfo`                       | The policy alone; `404` when there is none.                                                                                                                                                            |
+| `PATCH`  | `/api/v1/groups/{group}/config`                     | the `--set*` commands with `@group` | Partial update, fields below. The first setting for a group creates its policy, so this is never `404`; `overrides` goes through `setOverrides`, the rest through the same setters as a user's config. |
+| `PUT`    | `/api/v1/groups/{group}/config/allowed-hours/{day}` | `--setallowedhours @group`          | As for users.                                                                                                                                                                                          |
+| `DELETE` | `/api/v1/groups/{group}/policy`                     | `--deletepolicy @group`             | `204`, or `404` when there is none.                                                                                                                                                                    |
+| `POST`   | `/api/v1/policies/migrate`                          | `--migratepolicies`                 | Body `{"dry_run": true}` (the default); returns `{"users": [...]}`, the users whose default-valued policy was (or, with `dry_run`, would be) deleted.                                                  |
+
+A group's `config` has the fields of a user's `config` except
+`hide_tray_icon` (a per-user preference), plus `overrides`: a list of
+group names whose policies this one takes precedence over for users
+in both. `PATCH` accepts any subset of them.
 
 #### `config` resource
 
-`GET /api/v1/users/{username}/config` returns, and `PATCH` accepts any
-subset of:
+`GET /api/v1/users/{username}/config` returns the user's effective
+configuration, and `PATCH` accepts any subset of the fields below;
+a `PATCH` on a user without a policy of their own creates one (from
+the defaults, not from the group policies that applied before). The
+fields are:
 
-| Field                                  | Type                                                                                                              | D-Bus setter                             | Notes                                                                                                                                                                                                                                                                                                                        |
-| -------------------------------------- | ----------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `allowed_days`                         | list of weekdays, e.g. `[1,2,3,4,5]`                                                                              | `setAllowedDays`                         |                                                                                                                                                                                                                                                                                                                              |
-| `limits_per_day`                       | object weekday → seconds, `{"1": 7200, ..., "7": 10800}`                                                          | `setTimeLimitForDays`                    | The daemon stores limits positionally against `allowed_days` (`server/user/userdata.py`), so `GET` lists only allowed days, keys for other days are ignored, missing days keep their current value, and a change of `allowed_days` re-sends the limits aligned with the new days. Values are clamped to 86400 by the daemon. |
-| `allowed_hours`                        | object weekday → list of hour entries (below)                                                                     | `setAllowedHours`, once per day given    | Same shape as the `PUT` sub-resource; `PATCH` is for editing several days in one request.                                                                                                                                                                                                                                    |
-| `limit_per_week`                       | seconds                                                                                                           | `setTimeLimitForWeek`                    |                                                                                                                                                                                                                                                                                                                              |
-| `limit_per_month`                      | seconds                                                                                                           | `setTimeLimitForMonth`                   |                                                                                                                                                                                                                                                                                                                              |
-| `track_inactive`                       | bool                                                                                                              | `setTrackInactive`                       |                                                                                                                                                                                                                                                                                                                              |
-| `hide_tray_icon`                       | bool                                                                                                              | `setHideTrayIcon`                        |                                                                                                                                                                                                                                                                                                                              |
-| `lockout`                              | `{"type": "lock"｜"suspend"｜"suspendwake"｜"terminate"｜"kill"｜"shutdown", "wake_from": hour, "wake_to": hour}` | `setLockoutType`                         | `wake_from`/`wake_to` are required with `suspendwake`, rejected with other types, and `null` in responses for other types; the CLI form is `suspendwake;7;18`.                                                                                                                                                               |
-| `playtime.enabled`                     | bool                                                                                                              | `setPlayTimeEnabled`                     |                                                                                                                                                                                                                                                                                                                              |
-| `playtime.limit_override`              | bool                                                                                                              | `setPlayTimeLimitOverride`               |                                                                                                                                                                                                                                                                                                                              |
-| `playtime.allow_unaccounted_intervals` | bool                                                                                                              | `setPlayTimeUnaccountedIntervalsEnabled` |                                                                                                                                                                                                                                                                                                                              |
-| `playtime.allowed_days`                | list of weekdays                                                                                                  | `setPlayTimeAllowedDays`                 |                                                                                                                                                                                                                                                                                                                              |
-| `playtime.limits_per_day`              | object weekday → seconds                                                                                          | `setPlayTimeLimitsForDays`               | Positional against `playtime.allowed_days`, handled like `limits_per_day`.                                                                                                                                                                                                                                                   |
-| `playtime.activities`                  | list of `{"process", "description"}`                                                                              | `setPlayTimeActivities`                  | CLI form `csgo_linux[CS: GO]`; `description` may be empty.                                                                                                                                                                                                                                                                   |
+| Field             | Type                                                     | D-Bus setter                          | Notes                                                                                                                                                                                                                                                                                                                        |
+| ----------------- | -------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `allowed_days`    | list of weekdays, e.g. `[1,2,3,4,5]`                     | `setAllowedDays`                      |                                                                                                                                                                                                                                                                                                                              |
+| `limits_per_day`  | object weekday → seconds, `{"1": 7200, ..., "7": 10800}` | `setTimeLimitForDays`                 | The daemon stores limits positionally against `allowed_days` (`server/user/userdata.py`), so `GET` lists only allowed days, keys for other days are ignored, missing days keep their current value, and a change of `allowed_days` re-sends the limits aligned with the new days. Values are clamped to 86400 by the daemon. |
+| `allowed_hours`   | object weekday → list of hour entries (below)            | `setAllowedHours`, once per day given | Same shape as the `PUT` sub-resource; `PATCH` is for editing several days in one request.                                                                                                                                                                                                                                    |
+| `limit_per_week`  | seconds                                                  | `setTimeLimitForWeek`                 |                                                                                                                                                                                                                                                                                                                              |
+| `limit_per_month` | seconds                                                  | `setTimeLimitForMonth`                |                                                                                                                                                                                                                                                                                                                              |
+| `track_inactive`  | bool                                                     | `setTrackInactive`                    |                                                                                                                                                                                                                                                                                                                              |
+| `hide_tray_icon`  | bool                                                     | `setHideTrayIcon`                     |                                                                                                                                                                                                                                                                                                                              |
 
 An hour entry is
 `{"hour": 11, "start_minute": 0, "end_minute": 30, "unaccounted": false}`.
@@ -248,24 +288,7 @@ Example `GET /api/v1/users/alice/config`:
   "limit_per_week": 50000,
   "limit_per_month": 200000,
   "track_inactive": false,
-  "hide_tray_icon": false,
-  "lockout": { "type": "terminate", "wake_from": null, "wake_to": null },
-  "playtime": {
-    "enabled": false,
-    "limit_override": false,
-    "allow_unaccounted_intervals": false,
-    "allowed_days": [1, 2, 3, 4, 5, 6, 7],
-    "limits_per_day": {
-      "1": 1800,
-      "2": 1800,
-      "3": 1800,
-      "4": 1800,
-      "5": 1800,
-      "6": 3600,
-      "7": 3600
-    },
-    "activities": [{ "process": "csgo_linux", "description": "CS: GO" }]
-  }
+  "hide_tray_icon": false
 }
 ```
 
@@ -288,10 +311,7 @@ names follow the daemon's keys (`ACTUAL_*` from
   "time_left_day": 5966,
   "time_left_continuous": 3600,
   "time_spent_session": 900,
-  "time_inactive_session": 60,
-  "playtime_spent_day": 0,
-  "playtime_left_day": 1800,
-  "playtime_active_activity_count": 0
+  "time_inactive_session": 60
 }
 ```
 
@@ -308,8 +328,7 @@ names follow the daemon's keys (`ACTUAL_*` from
 `server/config/configprocessor.py`). The response is `200` with the
 `status` resource. `add` and `subtract` are not idempotent, so a
 client that retries after a network failure may grant time twice; see
-"Later additions". `playtime-left` is identical and maps to
-`setPlayTimeLeft`.
+"Later additions".
 
 The two operations used by the NixOS test are compositions, not
 endpoints: "forbid login" is
@@ -325,14 +344,14 @@ exemption is `POST .../time-left {"operation": "add", "seconds": 300}`.
 
 `timekprw` serves a small single-page UI from `web/static/` at `/`
 (plain HTML, CSS and JavaScript; no build step). It lists users with
-their time left, edits a user's limits, allowed hours, lockout and
-PlayTime settings (sending only the changed fields as one `PATCH`),
-adds or removes time for today, and edits the daemon settings. The
+their time left, edits a user's limits, allowed hours and options
+(sending only the changed fields as one `PATCH`), adds or removes
+time for today, and edits the daemon settings. The
 token is entered once per browser tab.
 
 ### Later additions
 
-- An `Idempotency-Key` header on the two `POST` endpoints, with the
+- An `Idempotency-Key` header on the `POST` endpoint, with the
   backend replaying the stored response for a repeated key, so that
   a retried `add` cannot grant time twice.
 - The GTK administration tool talking to this API (it still uses
@@ -347,32 +366,32 @@ token is entered once per browser tab.
 
 ## Mapping from `timekpra`
 
-| `timekpra`                                  | API                                                                      |
-| ------------------------------------------- | ------------------------------------------------------------------------ |
-| `--userlist`                                | `GET /users`                                                             |
-| `--userinfo U`                              | `GET /users/U/config`                                                    |
-| `--userinfort U`                            | `GET /users/U/status`                                                    |
-| `--setalloweddays U '1;2;3'`                | `PATCH /users/U/config {"allowed_days": [1,2,3]}`                        |
-| `--setallowedhours U DAY '7;8[0-30]'`       | `PUT /users/U/config/allowed-hours/DAY [...]`                            |
-| `--settimelimits U '7200;...'`              | `PATCH /users/U/config {"limits_per_day": {...}}`                        |
-| `--settimelimitweek U N`                    | `PATCH /users/U/config {"limit_per_week": N}`                            |
-| `--settimelimitmonth U N`                   | `PATCH /users/U/config {"limit_per_month": N}`                           |
-| `--settrackinactive U B`                    | `PATCH /users/U/config {"track_inactive": B}`                            |
-| `--sethidetrayicon U B`                     | `PATCH /users/U/config {"hide_tray_icon": B}`                            |
-| `--setlockouttype U T[;F;T]`                | `PATCH /users/U/config {"lockout": {...}}`                               |
-| `--settimeleft U OP N`                      | `POST /users/U/time-left {"operation", "seconds"}`                       |
-| `--setplaytimeenabled U B`                  | `PATCH /users/U/config {"playtime": {"enabled": B}}`                     |
-| `--setplaytimelimitoverride U B`            | `PATCH /users/U/config {"playtime": {"limit_override": B}}`              |
-| `--setplaytimeunaccountedintervalsflag U B` | `PATCH /users/U/config {"playtime": {"allow_unaccounted_intervals": B}}` |
-| `--setplaytimealloweddays U '1;2'`          | `PATCH /users/U/config {"playtime": {"allowed_days": [1,2]}}`            |
-| `--setplaytimelimits U '1800;...'`          | `PATCH /users/U/config {"playtime": {"limits_per_day": {...}}}`          |
-| `--setplaytimeactivities U 'p[desc];...'`   | `PUT /users/U/config/playtime/activities [...]`                          |
-| `--setplaytimeleft U OP N`                  | `POST /users/U/playtime-left {"operation", "seconds"}`                   |
+| `timekpra`                            | API                                                |
+| ------------------------------------- | -------------------------------------------------- |
+| `--userlist`                          | `GET /users`                                       |
+| `--userinfo U`                        | `GET /users/U/config`                              |
+| `--userinfort U`                      | `GET /users/U/status`                              |
+| `--setalloweddays U '1;2;3'`          | `PATCH /users/U/config {"allowed_days": [1,2,3]}`  |
+| `--setallowedhours U DAY '7;8[0-30]'` | `PUT /users/U/config/allowed-hours/DAY [...]`      |
+| `--settimelimits U '7200;...'`        | `PATCH /users/U/config {"limits_per_day": {...}}`  |
+| `--settimelimitweek U N`              | `PATCH /users/U/config {"limit_per_week": N}`      |
+| `--settimelimitmonth U N`             | `PATCH /users/U/config {"limit_per_month": N}`     |
+| `--settrackinactive U B`              | `PATCH /users/U/config {"track_inactive": B}`      |
+| `--sethidetrayicon U B`               | `PATCH /users/U/config {"hide_tray_icon": B}`      |
+| `--settimeleft U OP N`                | `POST /users/U/time-left {"operation", "seconds"}` |
+| `--deletepolicy U`                    | `DELETE /users/U/policy`                           |
+| `--grouplist`                         | `GET /groups`                                      |
+| `--groupinfo G`                       | `GET /groups/G/config`                             |
+| `--set* @G ...`                       | the user form, on `/groups/G/config`               |
+| `--setoverrides @G 'A;B'`             | `PATCH /groups/G/config {"overrides": ["A","B"]}`  |
+| `--deletepolicy @G`                   | `DELETE /groups/G/policy`                          |
+| `--migratepolicies dry-run\|delete`   | `POST /policies/migrate {"dry_run": true\|false}`  |
 
 ## Sources
 
 - CLI command list: `common/constants/constants.py`, `TK_USER_ADMIN_COMMANDS`.
 - CLI argument parsing and output formatting: `client/admin/adminprocessor.py`.
 - D-Bus admin methods and their signatures: `server/interface/dbus/daemon.py`.
-- Validation rules (lockout types, time-left operations, seven daily limits, hour map shape): `server/config/configprocessor.py`.
+- Validation rules (time-left operations, seven daily limits, hour map shape): `server/config/configprocessor.py`.
 - User list derivation from config files: `server/config/userhelper.py`, `getSavedUserList`.
+- Policies, their resolution and the group membership lookup: `server/config/policy.py`.

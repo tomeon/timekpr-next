@@ -16,7 +16,7 @@
   ...
 }: let
   settings = import ./settings.nix;
-  inherit (settings) idmDomain alice alicePassword bob bobPassword idmAdminPassword carol dave erin timekprwToken timekprwPort;
+  inherit (settings) idmDomain alice alicePassword bob bobPassword idmAdminPassword carol dave erin kids timekprwToken timekprwPort;
   idmOrigin = "https://${idmDomain}";
   timekpr = config.services.timekpr.package;
   bash = "/run/current-system/sw/bin/bash";
@@ -105,6 +105,8 @@ in {
   # The user timekprw.service runs as (sysusers.d is not applied on
   # NixOS); polkit authorizes it through the timekpr group.
   users.groups.timekprw = {};
+  # A group to hang a timekpr policy on (`timekpra --settimelimits @kids`).
+  users.groups.${kids} = {};
   users.users = {
     timekprw = {
       isSystemUser = true;
@@ -114,6 +116,7 @@ in {
     ${alice} = {
       isNormalUser = true;
       password = alicePassword;
+      extraGroups = [kids];
     };
     ${carol}.isNormalUser = true;
     ${dave}.isNormalUser = true;
@@ -154,9 +157,12 @@ in {
       enable = true;
       idmAdminPasswordFile = pkgs.writeText "idm-admin-password" idmAdminPassword;
       groups.posix_users = {};
+      # bob's membership of the kids group comes from Kanidm, so that a
+      # policy on a domain group reaches a domain user through NSS.
+      groups.${kids} = {};
       persons.${bob} = {
         displayName = "Bob";
-        groups = ["posix_users"];
+        groups = ["posix_users" kids];
       };
     };
   };
@@ -187,6 +193,7 @@ in {
       done
       answer-password ${lib.escapeShellArg idmAdminPassword} kanidm login -D idm_admin
       kanidm group posix set --gidnumber 10000 posix_users
+      kanidm group posix set --gidnumber 10002 ${kids}
       kanidm person posix set --gidnumber 10001 --shell ${bash} ${bob}
       answer-password ${lib.escapeShellArg bobPassword} kanidm person posix set-password ${bob}
     '';

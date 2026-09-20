@@ -16,7 +16,6 @@ Hour = Annotated[int, Field(ge=0, le=23)]
 Minute = Annotated[int, Field(ge=0, le=60)]
 Seconds = Annotated[int, Field(ge=0)]
 
-LockoutType = Literal["lock", "suspend", "suspendwake", "terminate", "kill", "shutdown"]
 TimeLeftOperation = Literal["add", "subtract", "set"]
 
 
@@ -58,41 +57,6 @@ class HourEntry(Model):
         return self
 
 
-class Lockout(Model):
-    type: LockoutType
-    wake_from: Hour | None = None
-    wake_to: Hour | None = None
-
-    @model_validator(mode="after")
-    def _check_wake(self):
-        wake = (self.wake_from, self.wake_to)
-        if self.type == "suspendwake":
-            if None in wake:
-                raise ValueError("suspendwake needs wake_from and wake_to")
-        elif wake != (None, None):
-            raise ValueError("wake_from and wake_to are only valid with suspendwake")
-        return self
-
-
-class Activity(Model):
-    """A PlayTime activity: a process name (mask) and a description"""
-
-    process: Annotated[str, Field(min_length=1)]
-    description: str = ""
-
-
-class PlayTimeConfig(Model):
-    enabled: bool
-    limit_override: bool
-    allow_unaccounted_intervals: bool
-    allowed_days: list[Weekday]
-    limits_per_day: dict[Weekday, Seconds]
-    activities: list[Activity]
-
-
-PlayTimeConfigPatch = partial(PlayTimeConfig, "PlayTimeConfigPatch")
-
-
 class UserConfig(Model):
     allowed_days: list[Weekday]
     # only days present in allowed_days carry a limit (the daemon stores
@@ -103,12 +67,9 @@ class UserConfig(Model):
     limit_per_month: Seconds
     track_inactive: bool
     hide_tray_icon: bool
-    lockout: Lockout
-    playtime: PlayTimeConfig
 
 
-class UserConfigPatch(partial(UserConfig, "_UserConfigPatchBase")):
-    playtime: PlayTimeConfigPatch | None = None
+UserConfigPatch = partial(UserConfig, "UserConfigPatch")
 
 
 # ## user status ##
@@ -124,17 +85,19 @@ class UserStatus(Model):
     time_spent_week: int
     time_spent_month: int
     time_left_day: int
-    playtime_spent_day: int
-    playtime_left_day: int
     time_left_continuous: int | None = None
     time_spent_session: int | None = None
     time_inactive_session: int | None = None
-    playtime_active_activity_count: int | None = None
+
+
+PolicySource = Literal["user", "group", "default"]
 
 
 class UserSummary(Model):
     username: str
     full_name: str
+    # "user", "group:<g1>;<g2>" or "default", as the daemon lists it
+    policy_source: str
     status: UserStatus | None = None
 
 
@@ -142,11 +105,58 @@ class User(Model):
     username: str
     config: UserConfig
     status: UserStatus
+    # where the effective config comes from: the user's own policy, the
+    # merge of the policies of these groups, or the defaults
+    policy_source: PolicySource
+    policy_groups: list[str]
 
 
 class TimeLeftRequest(Model):
     operation: TimeLeftOperation
     seconds: Seconds
+
+
+# ## group policies ##
+
+
+class GroupSummary(Model):
+    group: str
+    overrides: list[str]
+    # best effort: an identity provider need not enumerate a group
+    members: list[str]
+
+
+class GroupConfig(Model):
+    """A group's policy: a user config without the tray icon (a per-user
+    preference), plus the groups whose policies this one takes precedence
+    over for users in both"""
+
+    allowed_days: list[Weekday]
+    limits_per_day: dict[Weekday, Seconds]
+    allowed_hours: dict[Weekday, list[HourEntry]]
+    limit_per_week: Seconds
+    limit_per_month: Seconds
+    track_inactive: bool
+    overrides: list[str]
+
+
+GroupConfigPatch = partial(GroupConfig, "GroupConfigPatch")
+
+
+class Group(Model):
+    group: str
+    config: GroupConfig
+
+
+class MigrationRequest(Model):
+    """Delete the user policies that restrict nothing (left over from
+    versions that created one per user); dry_run only lists them"""
+
+    dry_run: bool = True
+
+
+class MigrationResult(Model):
+    users: list[str]
 
 
 # ## daemon configuration ##
@@ -162,8 +172,6 @@ class ServerConfig(Model):
     session_types_tracked: list[str]
     session_types_excluded: list[str]
     users_excluded: list[str]
-    playtime_enabled: bool
-    playtime_enhanced_activity_monitor: bool
 
 
 ServerConfigPatch = partial(ServerConfig, "ServerConfigPatch")

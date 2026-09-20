@@ -8,12 +8,6 @@
     <property name="xpad">3</property>
     <property name="stock">gtk-new</property>
   </object>
-  <object class="GtkImage" id="TimekprAddTrackedSessionsImage1">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="xpad">3</property>
-    <property name="stock">gtk-new</property>
-  </object>
   <object class="GtkListStore" id="TimekprNotificationPrioritiesLS">
     <columns>
       <!-- column-name priority -->
@@ -46,25 +40,7 @@
     <property name="xpad">3</property>
     <property name="stock">gtk-delete</property>
   </object>
-  <object class="GtkImage" id="TimekprRemoveTrackedSessionsImage1">
-    <property name="visible">True</property>
-    <property name="can-focus">False</property>
-    <property name="xpad">3</property>
-    <property name="stock">gtk-delete</property>
-  </object>
   <object class="GtkListStore" id="TimekprUserNotificationConfigLS">
-    <columns>
-      <!-- column-name secondsLessThan -->
-      <column type="gint"/>
-      <!-- column-name secondsLessThanStr -->
-      <column type="gchararray"/>
-      <!-- column-name priority -->
-      <column type="gchararray"/>
-      <!-- column-name priorityStr -->
-      <column type="gchararray"/>
-    </columns>
-  </object>
-  <object class="GtkListStore" id="TimekprUserPlayTimeNotificationConfigLS">
     <columns>
       <!-- column-name secondsLessThan -->
       <column type="gint"/>
@@ -110,22 +86,6 @@
     <property name="upper">30</property>
     <property name="step-increment">1</property>
     <property name="page-increment">10</property>
-  </object>
-  <object class="GtkListStore" id="timekprPTAllowedDaysLimitsActsLS">
-    <columns>
-      <!-- column-name Intervals -->
-      <column type="gchararray"/>
-    </columns>
-  </object>
-  <object class="GtkListStore" id="timekprPTAllowedDaysLimitsDaysLS">
-    <columns>
-      <!-- column-name dayIdx -->
-      <column type="gchararray"/>
-      <!-- column-name Day -->
-      <column type="gchararray"/>
-      <!-- column-name Limit -->
-      <column type="gchararray"/>
-    </columns>
   </object>
   <object class="GtkDialog" id="timekprConfigDialog">
     <property name="can-focus">False</property>
@@ -923,342 +883,7 @@ This varies among desktop environments.</property>
                           </packing>
                         </child>
                         <child>
-                          <!-- n-columns=3 n-rows=1 -->
-                          <object class="GtkGrid" id="timekprPagePTLimitsGrid">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="halign">center</property>
-                            <property name="margin-left">5</property>
-                            <property name="margin-right">5</property>
-                            <property name="margin-top">5</property>
-                            <property name="margin-bottom">5</property>
-                            <child>
-                              <object class="GtkBox" id="timekprPTLimitInfoBox">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="halign">start</property>
-                                <property name="margin-right">15</property>
-                                <property name="orientation">vertical</property>
-                                <property name="spacing">5</property>
-                                <child>
-                                  <object class="GtkLabel" id="timekprPTLimitInfoLabel">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="halign">start</property>
-                                    <property name="label" translatable="yes">Current PlayTime statistics</property>
-                                    <attributes>
-                                      <attribute name="style" value="italic"/>
-                                    </attributes>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">0</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <!-- n-columns=2 n-rows=5 -->
-                                  <object class="GtkGrid" id="timekprPTLimitInfoGrid">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="margin-left">5</property>
-                                    <property name="margin-right">5</property>
-                                    <property name="row-spacing">7</property>
-                                    <property name="column-spacing">5</property>
-                                    <child>
-                                      <object class="GtkLabel" id="timekprPTLimitInfoTimeLeftTodayLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Total PlayTime available left today</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Time left today:</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">3</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="timekprPTLimitInfoTimeLeftTodayLB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Format: &lt;days : hours : minutes : seconds&gt;</property>
-                                        <property name="halign">start</property>
-                                        <property name="label">00:00:00:00</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">3</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="timekprPTLimitInfoTimeSpentLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Total PlayTime spent today</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Time spent today:</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">2</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="timekprPTLimitInfoTimeSpentTodayLB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Format: &lt;days : hours : minutes : seconds&gt;</property>
-                                        <property name="halign">start</property>
-                                        <property name="label">00:00:00:00</property>
-                                        <property name="ellipsize">start</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">2</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkCheckButton" id="timekprPTLimitInfoTimeLimitOverrideLB">
-                                        <property name="visible">True</property>
-                                        <property name="sensitive">False</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">This option overrides the default time accounting.
-
-If it's checked, the time is accounted only when activities in "Activity / application list" are running, the rest of the time is considered idle.</property>
-                                        <property name="xalign">0</property>
-                                        <property name="draw-indicator">True</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="timekprPTLimitInfoTimeLimitOverrideLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">This option overrides the default time accounting.
-
-If it's checked, the time is accounted only when activities in "Activity / application list" are running, the rest of the time is considered idle.</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Time limit override:</property>
-                                        <property name="justify">fill</property>
-                                        <property name="wrap">True</property>
-                                        <property name="max-width-chars">20</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="timekprPTLimitInfoActivityCountTodayLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Number of currently active PlayTime activities</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Running activities:</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">4</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="timekprPTLimitInfoActivityCountLB">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Number of currently active PlayTime activities</property>
-                                        <property name="halign">start</property>
-                                        <property name="label">0</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">4</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="timekprPTLimitInfoUnaccountedIntervalsFlagLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="tooltip-text" translatable="yes">Allow activities during unaccounted ("∞") time intervals.
-
-This setting allows to use applications listed in "Activity / application list" during time intervals which are marked as unaccounted ("∞"), if the setting is not enabled, none of activities are allowed to run!</property>
-                                        <property name="halign">end</property>
-                                        <property name="label" translatable="yes">Allowed during "∞":</property>
-                                        <property name="justify">fill</property>
-                                        <property name="wrap">True</property>
-                                        <property name="max-width-chars">25</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">0</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkCheckButton" id="timekprPTLimitInfoUnaccountedIntervalsFlagLB">
-                                        <property name="visible">True</property>
-                                        <property name="sensitive">False</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="receives-default">False</property>
-                                        <property name="tooltip-text" translatable="yes">Allow activities during unaccounted ("∞") time intervals.
-
-This setting allows to use applications listed in "Activity / application list" during time intervals which are marked as unaccounted ("∞"), if the setting is not enabled, none of activities are allowed to run!</property>
-                                        <property name="xalign">0</property>
-                                        <property name="draw-indicator">True</property>
-                                      </object>
-                                      <packing>
-                                        <property name="left-attach">1</property>
-                                        <property name="top-attach">1</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="expand">False</property>
-                                    <property name="fill">True</property>
-                                    <property name="position">1</property>
-                                  </packing>
-                                </child>
-                              </object>
-                              <packing>
-                                <property name="left-attach">0</property>
-                                <property name="top-attach">0</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <!-- n-columns=1 n-rows=2 -->
-                              <object class="GtkGrid" id="timekprPTAllowedDaysLimitsDaysGrid">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="row-spacing">5</property>
-                                <child>
-                                  <object class="GtkScrolledWindow" id="timekprPTAllowedDaysLimitsDaysScrolledWindow">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="hexpand">True</property>
-                                    <property name="vexpand">True</property>
-                                    <property name="shadow-type">in</property>
-                                    <property name="min-content-width">170</property>
-                                    <child>
-                                      <object class="GtkTreeView" id="timekprPTAllowedDaysLimitsDaysTreeview">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="tooltip-text" translatable="yes">These are days and limits that available to you as part of PlayTime activity restrictions</property>
-                                        <property name="model">timekprPTAllowedDaysLimitsDaysLS</property>
-                                        <property name="headers-visible">False</property>
-                                        <property name="enable-search">False</property>
-                                        <property name="search-column">0</property>
-                                        <property name="show-expanders">False</property>
-                                        <property name="enable-grid-lines">horizontal</property>
-                                        <child internal-child="selection">
-                                          <object class="GtkTreeSelection"/>
-                                        </child>
-                                      </object>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="left-attach">0</property>
-                                    <property name="top-attach">1</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <object class="GtkLabel" id="timekprPTAllowedDaysLimitsDaysLabel">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="halign">start</property>
-                                    <property name="label" translatable="yes">Days &amp; Limits</property>
-                                    <attributes>
-                                      <attribute name="style" value="italic"/>
-                                    </attributes>
-                                  </object>
-                                  <packing>
-                                    <property name="left-attach">0</property>
-                                    <property name="top-attach">0</property>
-                                  </packing>
-                                </child>
-                              </object>
-                              <packing>
-                                <property name="left-attach">1</property>
-                                <property name="top-attach">0</property>
-                              </packing>
-                            </child>
-                            <child>
-                              <!-- n-columns=1 n-rows=2 -->
-                              <object class="GtkGrid" id="timekprPTAllowedDaysLimitsApplsGrid">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="row-spacing">5</property>
-                                <child>
-                                  <object class="GtkScrolledWindow" id="timekprPTAllowedDaysLimitsApplsScrolledWindow">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="hexpand">True</property>
-                                    <property name="vexpand">True</property>
-                                    <property name="shadow-type">in</property>
-                                    <property name="min-content-width">215</property>
-                                    <child>
-                                      <object class="GtkTreeView" id="timekprPTAllowedDaysLimitsApplsTreeview">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="tooltip-text" translatable="yes">This shows activities / applications which are part of PlayTime restrictions</property>
-                                        <property name="model">timekprPTAllowedDaysLimitsActsLS</property>
-                                        <property name="headers-visible">False</property>
-                                        <property name="enable-search">False</property>
-                                        <property name="search-column">0</property>
-                                        <property name="show-expanders">False</property>
-                                        <property name="enable-grid-lines">horizontal</property>
-                                        <child internal-child="selection">
-                                          <object class="GtkTreeSelection"/>
-                                        </child>
-                                      </object>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="left-attach">0</property>
-                                    <property name="top-attach">1</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <object class="GtkLabel" id="timekprPTAllowedDaysLimitsApplsLabel">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="halign">start</property>
-                                    <property name="label" translatable="yes">Activity / application list</property>
-                                    <attributes>
-                                      <attribute name="style" value="italic"/>
-                                    </attributes>
-                                  </object>
-                                  <packing>
-                                    <property name="left-attach">0</property>
-                                    <property name="top-attach">0</property>
-                                  </packing>
-                                </child>
-                              </object>
-                              <packing>
-                                <property name="left-attach">2</property>
-                                <property name="top-attach">0</property>
-                              </packing>
-                            </child>
-                          </object>
-                          <packing>
-                            <property name="position">2</property>
-                          </packing>
-                        </child>
-                        <child type="tab">
-                          <object class="GtkLabel" id="timekprPagePTLimitsLabel">
-                            <property name="visible">True</property>
-                            <property name="can-focus">False</property>
-                            <property name="label" translatable="yes">PlayTime limits</property>
-                          </object>
-                          <packing>
-                            <property name="position">2</property>
-                            <property name="tab-fill">False</property>
-                          </packing>
-                        </child>
-                        <child>
-                          <!-- n-columns=2 n-rows=2 -->
+                          <!-- n-columns=1 n-rows=2 -->
                           <object class="GtkGrid" id="TimekprUserNotificationConfigMainGrid">
                             <property name="visible">True</property>
                             <property name="can-focus">False</property>
@@ -1390,125 +1015,6 @@ Critical - a red icon and critical notification will be shown, this notification
                               </packing>
                             </child>
                             <child>
-                              <!-- n-columns=1 n-rows=2 -->
-                              <object class="GtkGrid" id="TimekprUserNotificationConfigPlayTimeGrid">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                                <property name="margin-left">10</property>
-                                <child>
-                                  <object class="GtkScrolledWindow" id="TimekprUserNotificationConfigPlayTimeScrolledWindow">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">True</property>
-                                    <property name="hexpand">True</property>
-                                    <property name="vexpand">True</property>
-                                    <property name="shadow-type">in</property>
-                                    <property name="min-content-width">250</property>
-                                    <property name="min-content-height">90</property>
-                                    <child>
-                                      <object class="GtkTreeView" id="TimekprUserPlayTimeNotificationConfigTreeView">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">True</property>
-                                        <property name="tooltip-text" translatable="yes">Configuration for personalized notifications about available PlayTime.
-
-Please configure notifications as you see fit.
-
-The configuration "Time" value indicates a value of PlayTime left when notification will be shown, the "Importance" option governs an icon colour and notification properties as follows.
-
-Information - a green icon and an informational notification will be shown
-Warning - a yellow icon and an informational notification will be shown
-Severe - a red icon and important notification will be shown
-Critical - a red icon and critical notification will be shown, this notification usually is shown over all open applications and stays open until dismissed, however this behaviour highly depends on Desktop Environment in use</property>
-                                        <property name="model">TimekprUserPlayTimeNotificationConfigLS</property>
-                                        <property name="enable-search">False</property>
-                                        <property name="search-column">0</property>
-                                        <child internal-child="selection">
-                                          <object class="GtkTreeSelection" id="TimekprUserPlayTimeNotificationConfigTreeSelection"/>
-                                        </child>
-                                      </object>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="left-attach">0</property>
-                                    <property name="top-attach">1</property>
-                                  </packing>
-                                </child>
-                                <child>
-                                  <object class="GtkBox" id="TimekprUserNotificationConfigPlayTimeLabelBox">
-                                    <property name="visible">True</property>
-                                    <property name="can-focus">False</property>
-                                    <property name="spacing">5</property>
-                                    <child>
-                                      <object class="GtkLabel" id="TimekprUserNotificationConfigPlayTimeLabel">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <property name="label" translatable="yes">PlayTime notification configuration</property>
-                                        <property name="wrap">True</property>
-                                        <property name="max-width-chars">30</property>
-                                        <attributes>
-                                          <attribute name="style" value="italic"/>
-                                        </attributes>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="position">0</property>
-                                      </packing>
-                                    </child>
-                                    <child>
-                                      <object class="GtkBox" id="TimekprUserNotificationConfigPlayTimeButtonControlBox">
-                                        <property name="visible">True</property>
-                                        <property name="can-focus">False</property>
-                                        <child>
-                                          <object class="GtkButton" id="TimekprUserNotificationConfigPlayTimeAddBT">
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">True</property>
-                                            <property name="receives-default">True</property>
-                                            <property name="tooltip-text" translatable="yes">Add new PlayTime notification threshold to the list</property>
-                                            <property name="image">TimekprAddTrackedSessionsImage1</property>
-                                            <signal name="clicked" handler="addPlayTimeNotificationConfigClicked" swapped="no"/>
-                                          </object>
-                                          <packing>
-                                            <property name="expand">False</property>
-                                            <property name="fill">True</property>
-                                            <property name="position">0</property>
-                                          </packing>
-                                        </child>
-                                        <child>
-                                          <object class="GtkButton" id="TimekprUserNotificationConfigPlayTimeRemoveBT">
-                                            <property name="visible">True</property>
-                                            <property name="can-focus">True</property>
-                                            <property name="receives-default">True</property>
-                                            <property name="tooltip-text" translatable="yes">Remove PlayTime notification threshold from the list</property>
-                                            <property name="image">TimekprRemoveTrackedSessionsImage1</property>
-                                            <signal name="clicked" handler="removePlayTimeNotificationConfigClicked" swapped="no"/>
-                                          </object>
-                                          <packing>
-                                            <property name="expand">False</property>
-                                            <property name="fill">True</property>
-                                            <property name="position">1</property>
-                                          </packing>
-                                        </child>
-                                      </object>
-                                      <packing>
-                                        <property name="expand">False</property>
-                                        <property name="fill">True</property>
-                                        <property name="pack-type">end</property>
-                                        <property name="position">1</property>
-                                      </packing>
-                                    </child>
-                                  </object>
-                                  <packing>
-                                    <property name="left-attach">0</property>
-                                    <property name="top-attach">0</property>
-                                  </packing>
-                                </child>
-                              </object>
-                              <packing>
-                                <property name="left-attach">1</property>
-                                <property name="top-attach">0</property>
-                              </packing>
-                            </child>
-                            <child>
                               <object class="GtkFixed" id="TimekprUserNotificationConfigMainGridTimeSpacer">
                                 <property name="visible">True</property>
                                 <property name="can-focus">False</property>
@@ -1518,19 +1024,9 @@ Critical - a red icon and critical notification will be shown, this notification
                                 <property name="top-attach">1</property>
                               </packing>
                             </child>
-                            <child>
-                              <object class="GtkFixed" id="TimekprUserNotificationConfigMainGridPlayTimeSpacer">
-                                <property name="visible">True</property>
-                                <property name="can-focus">False</property>
-                              </object>
-                              <packing>
-                                <property name="left-attach">1</property>
-                                <property name="top-attach">1</property>
-                              </packing>
-                            </child>
                           </object>
                           <packing>
-                            <property name="position">3</property>
+                            <property name="position">2</property>
                           </packing>
                         </child>
                         <child type="tab">
@@ -1540,7 +1036,7 @@ Critical - a red icon and critical notification will be shown, this notification
                             <property name="label" translatable="yes">Notifications</property>
                           </object>
                           <packing>
-                            <property name="position">3</property>
+                            <property name="position">2</property>
                             <property name="tab-fill">False</property>
                           </packing>
                         </child>
@@ -1852,7 +1348,7 @@ If this setting is not editable, your environment does not advertise sound notif
                             </child>
                           </object>
                           <packing>
-                            <property name="position">4</property>
+                            <property name="position">3</property>
                           </packing>
                         </child>
                         <child type="tab">
@@ -1862,7 +1358,7 @@ If this setting is not editable, your environment does not advertise sound notif
                             <property name="label" translatable="yes">Configuration</property>
                           </object>
                           <packing>
-                            <property name="position">4</property>
+                            <property name="position">3</property>
                             <property name="tab-fill">False</property>
                           </packing>
                         </child>

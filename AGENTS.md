@@ -13,7 +13,8 @@ Upstream code lives in `bin/`, `client/`, `common/`, `server/`,
   x86_64-darwin, so do not add it back.
 - `packages.timekpr` is nixpkgs' `timekpr` derivation with `src`
   overridden to this checkout (a fileset that excludes the Nix, script,
-  and CI files so editing them does not rebuild the package).
+  CI, and `docs/proposals/` files so editing them does not rebuild the
+  package; `docs/web-api.md` is installed, so the rest of `docs/` stays).
   `packages.default` is the same derivation. The nixpkgs derivation
   hardcodes `version = "0.5.8"` inside a `rec` attribute set, so
   overriding `version` alone does not propagate into its generated
@@ -221,9 +222,12 @@ Other facts about the sandbox worth knowing before trying something:
   that tracks `tty`.
 - "Forbid login" is expressed as `timekpra --settimelimits USER
 '0;0;0;0;0;0;0'`; an exemption is `timekpra --settimeleft USER + 300`.
-  A user must have a config file before `timekpra` accepts settings;
-  the daemon creates one on the user's first login, which is why the
-  test logs each user in once unrestricted first.
+  Settings can be made for a user (or a `@group`) that has never logged
+  in: the setter creates the policy file; nothing is created on its own
+  any more (see `docs/proposals/group-targeting.md` and
+  `server/config/policy.py`). Kanidm does not enumerate accounts, so
+  `--userlist` shows bob only once he has a policy or is logged in;
+  `--userinfo bob@...` works at any time because NSS knows him by name.
 - The daemon's log is `/var/log/timekpr.log` and is flushed lazily;
   wait for lines rather than asserting on them immediately, and stop
   the service to flush it when diagnosing a failure.

@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -23,6 +23,7 @@ from timekpr.web.bridge import DaemonError
 
 PREFIX = "/api/v1"
 Username = Annotated[str, Path(min_length=1)]
+GroupName = Annotated[str, Path(min_length=1, description='a group name, or "all"')]
 Day = Annotated[str, Path(pattern="^([1-7]|all)$", description='ISO weekday or "all"')]
 
 _TITLES = {
@@ -233,19 +234,6 @@ def create_app(
     ):
         return bridge.set_allowed_hours(username, day, entries)
 
-    @api.put(
-        "/users/{username}/config/playtime/activities",
-        response_model=models.UserConfig,
-        responses=user_responses,
-    )
-    def put_playtime_activities(username: Username, activities: list[models.Activity]):
-        return bridge.patch_user_config(
-            username,
-            models.UserConfigPatch(
-                playtime=models.PlayTimeConfigPatch(activities=activities)
-            ),
-        )
-
     @api.post(
         "/users/{username}/time-left",
         response_model=models.UserStatus,
@@ -254,13 +242,67 @@ def create_app(
     def post_time_left(username: Username, request: models.TimeLeftRequest):
         return bridge.set_time_left(username, request)
 
-    @api.post(
-        "/users/{username}/playtime-left",
-        response_model=models.UserStatus,
-        responses=user_responses,
+    @api.delete(
+        "/users/{username}/policy",
+        status_code=204,
+        response_class=Response,
+        responses={404: {"model": models.Problem}},
     )
-    def post_playtime_left(username: Username, request: models.TimeLeftRequest):
-        return bridge.set_time_left(username, request, playtime=True)
+    def delete_user_policy(username: Username):
+        bridge.delete_user_policy(username)
+
+    # ## policies ##
+
+    @api.post("/policies/migrate", response_model=models.MigrationResult)
+    def migrate_policies(request: models.MigrationRequest):
+        return bridge.migrate_policies(request)
+
+    # ## groups ##
+
+    group_responses = {400: {"model": models.Problem}, 404: {"model": models.Problem}}
+
+    @api.get("/groups", response_model=list[models.GroupSummary])
+    def list_groups():
+        return bridge.list_groups()
+
+    @api.get("/groups/{group}", response_model=models.Group, responses=group_responses)
+    def get_group(group: GroupName):
+        return bridge.get_group(group)
+
+    @api.get(
+        "/groups/{group}/config",
+        response_model=models.GroupConfig,
+        responses=group_responses,
+    )
+    def get_group_config(group: GroupName):
+        return bridge.get_group_config(group)
+
+    @api.patch(
+        "/groups/{group}/config",
+        response_model=models.GroupConfig,
+        responses={400: {"model": models.Problem}},
+    )
+    def patch_group_config(group: GroupName, patch: models.GroupConfigPatch):
+        return bridge.patch_group_config(group, patch)
+
+    @api.put(
+        "/groups/{group}/config/allowed-hours/{day}",
+        response_model=models.GroupConfig,
+        responses={400: {"model": models.Problem}},
+    )
+    def put_group_allowed_hours(
+        group: GroupName, day: Day, entries: list[models.HourEntry]
+    ):
+        return bridge.set_group_allowed_hours(group, day, entries)
+
+    @api.delete(
+        "/groups/{group}/policy",
+        status_code=204,
+        response_class=Response,
+        responses={404: {"model": models.Problem}},
+    )
+    def delete_group_policy(group: GroupName):
+        bridge.delete_group_policy(group)
 
     app.include_router(api)
 

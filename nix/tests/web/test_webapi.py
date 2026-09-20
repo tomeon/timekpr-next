@@ -1,6 +1,6 @@
 """The daemon/JSON conversions shared by timekprw and timekpra's HTTP connector."""
 
-from fake import LIVE, default_user
+from fake import LIVE, default_group, default_user
 
 from timekpr.common.utils import webapi
 from timekpr.web.bridge import plain
@@ -13,20 +13,40 @@ def test_user_config_round_trip():
     expected = {
         key: value
         for key, value in info.items()
-        if not key.startswith(("TIME_", "PLAYTIME_LEFT", "PLAYTIME_SPENT"))
+        if not key.startswith(("TIME_", "POLICY_"))
     }
     assert back == expected
     # in the daemon's key order, so that timekpra prints the same thing
     assert list(back) == list(expected)
+    assert "hide_tray_icon" in config and "overrides" not in config
 
 
-def test_suspendwake_round_trip():
+def test_user_policy_round_trip():
     info = plain(default_user())
-    info["LOCKOUT_TYPE"] = "suspendwake"
-    info["WAKEUP_HOUR_INTERVAL"] = "7;18"
-    config = webapi.user_config_from_daemon(info)
-    assert config["lockout"] == {"type": "suspendwake", "wake_from": 7, "wake_to": 18}
-    assert webapi.user_config_to_daemon(config)["WAKEUP_HOUR_INTERVAL"] == "7;18"
+    info["POLICY_SOURCE"], info["POLICY_GROUPS"] = "group", ["all", "kids"]
+    policy = webapi.user_policy_from_daemon(info)
+    assert policy == {"policy_source": "group", "policy_groups": ["all", "kids"]}
+    assert webapi.user_policy_to_daemon(policy) == {
+        "POLICY_SOURCE": "group",
+        "POLICY_GROUPS": ["all", "kids"],
+    }
+
+
+def test_group_config_round_trip():
+    info = plain(default_group())
+    info["OVERRIDES"] = ["all"]
+    config = webapi.group_config_from_daemon(info)
+    assert config["overrides"] == ["all"] and "hide_tray_icon" not in config
+    assert list(webapi.GROUP_FIELDS) == [
+        "limit_per_week",
+        "limit_per_month",
+        "track_inactive",
+    ]
+    back = webapi.group_config_to_daemon(config)
+    # the daemon returns HIDE_TRAY_ICON for a group too, but it means nothing there
+    expected = {key: value for key, value in info.items() if key != "HIDE_TRAY_ICON"}
+    assert back == expected
+    assert list(back) == list(expected)
 
 
 def test_status_round_trip():

@@ -6,7 +6,6 @@ Created on Aug 28, 2018
 
 # import
 import os
-from datetime import timedelta
 
 from timekpr.client.gui.clientgui import timekprGUI
 from timekpr.client.interface.dbus.notifications import timekprNotifications
@@ -35,12 +34,8 @@ class timekprNotificationArea:
         self._lastUsedPriority = self._lastUsedServerPriority = ""
         # priority level
         self._lastUsedPriorityLvl = -99
-        # PlayTime priority level
-        self._lastUsedPTPriorityLvl = -99
         # initialize time left
         self._timeLeftTotal = None
-        # initialize PlayTime left
-        self._playTimeLeftTotal = None
         # initialize time limit
         self._timeNotLimited = 0
 
@@ -83,7 +78,7 @@ class timekprNotificationArea:
         """Proxy method for request time left from server"""
         self._timekprNotifications.requestTimeLeft()
 
-    def _determinePriority(self, pType, pPriority, pTimeLeft):
+    def _determinePriority(self, pPriority, pTimeLeft):
         """Determine priority based on client config"""
         # def
         finalPrio = pPriority
@@ -91,11 +86,7 @@ class timekprNotificationArea:
         # keep in mind that this applies to timeLeft only and critical notifications can STILL be pushed from server
         if pTimeLeft is not None:
             # calculate
-            for rPrio in (
-                self._timekprClientConfig.getClientNotificationLevels()
-                if pType == "Time"
-                else self._timekprClientConfig.getClientPlayTimeNotificationLevels()
-            ):
+            for rPrio in self._timekprClientConfig.getClientNotificationLevels():
                 # determine which is the earliest priority level we need to use
                 # it is determined as time left is less then this interval
                 if rPrio[0] >= pTimeLeft and (
@@ -107,7 +98,7 @@ class timekprNotificationArea:
         # final priority
         return finalPrio, finalLimitSecs
 
-    def formatTimeLeft(self, pPriority, pTimeLeft, pTimeNotLimited, pPlayTimeLeft=None):
+    def formatTimeLeft(self, pPriority, pTimeLeft, pTimeNotLimited):
         """Set time left in the indicator"""
         log.log(cons.TK_LOG_LEVEL_DEBUG, "start formatTimeLeft")
 
@@ -116,31 +107,10 @@ class timekprNotificationArea:
         timekprIcon = None
         timeLeftStr = None
         isTimeChanged = self._timeLeftTotal != pTimeLeft
-        isPlayTimeChanged = self._playTimeLeftTotal != pPlayTimeLeft
-
-        # determine hours and minutes for PlayTime (if there is such time)
-        if (
-            (isTimeChanged or isPlayTimeChanged)
-            and pPlayTimeLeft is not None
-            and pTimeLeft is not None
-        ):
-            # get the smallest one
-            timeLeftPT = min(pPlayTimeLeft, pTimeLeft)
-            # determine hours and minutes
-            timeLeftStrPT = str(
-                (timeLeftPT - cons.TK_DATETIME_START).days * 24 + timeLeftPT.hour
-            ).rjust(2, "0")
-            timeLeftStrPT += ":" + str(timeLeftPT.minute).rjust(2, "0")
-            timeLeftStrPT += (
-                (":" + str(timeLeftPT.second).rjust(2, "0"))
-                if self._timekprClientConfig.getClientShowSeconds()
-                else ""
-            )
 
         # execute time and icon changes + notifications only when there are changes
         if (
             isTimeChanged
-            or isPlayTimeChanged
             or pTimeLeft is None
             or self._lastUsedServerPriority != pPriority
         ):
@@ -153,7 +123,6 @@ class timekprNotificationArea:
             else:
                 # update time
                 self._timeLeftTotal = pTimeLeft
-                self._playTimeLeftTotal = pPlayTimeLeft
                 self._timeNotLimited = pTimeNotLimited
 
                 # unlimited has special icon and text (if it's not anymore, these will change)
@@ -181,7 +150,6 @@ class timekprNotificationArea:
                             (pPriority, -1)
                             if pPriority == cons.TK_PRIO_UACC
                             else self._determinePriority(
-                                "Time",
                                 pPriority,
                                 (pTimeLeft - cons.TK_DATETIME_START).total_seconds(),
                             )
@@ -205,11 +173,6 @@ class timekprNotificationArea:
                                 )
                             # level this up
                             self._lastUsedPriorityLvl = finLvl
-
-                # determine hours and minutes for PlayTime (if there is such time)
-                if pPlayTimeLeft is not None:
-                    # format final time string
-                    timeLeftStr = f"{timeLeftStr} / {timeLeftStrPT}"
 
                 # now, if priority changes, set up icon as well
                 if isTimeChanged and self._lastUsedPriority != prio:
@@ -236,56 +199,6 @@ class timekprNotificationArea:
 
         # return time left and icon (if changed), so implementations can use it
         return timeLeftStr, timekprIcon
-
-    def processPlayTimeNotifications(self, pTimeLimits):
-        """Process PlayTime notifications (if there is PT info in limits)"""
-        isPTInfoEnabled = self._timekprGUI.isPlayTimeAccountingInfoEnabled()
-        # determine whether we actually need to process PlayTime
-        if (
-            cons.TK_CTRL_PTLSTC in pTimeLimits
-            and cons.TK_CTRL_PTLPD in pTimeLimits
-            and cons.TK_CTRL_PTTLO in pTimeLimits
-        ):
-            # only of not enabled
-            if not isPTInfoEnabled:
-                self._timekprGUI.setPlayTimeAccountingInfoEnabled(True)
-            # get user configured level and priority
-            prio, finLvl = self._determinePriority(
-                "PlayTime", cons.TK_PRIO_LOW, pTimeLimits[cons.TK_CTRL_PTLPD]
-            )
-            # log
-            log.log(
-                cons.TK_LOG_LEVEL_DEBUG,
-                f"process PT notif, prio: {prio}, prevLVL: {int(self._lastUsedPTPriorityLvl)}, lvl: {int(finLvl)}, icoena: {self.getTrayIconEnabled()}",
-            )
-            # if any priority is effective, determine whether we need to inform user
-            if (
-                (finLvl > 0 or self._lastUsedPTPriorityLvl < -1)
-                and self._lastUsedPTPriorityLvl != finLvl
-                and self.isTimekprConnected()
-            ):
-                # adjust level too
-                self._lastUsedPTPriorityLvl = finLvl
-                # if icon is hidden, do not show any notifications
-                if self.getTrayIconEnabled():
-                    # notify user
-                    self._timekprNotifications.notifyUser(
-                        cons.TK_MSG_CODE_TIMELEFT,
-                        "PlayTime",
-                        prio,
-                        cons.TK_DATETIME_START
-                        + timedelta(
-                            seconds=min(
-                                pTimeLimits[cons.TK_CTRL_PTLPD],
-                                pTimeLimits[cons.TK_CTRL_LEFTD],
-                            )
-                        ),
-                        None,
-                    )
-        elif isPTInfoEnabled:
-            # disable info (if it was enabled)
-            log.log(cons.TK_LOG_LEVEL_DEBUG, "disable PT info tab")
-            self._timekprGUI.setPlayTimeAccountingInfoEnabled(False)
 
     def notifyUser(
         self, pMsgCode, pMsgType, pPriority, pTimeLeft=None, pAdditionalMessage=None

@@ -26,11 +26,6 @@ SERVER_FIELDS = {
     "session_types_tracked": ("TIMEKPR_SESSION_TYPES_CTRL", "setTimekprSessionsCtrl"),
     "session_types_excluded": ("TIMEKPR_SESSION_TYPES_EXCL", "setTimekprSessionsExcl"),
     "users_excluded": ("TIMEKPR_USERS_EXCL", "setTimekprUsersExcl"),
-    "playtime_enabled": ("TIMEKPR_PLAYTIME_ENABLED", "setTimekprPlayTimeEnabled"),
-    "playtime_enhanced_activity_monitor": (
-        "TIMEKPR_PLAYTIME_ENHANCED_ACTIVITY_MONITOR_ENABLED",
-        "setTimekprPlayTimeEnhancedActivityMonitorEnabled",
-    ),
 }
 
 # API field -> daemon key / setter for scalar per-user settings
@@ -40,14 +35,15 @@ USER_FIELDS = {
     "track_inactive": ("TRACK_INACTIVE", "setTrackInactive"),
     "hide_tray_icon": ("HIDE_TRAY_ICON", "setHideTrayIcon"),
 }
-PLAYTIME_FIELDS = {
-    "enabled": ("PLAYTIME_ENABLED", "setPlayTimeEnabled"),
-    "limit_override": ("PLAYTIME_LIMIT_OVERRIDE_ENABLED", "setPlayTimeLimitOverride"),
-    "allow_unaccounted_intervals": (
-        "PLAYTIME_UNACCOUNTED_INTERVALS_ENABLED",
-        "setPlayTimeUnaccountedIntervalsEnabled",
-    ),
+
+# the scalar per-group settings: a group policy has no tray icon (that is
+# a per-user preference)
+GROUP_FIELDS = {
+    field: setter for field, setter in USER_FIELDS.items() if field != "hide_tray_icon"
 }
+
+# where a user's effective policy comes from, API field -> daemon key
+POLICY_FIELDS = {"policy_source": "POLICY_SOURCE", "policy_groups": "POLICY_GROUPS"}
 
 # saved counters (always present) and live counters (present while the
 # daemon tracks a session of the user), API field -> daemon key
@@ -57,8 +53,6 @@ STATUS_SAVED = {
     "time_spent_week": "TIME_SPENT_WEEK",
     "time_spent_month": "TIME_SPENT_MONTH",
     "time_left_day": "TIME_LEFT_DAY",
-    "playtime_left_day": "PLAYTIME_LEFT_DAY",
-    "playtime_spent_day": "PLAYTIME_SPENT_DAY",
 }
 STATUS_LIVE = {
     "time_spent_session": "ACTUAL_TIME_SPENT_SESSION",
@@ -67,14 +61,10 @@ STATUS_LIVE = {
     "time_spent_day": "ACTUAL_TIME_SPENT_DAY",
     "time_left_day": "ACTUAL_TIME_LEFT_DAY",
     "time_left_continuous": "ACTUAL_TIME_LEFT_CONTINUOUS",
-    "playtime_left_day": "ACTUAL_PLAYTIME_LEFT_DAY",
-    "playtime_active_activity_count": "ACTUAL_ACTIVE_PLAYTIME_ACTIVITY_COUNT",
 }
 
 # API operation -> daemon operation for adjusting time left
 TIME_LEFT_OPERATIONS = {"add": "+", "subtract": "-", "set": "="}
-# the CLI's defaults for the wake-up interval of lockout types other than suspendwake
-DEFAULT_WAKE = (0, 23)
 
 
 def limits_by_day(days, limits):
@@ -112,62 +102,25 @@ def hours_to_daemon(entries):
     }
 
 
-def lockout_from_daemon(info):
-    lockout = {"type": info["LOCKOUT_TYPE"], "wake_from": None, "wake_to": None}
-    if lockout["type"] == cons.TK_CTRL_RES_W:
-        wake = [
-            int(hour)
-            for hour in info.get("WAKEUP_HOUR_INTERVAL", "").split(";")
-            if hour != ""
-        ]
-        lockout["wake_from"], lockout["wake_to"] = (
-            wake if len(wake) == 2 else DEFAULT_WAKE
-        )
-    return lockout
-
-
-def lockout_wake(lockout):
-    """The wake-up interval to send to the daemon for a lockout setting"""
-    if lockout["type"] == cons.TK_CTRL_RES_W:
-        return lockout["wake_from"], lockout["wake_to"]
-    return DEFAULT_WAKE
-
-
 # ## whole resources ##
 
 
-def user_config_from_daemon(info):
+def _limits_from_daemon(info, fields):
     days = [int(day) for day in info["ALLOWED_WEEKDAYS"]]
-    playtime_days = [int(day) for day in info["PLAYTIME_ALLOWED_WEEKDAYS"]]
     config = {
         "allowed_days": days,
         "limits_per_day": limits_by_day(days, info["LIMITS_PER_WEEKDAYS"]),
         "allowed_hours": {
             day: hours_from_daemon(info[f"ALLOWED_HOURS_{day}"]) for day in WEEKDAYS
         },
-        "lockout": lockout_from_daemon(info),
-        "playtime": {
-            "allowed_days": playtime_days,
-            "limits_per_day": limits_by_day(
-                playtime_days, info["PLAYTIME_LIMITS_PER_WEEKDAYS"]
-            ),
-            "activities": [
-                {"process": activity[0], "description": activity[1]}
-                for activity in info["PLAYTIME_ACTIVITIES"]
-            ],
-        },
     }
-    config.update({field: info[key] for field, (key, _setter) in USER_FIELDS.items()})
-    config["playtime"].update(
-        {field: info[key] for field, (key, _setter) in PLAYTIME_FIELDS.items()}
-    )
+    config.update({field: info[key] for field, (key, _setter) in fields.items()})
     return config
 
 
-def user_config_to_daemon(config):
-    """The inverse of user_config_from_daemon, in the daemon's key order"""
+def _limits_to_daemon(config):
+    """The daemon's keys up to the scalars, in its order"""
     days = config["allowed_days"]
-    playtime = config["playtime"]
     hours = config["allowed_hours"]
     info = {
         f"ALLOWED_HOURS_{day}": hours_to_daemon(hours.get(str(day), hours.get(day, [])))
@@ -175,23 +128,56 @@ def user_config_to_daemon(config):
     }
     info["ALLOWED_WEEKDAYS"] = [str(day) for day in days]
     info["LIMITS_PER_WEEKDAYS"] = limits_list(days, config["limits_per_day"])
+    return info
+
+
+def user_config_from_daemon(info):
+    return _limits_from_daemon(info, USER_FIELDS)
+
+
+def user_config_to_daemon(config):
+    """The inverse of user_config_from_daemon, in the daemon's key order"""
+    info = _limits_to_daemon(config)
     info["TRACK_INACTIVE"] = config["track_inactive"]
     info["HIDE_TRAY_ICON"] = config["hide_tray_icon"]
-    info["LOCKOUT_TYPE"] = config["lockout"]["type"]
-    if info["LOCKOUT_TYPE"] == cons.TK_CTRL_RES_W:
-        info["WAKEUP_HOUR_INTERVAL"] = "{};{}".format(*lockout_wake(config["lockout"]))
     info["LIMIT_PER_WEEK"] = config["limit_per_week"]
     info["LIMIT_PER_MONTH"] = config["limit_per_month"]
-    for field, (key, _setter) in PLAYTIME_FIELDS.items():
-        info[key] = playtime[field]
-    info["PLAYTIME_ALLOWED_WEEKDAYS"] = [str(day) for day in playtime["allowed_days"]]
-    info["PLAYTIME_LIMITS_PER_WEEKDAYS"] = limits_list(
-        playtime["allowed_days"], playtime["limits_per_day"]
-    )
-    info["PLAYTIME_ACTIVITIES"] = [
-        [activity["process"], activity["description"]]
-        for activity in playtime["activities"]
-    ]
+    return info
+
+
+def user_policy_from_daemon(info):
+    """Where a user's effective policy comes from (the daemon adds these
+    keys to a user's full information)"""
+    return {
+        "policy_source": info["POLICY_SOURCE"],
+        "policy_groups": [str(group) for group in info["POLICY_GROUPS"]],
+    }
+
+
+def user_policy_to_daemon(user):
+    return {
+        "POLICY_SOURCE": user["policy_source"],
+        "POLICY_GROUPS": list(user["policy_groups"]),
+    }
+
+
+def group_config_from_daemon(info):
+    """A group's policy: the limits, without the tray icon, plus the groups
+    it overrides"""
+    config = _limits_from_daemon(info, GROUP_FIELDS)
+    config["overrides"] = [str(group) for group in info["OVERRIDES"]]
+    return config
+
+
+def group_config_to_daemon(config):
+    """The inverse of group_config_from_daemon, in the daemon's key order
+    (HIDE_TRAY_ICON, which the daemon returns but which means nothing for a
+    group, is left out)"""
+    info = _limits_to_daemon(config)
+    info["TRACK_INACTIVE"] = config["track_inactive"]
+    info["LIMIT_PER_WEEK"] = config["limit_per_week"]
+    info["LIMIT_PER_MONTH"] = config["limit_per_month"]
+    info["OVERRIDES"] = list(config["overrides"])
     return info
 
 

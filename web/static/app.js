@@ -15,21 +15,40 @@ const SERVER_FIELDS = [
   ["session_types_tracked", "Session types tracked", "list"],
   ["session_types_excluded", "Session types excluded", "list"],
   ["users_excluded", "Users excluded", "list"],
-  ["playtime_enabled", "PlayTime enabled", "checkbox"],
-  [
-    "playtime_enhanced_activity_monitor",
-    "PlayTime enhanced activity monitor",
-    "checkbox",
-  ],
 ];
 
 const $ = (selector, root = document) => root.querySelector(selector);
 const state = {
   token: sessionStorage.getItem("timekprw-token") || "",
   user: null,
-  config: null,
-  hours: {},
+  group: null,
   server: null,
+};
+
+/* The resources the limits form can be bound to.  Each target owns one
+   instance of the form (`form`), the configuration it last showed
+   (`config`) and the hours being edited (`hours`). */
+const targets = {
+  user: {
+    prefix: "",
+    hasHideTrayIcon: true,
+    hasOverrides: false,
+    configPath: () => `/users/${encode(state.user)}/config`,
+    reload: () => loadUser(),
+    // the daemon creates the user's policy on the first save
+    afterSave: async () => {
+      await loadUser();
+      await loadUsers();
+    },
+  },
+  group: {
+    prefix: "group-",
+    hasHideTrayIcon: false,
+    hasOverrides: true,
+    configPath: () => `/groups/${encode(state.group)}/config`,
+    reload: () => loadGroup(),
+    afterSave: () => loadGroups(),
+  },
 };
 
 /* ---- helpers ---- */
@@ -56,6 +75,14 @@ function parseHms(text) {
   return Number(match[1]) * 3600 + Number(match[2] || 0) * 60;
 }
 
+/* a semicolon separated list, as the CLI writes them */
+function splitList(text) {
+  return text
+    .split(";")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
 /* the CLI's notation for a day's hours: 7;8;11[0-30];!14 */
 function hoursToText(entries) {
   return entries
@@ -67,20 +94,16 @@ function hoursToText(entries) {
 }
 
 function textToHours(text) {
-  return text
-    .split(";")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((item) => {
-      const match = /^(!?)(\d{1,2})(?:\[(\d{1,2})-(\d{1,2})\])?$/.exec(item);
-      if (!match) throw new Error(`"${item}" is not an hour specification`);
-      return {
-        hour: Number(match[2]),
-        start_minute: Number(match[3] ?? 0),
-        end_minute: Number(match[4] ?? 60),
-        unaccounted: match[1] === "!",
-      };
-    });
+  return splitList(text).map((item) => {
+    const match = /^(!?)(\d{1,2})(?:\[(\d{1,2})-(\d{1,2})\])?$/.exec(item);
+    if (!match) throw new Error(`"${item}" is not an hour specification`);
+    return {
+      hour: Number(match[2]),
+      start_minute: Number(match[3] ?? 0),
+      end_minute: Number(match[4] ?? 60),
+      unaccounted: match[1] === "!",
+    };
+  });
 }
 
 async function api(method, path, body) {
@@ -105,8 +128,8 @@ async function api(method, path, body) {
   return data;
 }
 
-function encode(username) {
-  return encodeURIComponent(username);
+function encode(name) {
+  return encodeURIComponent(name);
 }
 
 /* JSON with object keys sorted, so that key order does not count as a change */
@@ -132,6 +155,34 @@ function diff(previous, next) {
   return changes;
 }
 
+/* the list entry for a user or a group: a name, a tag and a second line */
+function listItem(name, selected, tag, sub, onSelect) {
+  const li = document.createElement("li");
+  li.classList.toggle("selected", selected);
+  li.innerHTML = `<div class="name"></div><span class="tag"></span><div class="sub"></div>`;
+  $(".name", li).textContent = name;
+  $(".tag", li).textContent = tag;
+  $(".sub", li).textContent = sub;
+  li.addEventListener("click", onSelect);
+  return li;
+}
+
+function markSelected(listId, name) {
+  for (const li of document.querySelectorAll(`#${listId} li`))
+    li.classList.toggle("selected", $(".name", li).textContent === name);
+}
+
+async function deletePolicy(path, reload) {
+  if (!confirm("Delete this policy?")) return;
+  try {
+    await api("DELETE", path);
+    await reload();
+    message("Policy deleted", true);
+  } catch (err) {
+    message(err.message);
+  }
+}
+
 /* ---- pages ---- */
 
 function showPage(name) {
@@ -139,6 +190,7 @@ function showPage(name) {
     page.hidden = page.id !== `page-${name}`;
   for (const button of document.querySelectorAll("nav button"))
     button.classList.toggle("active", button.id === `nav-${name}`);
+  if (name === "groups") loadGroups().catch((err) => message(err.message));
   if (name === "server") loadServer();
 }
 
@@ -160,18 +212,30 @@ async function refreshHealth() {
 
 /* ---- users ---- */
 
+/* the user list's policy_source: "user", "group:<g1>;<g2>" or "default" */
+function policyTag(source) {
+  if (source === "user") return "own policy";
+  if (source.startsWith("group:")) return `groups: ${source.slice(6)}`;
+  return "defaults";
+}
+
 async function loadUsers() {
   const users = await api("GET", "/users?include=status");
   const list = $("#user-list");
   list.replaceChildren(
     ...users.map((user) => {
-      const li = document.createElement("li");
-      li.classList.toggle("selected", user.username === state.user);
-      li.innerHTML = `<div class="name"><span class="dot ${user.status.session_active ? "active" : ""}"></span></div><div class="sub"></div>`;
-      $(".name", li).append(user.username);
-      $(".sub", li).textContent =
-        `${user.full_name ? `${user.full_name} · ` : ""}${hms(user.status.time_left_day)} left today`;
-      li.addEventListener("click", () => selectUser(user.username));
+      const li = listItem(
+        user.username,
+        user.username === state.user,
+        policyTag(user.policy_source),
+        `${user.full_name ? `${user.full_name} · ` : ""}${hms(user.status.time_left_day)} left today`,
+        () => selectUser(user.username),
+      );
+      $(".name", li).prepend(
+        Object.assign(document.createElement("span"), {
+          className: `dot ${user.status.session_active ? "active" : ""}`,
+        }),
+      );
       return li;
     }),
   );
@@ -179,8 +243,7 @@ async function loadUsers() {
 
 async function selectUser(username) {
   state.user = username;
-  for (const li of document.querySelectorAll("#user-list li"))
-    li.classList.toggle("selected", $(".name", li).textContent === username);
+  markSelected("user-list", username);
   $("#user-title").textContent = username;
   $("#user-detail").hidden = false;
   await loadUser();
@@ -188,8 +251,15 @@ async function selectUser(username) {
 
 async function loadUser() {
   const user = await api("GET", `/users/${encode(state.user)}`);
+  $("#user-policy").textContent =
+    user.policy_source === "user"
+      ? "Policy: own"
+      : user.policy_source === "group"
+        ? `Policy: from groups ${user.policy_groups.join(", ")}`
+        : "Policy: defaults";
+  $("#delete-policy").disabled = user.policy_source !== "user";
   renderStatus(user.status);
-  renderConfig(user.config);
+  renderConfig(targets.user, user.config);
 }
 
 function renderStatus(status) {
@@ -199,7 +269,6 @@ function renderStatus(status) {
     ["Spent today", hms(status.time_spent_day)],
     ["Spent this week", hms(status.time_spent_week)],
     ["Spent this month", hms(status.time_spent_month)],
-    ["PlayTime left today", hms(status.playtime_left_day)],
     ["Session", status.session_active ? "active" : "none"],
   ];
   $("#user-status").replaceChildren(
@@ -213,37 +282,125 @@ function renderStatus(status) {
   );
 }
 
-function renderDayTable(tableId, prefix, allowedDays, limits) {
-  $(`#${tableId} tbody`).replaceChildren(
+async function applyTimeLeft(event) {
+  event.preventDefault();
+  const form = event.target;
+  try {
+    const body = {
+      operation: form.operation.value,
+      seconds: parseHms(form.amount.value),
+    };
+    renderStatus(
+      await api("POST", `/users/${encode(state.user)}/time-left`, body),
+    );
+    message("Applied", true);
+    await loadUsers();
+  } catch (err) {
+    message(err.message);
+  }
+}
+
+/* ---- groups ---- */
+
+async function loadGroups() {
+  const groups = await api("GET", "/groups");
+  $("#groups-list").replaceChildren(
+    ...groups.map((group) =>
+      listItem(
+        group.group,
+        group.group === state.group,
+        group.overrides.length ? `overrides: ${group.overrides.join(";")}` : "",
+        `members: ${group.members.join(", ") || "none"}`,
+        () => selectGroup(group.group),
+      ),
+    ),
+  );
+}
+
+async function selectGroup(group) {
+  state.group = group;
+  markSelected("groups-list", group);
+  $("#group-title").textContent = group;
+  $("#group-detail").hidden = false;
+  await loadGroup();
+}
+
+async function loadGroup() {
+  const group = await api("GET", `/groups/${encode(state.group)}`);
+  renderConfig(targets.group, group.config);
+}
+
+async function addGroup(event) {
+  event.preventDefault();
+  const input = $("#group-name");
+  const group = input.value.trim();
+  if (!group) return message("Enter a group name");
+  try {
+    // an empty change still creates the group's policy
+    await api("PATCH", `/groups/${encode(group)}/config`, {});
+    input.value = "";
+    message("Policy created", true);
+    await loadGroups();
+    await selectGroup(group);
+  } catch (err) {
+    message(err.message);
+  }
+}
+
+async function deleteGroupPolicy() {
+  await deletePolicy(`/groups/${encode(state.group)}/policy`, async () => {
+    state.group = null;
+    $("#group-detail").hidden = true;
+    await loadGroups();
+  });
+}
+
+/* ---- the limits form, for a user or a group ---- */
+
+/* instantiate the template into `form` and bind it to `target` */
+function bindConfigForm(target, form) {
+  form.append($("#config-template").content.cloneNode(true));
+  target.form = form;
+  $("table.days", form).id = `${target.prefix}day-limits`;
+  $("table.hours", form).id = `${target.prefix}hours-grid`;
+  if (!target.hasHideTrayIcon)
+    $("[name=hide_tray_icon]", form).closest("label").remove();
+  if (!target.hasOverrides)
+    $("[name=overrides]", form).closest(".card").remove();
+  form.addEventListener("submit", (event) => saveConfig(target, event));
+  $("[name=reload]", form).addEventListener("click", () =>
+    target.reload().catch((err) => message(err.message)),
+  );
+}
+
+function renderDayTable(form, allowedDays, limits) {
+  $("table.days tbody", form).replaceChildren(
     ...DAYS.map((day) => {
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${DAY_NAMES[day - 1]}</td><td><input type="checkbox" name="${prefix}allowed_${day}"></td><td><input type="text" size="6" name="${prefix}limit_${day}"></td>`;
-      $(`[name=${prefix}allowed_${day}]`, tr).checked =
-        allowedDays.includes(day);
-      $(`[name=${prefix}limit_${day}]`, tr).value = hms(limits[day] ?? 0);
+      tr.innerHTML = `<td>${DAY_NAMES[day - 1]}</td><td><input type="checkbox" name="allowed_${day}"></td><td><input type="text" size="6" name="limit_${day}"></td>`;
+      $(`[name=allowed_${day}]`, tr).checked = allowedDays.includes(day);
+      $(`[name=limit_${day}]`, tr).value = hms(limits[day] ?? 0);
       return tr;
     }),
   );
 }
 
-function readDayTable(form, prefix) {
-  const allowed_days = DAYS.filter(
-    (day) => form[`${prefix}allowed_${day}`].checked,
-  );
+function readDayTable(form) {
+  const allowed_days = DAYS.filter((day) => form[`allowed_${day}`].checked);
   const limits_per_day = {};
   for (const day of allowed_days)
-    limits_per_day[day] = parseHms(form[`${prefix}limit_${day}`].value);
+    limits_per_day[day] = parseHms(form[`limit_${day}`].value);
   return { allowed_days, limits_per_day };
 }
 
-function renderHoursGrid() {
-  $("#hours-grid tbody").replaceChildren(
+function renderHoursGrid(target) {
+  $("table.hours tbody", target.form).replaceChildren(
     ...DAYS.map((day) => {
       const tr = document.createElement("tr");
       const th = document.createElement("th");
       th.textContent = DAY_NAMES[day - 1];
       tr.append(th);
-      const byHour = new Map(state.hours[day].map((e) => [e.hour, e]));
+      const byHour = new Map(target.hours[day].map((e) => [e.hour, e]));
       for (const hour of HOURS) {
         const td = document.createElement("td");
         const entry = byHour.get(hour);
@@ -252,17 +409,17 @@ function renderHoursGrid() {
         if (entry) td.classList.add(entry.unaccounted ? "uacc" : "on");
         if (entry && (entry.start_minute !== 0 || entry.end_minute !== 60))
           td.classList.add("partial");
-        td.addEventListener("click", () => cycleHour(day, hour));
+        td.addEventListener("click", () => cycleHour(target, day, hour));
         tr.append(td);
       }
       const td = document.createElement("td");
       const input = document.createElement("input");
       input.type = "text";
-      input.value = hoursToText(state.hours[day]);
+      input.value = hoursToText(target.hours[day]);
       input.addEventListener("change", () => {
         try {
-          state.hours[day] = textToHours(input.value);
-          renderHoursGrid();
+          target.hours[day] = textToHours(input.value);
+          renderHoursGrid(target);
         } catch (err) {
           message(err.message);
         }
@@ -274,122 +431,67 @@ function renderHoursGrid() {
   );
 }
 
-function cycleHour(day, hour) {
-  const entries = state.hours[day].filter((e) => e.hour !== hour);
-  const current = state.hours[day].find((e) => e.hour === hour);
+function cycleHour(target, day, hour) {
+  const entries = target.hours[day].filter((e) => e.hour !== hour);
+  const current = target.hours[day].find((e) => e.hour === hour);
   if (!current)
     entries.push({ hour, start_minute: 0, end_minute: 60, unaccounted: false });
   else if (!current.unaccounted)
     entries.push({ hour, start_minute: 0, end_minute: 60, unaccounted: true });
-  state.hours[day] = entries.sort((a, b) => a.hour - b.hour);
-  renderHoursGrid();
+  target.hours[day] = entries.sort((a, b) => a.hour - b.hour);
+  renderHoursGrid(target);
 }
 
-function renderConfig(config) {
-  state.config = config;
-  state.hours = Object.fromEntries(
+function renderConfig(target, config) {
+  target.config = config;
+  target.hours = Object.fromEntries(
     DAYS.map((day) => [day, config.allowed_hours[day].map((e) => ({ ...e }))]),
   );
-  const form = $("#config-form");
-  renderDayTable("day-limits", "", config.allowed_days, config.limits_per_day);
-  renderDayTable(
-    "pt-day-limits",
-    "pt_",
-    config.playtime.allowed_days,
-    config.playtime.limits_per_day,
-  );
-  renderHoursGrid();
+  const form = target.form;
+  renderDayTable(form, config.allowed_days, config.limits_per_day);
+  renderHoursGrid(target);
   form.limit_per_week.value = hms(config.limit_per_week);
   form.limit_per_month.value = hms(config.limit_per_month);
-  form.lockout_type.value = config.lockout.type;
-  form.wake_from.value = config.lockout.wake_from ?? 0;
-  form.wake_to.value = config.lockout.wake_to ?? 23;
-  $("#wake-hours").hidden = config.lockout.type !== "suspendwake";
   form.track_inactive.checked = config.track_inactive;
-  form.hide_tray_icon.checked = config.hide_tray_icon;
-  form.pt_enabled.checked = config.playtime.enabled;
-  form.pt_limit_override.checked = config.playtime.limit_override;
-  form.pt_allow_unaccounted_intervals.checked =
-    config.playtime.allow_unaccounted_intervals;
-  form.pt_activities.value = config.playtime.activities
-    .map((a) => (a.description ? `${a.process} = ${a.description}` : a.process))
-    .join("\n");
+  if (target.hasHideTrayIcon)
+    form.hide_tray_icon.checked = config.hide_tray_icon;
+  if (target.hasOverrides) form.overrides.value = config.overrides.join(";");
 }
 
-function readConfig() {
-  const form = $("#config-form");
-  const lockout = {
-    type: form.lockout_type.value,
-    wake_from: null,
-    wake_to: null,
-  };
-  if (lockout.type === "suspendwake")
-    Object.assign(lockout, {
-      wake_from: Number(form.wake_from.value),
-      wake_to: Number(form.wake_to.value),
-    });
-  const activities = form.pt_activities.value
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean)
-    .map((line) => {
-      const [process, ...rest] = line.split("=");
-      return { process: process.trim(), description: rest.join("=").trim() };
-    });
-  return {
-    ...readDayTable(form, ""),
-    allowed_hours: state.hours,
+function readConfig(target) {
+  const form = target.form;
+  const config = {
+    ...readDayTable(form),
+    allowed_hours: target.hours,
     limit_per_week: parseHms(form.limit_per_week.value),
     limit_per_month: parseHms(form.limit_per_month.value),
     track_inactive: form.track_inactive.checked,
-    hide_tray_icon: form.hide_tray_icon.checked,
-    lockout,
-    playtime: {
-      ...readDayTable(form, "pt_"),
-      enabled: form.pt_enabled.checked,
-      limit_override: form.pt_limit_override.checked,
-      allow_unaccounted_intervals: form.pt_allow_unaccounted_intervals.checked,
-      activities,
-    },
   };
+  if (target.hasHideTrayIcon)
+    config.hide_tray_icon = form.hide_tray_icon.checked;
+  if (target.hasOverrides) config.overrides = splitList(form.overrides.value);
+  return config;
 }
 
-async function saveConfig(event) {
+async function saveConfig(target, event) {
   event.preventDefault();
   try {
-    const next = readConfig();
-    const patch = diff(state.config, next);
-    // only the changed parts of the nested objects, and nothing when none changed
-    for (const key of ["playtime", "allowed_hours"]) {
-      if (patch[key]) patch[key] = diff(state.config[key], next[key]);
-      if (patch[key] && Object.keys(patch[key]).length === 0) delete patch[key];
+    const next = readConfig(target);
+    const patch = diff(target.config, next);
+    // only the changed days of the hours, and nothing when none changed
+    if (patch.allowed_hours) {
+      patch.allowed_hours = diff(
+        target.config.allowed_hours,
+        next.allowed_hours,
+      );
+      if (Object.keys(patch.allowed_hours).length === 0)
+        delete patch.allowed_hours;
     }
     if (Object.keys(patch).length === 0)
       return message("Nothing changed", true);
-    renderConfig(
-      await api("PATCH", `/users/${encode(state.user)}/config`, patch),
-    );
+    renderConfig(target, await api("PATCH", target.configPath(), patch));
     message("Saved", true);
-    await loadUsers();
-  } catch (err) {
-    message(err.message);
-  }
-}
-
-async function applyTimeLeft(event) {
-  event.preventDefault();
-  const form = event.target;
-  try {
-    const body = {
-      operation: form.operation.value,
-      seconds: parseHms(form.amount.value),
-    };
-    const path = form.playtime.checked ? "playtime-left" : "time-left";
-    renderStatus(
-      await api("POST", `/users/${encode(state.user)}/${path}`, body),
-    );
-    message("Applied", true);
-    await loadUsers();
+    await target.afterSave();
   } catch (err) {
     message(err.message);
   }
@@ -438,10 +540,7 @@ async function saveServer(event) {
       kind === "checkbox"
         ? input.checked
         : kind === "list"
-          ? input.value
-              .split(";")
-              .map((s) => s.trim())
-              .filter(Boolean)
+          ? splitList(input.value)
           : Number(input.value);
   }
   const patch = diff(state.server, next);
@@ -455,20 +554,41 @@ async function saveServer(event) {
   }
 }
 
+/* delete the user policies left over from versions that created one per
+   user (they restrict nothing but hide the group policies) */
+async function migratePolicies(dryRun) {
+  if (!dryRun && !confirm("Delete every user policy that restricts nothing?"))
+    return;
+  try {
+    const { users } = await api("POST", "/policies/migrate", {
+      dry_run: dryRun,
+    });
+    $("#migrate-result").textContent =
+      users.length === 0
+        ? "No user policy restricts nothing; nothing to delete"
+        : `${dryRun ? "Would delete" : "Deleted"} the policies of: ${users.join(", ")}`;
+    if (!dryRun) await loadUsers();
+  } catch (err) {
+    message(err.message);
+  }
+}
+
 /* ---- wiring ---- */
 
-for (const name of ["users", "server", "token"])
+for (const name of ["users", "groups", "server", "token"])
   $(`#nav-${name}`).addEventListener("click", () => showPage(name));
-$("#config-form").addEventListener("submit", saveConfig);
-$("#config-form").lockout_type.addEventListener("change", (event) => {
-  $("#wake-hours").hidden = event.target.value !== "suspendwake";
-});
-$("#config-reload").addEventListener("click", () =>
-  loadUser().catch((err) => message(err.message)),
+bindConfigForm(targets.user, $("#config-form"));
+bindConfigForm(targets.group, $("#group-config-form"));
+$("#delete-policy").addEventListener("click", () =>
+  deletePolicy(`/users/${encode(state.user)}/policy`, targets.user.afterSave),
 );
 $("#time-left-form").addEventListener("submit", applyTimeLeft);
+$("#group-add-form").addEventListener("submit", addGroup);
+$("#delete-group-policy").addEventListener("click", deleteGroupPolicy);
 $("#server-form").addEventListener("submit", saveServer);
 $("#server-reload").addEventListener("click", loadServer);
+$("#migrate-dry-run").addEventListener("click", () => migratePolicies(true));
+$("#migrate-delete").addEventListener("click", () => migratePolicies(false));
 $("#token-form").addEventListener("submit", (event) => {
   event.preventDefault();
   state.token = event.target.token.value.trim();

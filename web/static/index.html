@@ -12,6 +12,7 @@
       <span id="health" class="badge">…</span>
       <nav>
         <button id="nav-users" class="active" type="button">Users</button>
+        <button id="nav-groups" type="button">Groups</button>
         <button id="nav-server" type="button">Daemon settings</button>
         <button id="nav-token" type="button">Token</button>
       </nav>
@@ -19,13 +20,84 @@
 
     <p id="message" class="message" hidden></p>
 
+    <!-- the limits form, instantiated once for users and once for groups -->
+    <template id="config-template">
+      <div class="card">
+        <h3>Limits</h3>
+        <table class="days">
+          <thead>
+            <tr>
+              <th>Day</th>
+              <th>Allowed</th>
+              <th>Limit (h:mm)</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+        <p class="inline">
+          <label
+            >Per week <input name="limit_per_week" type="text" size="7"
+          /></label>
+          <label
+            >Per month <input name="limit_per_month" type="text" size="7"
+          /></label>
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>Allowed hours</h3>
+        <p class="hint">
+          Click an hour to cycle: allowed, unaccounted (does not count against
+          the limit), forbidden. A dot marks a partial hour; edit it in the
+          row's text field as <code>7;8;11[0-30];!14</code>.
+        </p>
+        <table class="hours">
+          <tbody></tbody>
+        </table>
+      </div>
+
+      <div class="card">
+        <h3>Behaviour</h3>
+        <p class="inline">
+          <label
+            ><input name="track_inactive" type="checkbox" /> count inactive
+            (locked / switched away) sessions</label
+          >
+          <label
+            ><input name="hide_tray_icon" type="checkbox" /> hide the tray
+            icon</label
+          >
+        </p>
+      </div>
+
+      <div class="card">
+        <h3>Overrides</h3>
+        <p class="hint">
+          Groups whose policies do not apply to members of this group, separated
+          by semicolons.
+        </p>
+        <p class="inline">
+          <input name="overrides" type="text" size="40" />
+        </p>
+      </div>
+
+      <p class="actions">
+        <button type="submit" class="primary">Save changes</button>
+        <button type="button" name="reload">Discard</button>
+      </p>
+    </template>
+
     <main>
       <section id="page-users" class="page">
         <aside>
           <ul id="user-list"></ul>
         </aside>
-        <div id="user-detail" hidden>
+        <div id="user-detail" class="detail" hidden>
           <h2 id="user-title"></h2>
+          <p class="inline">
+            <span id="user-policy"></span>
+            <button type="button" id="delete-policy">Delete policy</button>
+          </p>
 
           <div class="card">
             <h3>Today</h3>
@@ -47,146 +119,72 @@
                 aria-label="hours:minutes"
               />
               <button type="submit">Apply</button>
-              <label
-                ><input name="playtime" type="checkbox" /> PlayTime
-                instead</label
-              >
             </form>
           </div>
 
-          <form id="config-form">
-            <div class="card">
-              <h3>Limits</h3>
-              <table class="days" id="day-limits">
-                <thead>
-                  <tr>
-                    <th>Day</th>
-                    <th>Allowed</th>
-                    <th>Limit (h:mm)</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-              <p class="inline">
-                <label
-                  >Per week <input name="limit_per_week" type="text" size="7"
-                /></label>
-                <label
-                  >Per month <input name="limit_per_month" type="text" size="7"
-                /></label>
-              </p>
-            </div>
+          <form id="config-form"></form>
+        </div>
+      </section>
 
-            <div class="card">
-              <h3>Allowed hours</h3>
-              <p class="hint">
-                Click an hour to cycle: allowed, unaccounted (does not count
-                against the limit), forbidden. A dot marks a partial hour; edit
-                it in the row's text field as <code>7;8;11[0-30];!14</code>.
-              </p>
-              <table class="hours" id="hours-grid">
-                <tbody></tbody>
-              </table>
-            </div>
-
-            <div class="card">
-              <h3>Behaviour</h3>
-              <p class="inline">
-                <label
-                  >When time is up
-                  <select name="lockout_type">
-                    <option value="terminate">terminate the session</option>
-                    <option value="lock">lock the screen</option>
-                    <option value="suspend">suspend the computer</option>
-                    <option value="suspendwake">
-                      suspend and wake up between
-                    </option>
-                    <option value="kill">kill the session</option>
-                    <option value="shutdown">shut down the computer</option>
-                  </select></label
-                >
-                <label id="wake-hours" hidden
-                  >hours
-                  <input
-                    name="wake_from"
-                    type="number"
-                    min="0"
-                    max="23"
-                    size="2" />
-                  –
-                  <input name="wake_to" type="number" min="0" max="23" size="2"
-                /></label>
-              </p>
-              <p class="inline">
-                <label
-                  ><input name="track_inactive" type="checkbox" /> count
-                  inactive (locked / switched away) sessions</label
-                >
-                <label
-                  ><input name="hide_tray_icon" type="checkbox" /> hide the tray
-                  icon</label
-                >
-              </p>
-            </div>
-
-            <div class="card">
-              <h3>PlayTime</h3>
-              <p class="inline">
-                <label
-                  ><input name="pt_enabled" type="checkbox" /> enabled</label
-                >
-                <label
-                  ><input name="pt_limit_override" type="checkbox" /> PlayTime
-                  limit overrides the daily limit</label
-                >
-                <label
-                  ><input
-                    name="pt_allow_unaccounted_intervals"
-                    type="checkbox"
-                  />
-                  allowed during unaccounted hours</label
-                >
-              </p>
-              <table class="days" id="pt-day-limits">
-                <thead>
-                  <tr>
-                    <th>Day</th>
-                    <th>Allowed</th>
-                    <th>Limit (h:mm)</th>
-                  </tr>
-                </thead>
-                <tbody></tbody>
-              </table>
-              <label
-                >Activities, one per line as
-                <code>process name = description</code>
-                <textarea name="pt_activities" rows="4"></textarea>
-              </label>
-            </div>
-
-            <p class="actions">
-              <button type="submit" class="primary">Save changes</button>
-              <button type="button" id="config-reload">Discard</button>
-            </p>
+      <section id="page-groups" class="page" hidden>
+        <aside>
+          <form id="group-add-form" class="inline">
+            <input
+              id="group-name"
+              name="group"
+              type="text"
+              size="14"
+              placeholder="group name"
+              aria-label="group name"
+            />
+            <button type="submit" id="group-add">Add group policy</button>
           </form>
+          <ul id="groups-list"></ul>
+        </aside>
+        <div id="group-detail" class="detail" hidden>
+          <h2 id="group-title"></h2>
+          <p class="inline">
+            <button type="button" id="delete-group-policy">
+              Delete policy
+            </button>
+          </p>
+
+          <form id="group-config-form"></form>
         </div>
       </section>
 
       <section id="page-server" class="page" hidden>
-        <form id="server-form" class="card">
-          <h3>Daemon settings</h3>
-          <p class="hint">
-            Times are in seconds. Session type and user lists are separated by
-            semicolons.
-          </p>
-          <table class="settings">
-            <tbody id="server-fields"></tbody>
-          </table>
-          <p class="actions">
-            <button type="submit" class="primary">Save changes</button>
-            <button type="button" id="server-reload">Discard</button>
-          </p>
-        </form>
+        <div class="column">
+          <form id="server-form" class="card">
+            <h3>Daemon settings</h3>
+            <p class="hint">
+              Times are in seconds. Session type and user lists are separated by
+              semicolons.
+            </p>
+            <table class="settings">
+              <tbody id="server-fields"></tbody>
+            </table>
+            <p class="actions">
+              <button type="submit" class="primary">Save changes</button>
+              <button type="button" id="server-reload">Discard</button>
+            </p>
+          </form>
+
+          <div class="card">
+            <h3>Migrate policies</h3>
+            <p class="hint">
+              Earlier versions created a configuration file for every user. Such
+              a file restricts nothing but is still the user's own policy, so it
+              hides the group policies. Deleting those files lets the group
+              policies apply.
+            </p>
+            <p class="actions">
+              <button type="button" id="migrate-dry-run">Dry run</button>
+              <button type="button" id="migrate-delete">Delete</button>
+            </p>
+            <p id="migrate-result"></p>
+          </div>
+        </div>
       </section>
 
       <section id="page-token" class="page" hidden>

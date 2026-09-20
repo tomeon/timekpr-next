@@ -31,6 +31,7 @@ def test_health_and_auth(client):
 def test_user_list_with_status(client):
     users = client.get("/api/v1/users?include=status", headers=AUTH).json()
     assert [user["username"] for user in users] == ["alice", "bob@idm.nixos.test"]
+    assert [user["policy_source"] for user in users] == ["user", "default"]
     assert users[0]["status"]["session_active"] is True
     assert users[1]["status"]["session_active"] is False
     assert users[1]["status"]["time_left_continuous"] is None
@@ -43,17 +44,14 @@ def test_user_shapes(client):
     bob = client.get("/api/v1/users/bob%40idm.nixos.test", headers=AUTH).json()
     assert bob["username"] == "bob@idm.nixos.test"
     alice = client.get("/api/v1/users/alice", headers=AUTH).json()
+    assert (alice["policy_source"], alice["policy_groups"]) == ("user", [])
+    assert bob["policy_source"] == "default"
     # live counters supersede the saved ones while a session is active
     assert alice["status"]["time_left_day"] == 14
     assert alice["status"]["time_spent_week"] == 3
     assert alice["status"]["time_left_continuous"] == 15
     assert alice["config"]["limits_per_day"] == {str(day): 86400 for day in range(1, 8)}
     assert len(alice["config"]["allowed_hours"]["1"]) == 24
-    assert alice["config"]["lockout"] == {
-        "type": "terminate",
-        "wake_from": None,
-        "wake_to": None,
-    }
 
 
 def test_days_and_limits_are_positional(client, fake):
@@ -106,27 +104,6 @@ def test_allowed_hours(client, fake):
     assert r.status_code == 400 and "start_minute" in r.text
 
 
-def test_lockout(client, fake):
-    lockout = {"type": "suspendwake", "wake_from": 7, "wake_to": 18}
-    r = client.patch(
-        "/api/v1/users/alice/config", json={"lockout": lockout}, headers=AUTH
-    )
-    assert r.status_code == 200
-    assert fake.calls[-1] == ("setLockoutType", ("alice", "suspendwake", "7", "18"))
-    assert r.json()["lockout"] == lockout
-    r = client.patch(
-        "/api/v1/users/alice/config",
-        json={"lockout": {"type": "lock", "wake_from": 7}},
-        headers=AUTH,
-    )
-    assert r.status_code == 400
-    r = client.patch(
-        "/api/v1/users/alice/config", json={"lockout": {"type": "lock"}}, headers=AUTH
-    )
-    assert fake.calls[-1] == ("setLockoutType", ("alice", "lock", "0", "23"))
-    assert r.json()["lockout"] == {"type": "lock", "wake_from": None, "wake_to": None}
-
-
 def test_daemon_refusal_reports_applied_fields(client):
     body = {"track_inactive": True, "limit_per_week": 13, "hide_tray_icon": True}
     r = client.patch("/api/v1/users/alice/config", json=body, headers=AUTH)
@@ -144,33 +121,6 @@ def test_daemon_refusal_reports_applied_fields(client):
     assert r.status_code == 400 and r.json()["errors"][0]["field"] == "bogus"
 
 
-def test_playtime(client, fake):
-    fake.calls.clear()
-    patch = {
-        "playtime": {
-            "enabled": True,
-            "allowed_days": [1, 2, 3],
-            "activities": [{"process": "firefox"}],
-        }
-    }
-    assert (
-        client.patch("/api/v1/users/alice/config", json=patch, headers=AUTH).status_code
-        == 200
-    )
-    assert fake.calls == [
-        ("setPlayTimeAllowedDays", ("alice", ["1", "2", "3"])),
-        ("setPlayTimeLimitsForDays", ("alice", [1800, 1800, 0])),
-        ("setPlayTimeEnabled", ("alice", True)),
-        ("setPlayTimeActivities", ("alice", [["firefox", ""]])),
-    ]
-    activities = [{"process": "a", "description": "b"}]
-    r = client.put(
-        "/api/v1/users/alice/config/playtime/activities", json=activities, headers=AUTH
-    )
-    assert r.status_code == 200
-    assert fake.calls[-1] == ("setPlayTimeActivities", ("alice", [["a", "b"]]))
-
-
 def test_time_left(client, fake):
     r = client.post(
         "/api/v1/users/alice/time-left",
@@ -179,12 +129,6 @@ def test_time_left(client, fake):
     )
     assert r.status_code == 200 and r.json()["session_active"] is True
     assert fake.calls[-1] == ("setTimeLeft", ("alice", "+", 300))
-    client.post(
-        "/api/v1/users/alice/playtime-left",
-        json={"operation": "set", "seconds": 0},
-        headers=AUTH,
-    )
-    assert fake.calls[-1] == ("setPlayTimeLeft", ("alice", "=", 0))
     r = client.post(
         "/api/v1/users/alice/time-left",
         json={"operation": "give", "seconds": 1},
@@ -210,6 +154,126 @@ def test_server_config(client, fake):
     # the daemon failed to apply a valid request
     r = client.patch("/api/v1/config", json={"log_level": 2}, headers=AUTH)
     assert r.status_code == 500 and r.json()["errors"][0]["field"] == "log_level"
+
+
+def test_group_list(client):
+    groups = client.get("/api/v1/groups", headers=AUTH).json()
+    assert groups == [
+        {"group": "all", "overrides": [], "members": []},
+        {
+            "group": "kids",
+            "overrides": ["all"],
+            "members": ["alice", "bob@idm.nixos.test"],
+        },
+    ]
+
+
+def test_group_shapes(client):
+    assert client.get("/api/v1/groups/teens", headers=AUTH).status_code == 404
+    assert client.get("/api/v1/groups/teens/config", headers=AUTH).status_code == 404
+    kids = client.get("/api/v1/groups/kids", headers=AUTH).json()
+    assert kids["group"] == "kids" and "status" not in kids
+    config = kids["config"]
+    assert config["overrides"] == ["all"] and "hide_tray_icon" not in config
+    assert config["limits_per_day"] == ALL_DAYS
+    assert config == client.get("/api/v1/groups/kids/config", headers=AUTH).json()
+    paths = client.get("/api/v1/openapi.json").json()["paths"]
+    assert "/api/v1/groups/{group}/config/allowed-hours/{day}" in paths
+    assert "/api/v1/groups/{group}/policy" in paths
+
+
+def test_group_patch(client, fake):
+    patch = {
+        "allowed_days": [6, 7],
+        "limits_per_day": {"6": 3600},
+        "limit_per_week": 7200,
+        "overrides": ["all", "guests"],
+    }
+    r = client.patch("/api/v1/groups/kids/config", json=patch, headers=AUTH)
+    assert r.status_code == 200, r.text
+    assert fake.calls == [
+        ("setAllowedDays", ("@kids", ["6", "7"])),
+        ("setTimeLimitForDays", ("@kids", [3600, 0])),
+        ("setTimeLimitForWeek", ("@kids", 7200)),
+        ("setOverrides", ("@kids", ["all", "guests"])),
+    ]
+    config = r.json()
+    assert config["allowed_days"] == [6, 7]
+    assert config["limits_per_day"] == {"6": 3600, "7": 0}
+    assert config["overrides"] == ["all", "guests"]
+    # clearing the overrides
+    r = client.patch("/api/v1/groups/kids/config", json={"overrides": []}, headers=AUTH)
+    assert r.status_code == 200 and r.json()["overrides"] == []
+    # a group policy has no tray icon
+    r = client.patch(
+        "/api/v1/groups/kids/config", json={"hide_tray_icon": True}, headers=AUTH
+    )
+    assert r.status_code == 400 and r.json()["errors"][0]["field"] == "hide_tray_icon"
+    # the first setter creates a policy for a group without one
+    fake.calls.clear()
+    r = client.patch(
+        "/api/v1/groups/teens/config", json={"limits_per_day": {"1": 60}}, headers=AUTH
+    )
+    assert r.status_code == 200, r.text
+    assert fake.calls == [
+        # the daemon creates the policy on the first setter; the bridge sends
+        # a harmless one first so that it can read the defaults it patches
+        ("setOverrides", ("@teens", [])),
+        ("setTimeLimitForDays", ("@teens", [60] + [86400] * 6)),
+    ]
+    assert r.json()["limits_per_day"]["1"] == 60
+    assert "teens" in [
+        g["group"] for g in client.get("/api/v1/groups", headers=AUTH).json()
+    ]
+    hours = [{"hour": 7}]
+    r = client.put(
+        "/api/v1/groups/guests/config/allowed-hours/all", json=hours, headers=AUTH
+    )
+    assert r.status_code == 200 and r.json()["allowed_hours"]["7"] == [
+        {"hour": 7, "start_minute": 0, "end_minute": 60, "unaccounted": False}
+    ]
+
+
+def test_empty_patch_creates_group_policy(client, fake):
+    """The web UI creates a group's policy with an empty PATCH"""
+    r = client.patch("/api/v1/groups/teens/config", json={}, headers=AUTH)
+    assert r.status_code == 200, r.text
+    assert r.json()["overrides"] == []
+    assert ("setOverrides", ("@teens", [])) in fake.calls
+    assert "teens" in [
+        g["group"] for g in client.get("/api/v1/groups", headers=AUTH).json()
+    ]
+
+
+def test_delete_policy(client, fake):
+    r = client.delete("/api/v1/groups/kids/policy", headers=AUTH)
+    assert r.status_code == 204 and r.content == b""
+    assert fake.calls[-1] == ("deletePolicy", ("@kids",))
+    r = client.delete("/api/v1/groups/kids/policy", headers=AUTH)
+    assert r.status_code == 404 and r.headers["content-type"].startswith(PROBLEM)
+    assert client.get("/api/v1/groups/kids", headers=AUTH).status_code == 404
+    # a user's policy: the groups apply again, the user is still listed
+    assert client.delete("/api/v1/users/alice/policy", headers=AUTH).status_code == 204
+    assert client.delete("/api/v1/users/alice/policy", headers=AUTH).status_code == 404
+    alice = client.get("/api/v1/users/alice", headers=AUTH).json()
+    assert alice["policy_source"] == "default"
+    assert (
+        client.delete(
+            "/api/v1/users/bob%40idm.nixos.test/policy", headers=AUTH
+        ).status_code
+        == 404
+    )
+
+
+def test_migrate_policies(client, fake):
+    r = client.post("/api/v1/policies/migrate", json={}, headers=AUTH)
+    assert r.status_code == 200 and r.json() == {"users": ["carol"]}
+    assert fake.calls[-1] == ("migratePolicies", (True,))
+    r = client.post("/api/v1/policies/migrate", json={"dry_run": False}, headers=AUTH)
+    assert r.status_code == 200 and r.json() == {"users": ["carol"]}
+    assert fake.calls[-1] == ("migratePolicies", (False,))
+    r = client.post("/api/v1/policies/migrate", json={"bogus": 1}, headers=AUTH)
+    assert r.status_code == 400
 
 
 def test_static_ui_and_openapi(client):

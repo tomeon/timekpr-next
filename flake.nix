@@ -69,6 +69,7 @@
               fileset = pkgs.lib.fileset.difference ./. (pkgs.lib.fileset.unions [
                 ./.actrc
                 ./.github
+                ./docs/proposals
                 ./flake.nix
                 ./flake.lock
                 ./nix
@@ -105,7 +106,6 @@
                         dbus-python
                         fastapi
                         httpx
-                        psutil
                         pygobject3
                         pytest
                         uvicorn

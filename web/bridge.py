@@ -11,6 +11,7 @@ and the order in which a PATCH is applied.
 
 import gettext
 import os
+import re
 import threading
 import time
 
@@ -31,23 +32,30 @@ _DAEMON_FAILURES = (
     "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR",
     "TK_MSG_CONFIG_LOADER_SAVECONTROL_UNEXPECTED_ERROR",
 )
-_daemon_failure_texts = None
+# the daemon's replies when what the request names does not exist
+_DAEMON_NOT_FOUND = (
+    "TK_MSG_CONFIG_LOADER_USER_NOTFOUND",
+    "TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND",
+    "TK_MSG_CONFIG_LOADER_POLICY_NOTFOUND",
+)
+_daemon_texts = {}
 
 
-def daemon_failure_texts():
-    """The daemon's failure messages in every locale timekpr ships.  The
-    daemon only reports -1 and a message translated in its own locale, which
-    need not be ours, so all translations are recognized."""
-    global _daemon_failure_texts
-    if _daemon_failure_texts is None:
-        texts = set()
+def daemon_texts(keys):
+    """The daemon's messages for the given keys in every locale timekpr
+    ships, as they come back with a -1 result.  The daemon only reports a
+    message translated in its own locale, which need not be ours, so all
+    translations are recognized.  Messages with a placeholder are turned
+    into regular expressions."""
+    if keys not in _daemon_texts:
+        patterns = set()
         try:
             languages = os.listdir(cons.TK_LOCALIZATION_DIR)
         except OSError:
             languages = []
-        for key in _DAEMON_FAILURES:
+        for key in keys:
             source = msg._messages[key]["s"]
-            texts.update({source, msg.getTranslation(key)})
+            texts = {source, msg.getTranslation(key)}
             for language in languages:
                 try:
                     texts.add(
@@ -57,8 +65,15 @@ def daemon_failure_texts():
                     )
                 except OSError:
                     pass
-        _daemon_failure_texts = texts
-    return _daemon_failure_texts
+            for text in texts:
+                # the catalogs hold "%%s", getTranslation already turned it
+                # into "%s", and the daemon formats it into the name
+                text = text.replace("%%", "%")
+                patterns.add(
+                    "^" + ".*".join(re.escape(part) for part in text.split("%s")) + "$"
+                )
+        _daemon_texts[keys] = re.compile("|".join(patterns), re.DOTALL)
+    return _daemon_texts[keys]
 
 
 class DaemonError(Exception):
@@ -136,10 +151,14 @@ class Bridge:
             # the timekpr group; the connector appends the daemon's reason to
             # its own message, which is in our locale
             raise DaemonError(502, message)
-        if code != 0 and message in daemon_failure_texts():
+        if code != 0 and daemon_texts(_DAEMON_FAILURES).match(message):
             # the daemon could not apply a valid request (its log has the reason,
             # a read-only /etc/timekpr for example)
             raise DaemonError(500, message)
+        if code != 0 and daemon_texts(_DAEMON_NOT_FOUND).match(message):
+            # what the request names does not exist: a user nobody knows, a
+            # group without a policy, a policy that is not there to delete
+            raise DaemonError(404, message)
         if code != 0:
             raise DaemonError(400, message)
         return result[2] if len(result) > 2 else None
@@ -172,7 +191,9 @@ class Bridge:
 
     def list_users(self, include_status=False):
         users = [
-            models.UserSummary(username=user[0], full_name=user[1])
+            models.UserSummary(
+                username=user[0], full_name=user[1], policy_source=user[2]
+            )
             for user in self._call("getUserList")
         ]
         if include_status:
@@ -180,12 +201,10 @@ class Bridge:
                 user.status = self.get_user_status(user.username)
         return users
 
-    def _require_user(self, username):
-        if username not in [user[0] for user in self._call("getUserList")]:
-            raise DaemonError(404, f"timekpr has no configuration for user {username}")
-
     def _user_info(self, username, level):
-        self._require_user(username)
+        """The daemon answers the effective policy of every user it or NSS
+        knows (a directory user need not be listed), and "not found" for
+        any other name, which _call turns into a 404"""
         return self._call("getUserConfigurationAndInformation", username, level)
 
     def get_user(self, username):
@@ -194,6 +213,7 @@ class Bridge:
             username=username,
             config=models.UserConfig(**webapi.user_config_from_daemon(info)),
             status=models.UserStatus(**webapi.user_status_from_daemon(info)),
+            **webapi.user_policy_from_daemon(info),
         )
 
     def get_user_config(self, username):
@@ -225,39 +245,10 @@ class Bridge:
                     webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
                 )
         apply_scalars(steps, "", patch, webapi.USER_FIELDS)
-        if patch.lockout is not None:
-            wake_from, wake_to = webapi.lockout_wake(patch.lockout.model_dump())
-            steps.run(
-                "lockout",
-                "setLockoutType",
-                patch.lockout.type,
-                str(wake_from),
-                str(wake_to),
-            )
-        if patch.playtime is not None:
-            apply_days_and_limits(
-                steps,
-                "playtime.",
-                patch.playtime,
-                current.playtime,
-                "setPlayTimeAllowedDays",
-                "setPlayTimeLimitsForDays",
-            )
-            apply_scalars(steps, "playtime.", patch.playtime, webapi.PLAYTIME_FIELDS)
-            if patch.playtime.activities is not None:
-                steps.run(
-                    "playtime.activities",
-                    "setPlayTimeActivities",
-                    [
-                        [activity.process, activity.description]
-                        for activity in patch.playtime.activities
-                    ],
-                )
         return self.get_user_config(username)
 
     def set_allowed_hours(self, username, day, entries):
         """day is an ISO weekday or "all" """
-        self._require_user(username)
         Steps(self, username).run(
             f"allowed_hours.{day}",
             "setAllowedHours",
@@ -266,15 +257,112 @@ class Bridge:
         )
         return self.get_user_config(username)
 
-    def set_time_left(self, username, request, playtime=False):
-        self._require_user(username)
+    def set_time_left(self, username, request):
         self._call(
-            "setPlayTimeLeft" if playtime else "setTimeLeft",
+            "setTimeLeft",
             username,
             webapi.TIME_LEFT_OPERATIONS[request.operation],
             request.seconds,
         )
         return self.get_user_status(username)
+
+    # ## policies ##
+
+    def _delete_policy(self, target, what):
+        # a policy that is not there to delete is a 404 (see _call)
+        self._call("deletePolicy", target)
+
+    def delete_user_policy(self, username):
+        """The user's group policies (or the defaults) apply again; the
+        counters stay"""
+        self._delete_policy(username, f"user {username}")
+
+    def migrate_policies(self, request):
+        return models.MigrationResult(
+            users=self._call("migratePolicies", request.dry_run)
+        )
+
+    # ## groups ##
+
+    def list_groups(self):
+        return [
+            models.GroupSummary(
+                group=group[0],
+                overrides=split_list(group[1]),
+                members=split_list(group[2]),
+            )
+            for group in self._call("getGroupList")
+        ]
+
+    def _group_info(self, group):
+        # a group without a policy is a 404 (see _call)
+        return self._call(
+            "getUserConfigurationAndInformation",
+            group_target(group),
+            cons.TK_CL_INF_FULL,
+        )
+
+    def get_group(self, group):
+        return models.Group(group=group, config=self.get_group_config(group))
+
+    def get_group_config(self, group):
+        return models.GroupConfig(
+            **webapi.group_config_from_daemon(self._group_info(group))
+        )
+
+    def patch_group_config(self, group, patch):
+        """A group without a policy gets one from its first setter, so the
+        current values a PATCH is applied against are then the daemon's
+        defaults for a new policy"""
+        try:
+            current = self.get_group_config(group)
+        except DaemonError as ex:
+            if ex.status != 404:
+                raise
+            # no policy yet: have the daemon create one with its defaults
+            # (any setter does; an empty override list changes nothing), so
+            # that even an empty PATCH creates the policy
+            Steps(self, group_target(group)).run("overrides", "setOverrides", [])
+            current = self.get_group_config(group)
+        steps = Steps(self, group_target(group))
+        apply_days_and_limits(
+            steps, "", patch, current, "setAllowedDays", "setTimeLimitForDays"
+        )
+        if patch.allowed_hours is not None:
+            for day, entries in patch.allowed_hours.items():
+                steps.run(
+                    f"allowed_hours.{day}",
+                    "setAllowedHours",
+                    str(day),
+                    webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
+                )
+        apply_scalars(steps, "", patch, webapi.GROUP_FIELDS)
+        if patch.overrides is not None:
+            steps.run("overrides", "setOverrides", list(patch.overrides))
+        return self.get_group_config(group)
+
+    def set_group_allowed_hours(self, group, day, entries):
+        """day is an ISO weekday or "all"; the policy is created if needed"""
+        Steps(self, group_target(group)).run(
+            f"allowed_hours.{day}",
+            "setAllowedHours",
+            "ALL" if day == "all" else str(day),
+            webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
+        )
+        return self.get_group_config(group)
+
+    def delete_group_policy(self, group):
+        self._delete_policy(group_target(group), f"group {group}")
+
+
+def group_target(group):
+    """How the daemon addresses a group wherever it takes a user name"""
+    return cons.TK_GROUP_TARGET_PREFIX + group
+
+
+def split_list(value):
+    """The daemon's ";"-joined lists (an empty string is an empty list)"""
+    return [item for item in value.split(";") if item != ""]
 
 
 class Steps:

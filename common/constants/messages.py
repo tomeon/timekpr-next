@@ -311,6 +311,9 @@ def initMessages():
             'Overrides for group "%%s" are invalid (names must be groups other than itself)'
         )
     }
+    _messages["TK_MSG_USER_ADMIN_CHK_TARGET_INVALID"] = {
+        "s": _('"%%s" is not a valid user or group name')
+    }
     _messages["TK_MSG_CONFIG_LOADER_USERCONTROL_NOTFOUND"] = {
         "s": _('User "%%s" control file is not found')
     }
@@ -338,6 +341,39 @@ def initMessages():
     }
     _messages["TK_MSG_STATUS_HIDETRAYICON_PROCESSED"] = {
         "s": _("Hide tray icon for user has been processed")
+    }
+    _messages["TK_MSG_STATUS_OVERRIDES_PROCESSED"] = {
+        "s": _("Overrides for group have been processed")
+    }
+    _messages["TK_MSG_STATUS_USERGROUPLIST_RETRIEVED"] = {
+        "s": _("User and group list retrieved")
+    }
+    _messages["TK_MSG_STATUS_POLICY_DELETED"] = {"s": _("Policy deleted")}
+    _messages["TK_MSG_STATUS_GROUPNAME_MISSING"] = {"s": _("Please enter a group name")}
+    _messages["TK_MSG_STATUS_GROUPPOLICY_CREATED"] = {
+        "s": _("Group policy %%s created")
+    }
+    _messages["TK_MSG_STATUS_GROUPPOLICY_NOT_LISTED"] = {
+        "s": _("Group policy %%s is not in the list")
+    }
+    # where the selected user's or group's policy comes from
+    _messages["TK_MSG_ADMIN_POLICY_NONE"] = {"s": _("Policy: -")}
+    _messages["TK_MSG_ADMIN_POLICY_OWN"] = {"s": _("Policy: own")}
+    _messages["TK_MSG_ADMIN_POLICY_GROUPS"] = {"s": _("Policy: from groups %%s")}
+    _messages["TK_MSG_ADMIN_POLICY_DEFAULTS"] = {"s": _("Policy: defaults")}
+    _messages["TK_MSG_ADMIN_POLICY_GROUP"] = {"s": _("Policy: group %%s")}
+    _messages["TK_MSG_ADMIN_POLICY_GROUP_MEMBERS"] = {
+        "s": _("Policy: group %%s (members: %%s)")
+    }
+    _messages["TK_MSG_ADMIN_DELETE_GROUP_POLICY_QUESTION"] = {
+        "s": _(
+            "Delete the group policy %%s?\n\nIts members will follow their remaining group policies or the defaults."
+        )
+    }
+    _messages["TK_MSG_ADMIN_DELETE_USER_POLICY_QUESTION"] = {
+        "s": _(
+            'Delete the policy of user "%%s"?\n\nThe policies of the user\'s groups or the defaults will apply instead.'
+        )
     }
     _messages["TK_MSG_STATUS_ADJUSTTIME_PROCESSED"] = {
         "s": _("Additional time for user has been processed")
@@ -478,9 +514,6 @@ def initMessages():
     _messages["TK_MSG_NOTIFICATION_TIME_IS_UP_1T"] = {
         "s": _("Your time is up, you will be forcibly logged out in")
     }
-    # TRANSLATORS: this is a part of message "Your time is up, your computer will be forcibly shutdown in %s seconds", please translate accordingly
-    # TRANSLATORS: this is a part of message "Your time is up, your session will be forcibly locked in %s seconds", please translate accordingly
-    # TRANSLATORS: this is a part of message ", Your computer will be forcibly suspended in %s seconds", please translate accordingly
     # TRANSLATORS: this is a part of message "Your time is up, you will be forcibly logged out in %s seconds", please translate accordingly
     _messages["TK_MSG_NOTIFICATION_TIME_IS_UP_2"] = {
         "s": __("%(n)s second", "%(n)s seconds")[0],
@@ -504,7 +537,6 @@ def initMessages():
         "s": __("%(n)s second left", "%(n)s seconds left")[0],
         "p": __("%(n)s second left", "%(n)s seconds left")[1],
     }
-    # TRANSLATORS: this is a part of message "You have %i hour(s), %i minute(s) and %i second(s) of PlayTime left" please translate accordingly
     _messages["TK_MSG_NOTIFICATION_SCR_FEATURE_NOT_AVAILABLE"] = {
         "s": _(
             'Feature "%%s", which is used to detect idle time, cannot be enabled!\nIdle / inactive time might not be accounted when screen is locked!'

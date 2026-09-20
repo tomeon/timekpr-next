@@ -21,6 +21,8 @@ from timekpr.server.config.policy import (
     TK_POLICY_SOURCE_USER,
     groupName,
     isGroupTarget,
+    isValidName,
+    isValidTarget,
     timekprPolicyStore,
     userExists,
 )
@@ -36,9 +38,20 @@ class timekprUserConfigurationProcessor:
         self._workDir = pTimekprConfig.getTimekprWorkDir()
         self._userName = pUserName
         self._isGroup = isGroupTarget(pUserName)
+        # the target comes from the admin interfaces and names a file, so
+        # everything below refuses one that is not a user or group name
+        self._isValidTarget = isValidTarget(pUserName)
         self._policyStore = timekprPolicyStore(self._configDir)
         self._timekprUserConfig = None
         self._timekprUserControl = None
+
+    def _requireValidTarget(self):
+        """A (result, message) refusing a target that is not a user or group name"""
+        if not self._isValidTarget:
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_TARGET_INVALID") % (
+                str(self._userName)
+            )
+        return 0, ""
 
     def loadAndCheckUserConfiguration(self, pCreate=False):
         """Load the policy of the user or group; with pCreate a missing policy
@@ -46,19 +59,20 @@ class timekprUserConfigurationProcessor:
         group policy is an error and a missing user policy yields the
         defaults in memory (but see getSavedUserInformation, which resolves
         the effective policy of a user instead)"""
-        # result
-        result = 0
-        message = ""
+        # the target has to be a name before it becomes a file
+        result, message = self._requireValidTarget()
+        if result != 0:
+            return result, message
 
         # user config
         self._timekprUserConfig = timekprUserConfig(self._configDir, self._userName)
 
         # result
-        if not self._timekprUserConfig.loadUserConfiguration(True):
+        if not self._timekprUserConfig.loadUserConfiguration():
             # a setter creates the policy
             if pCreate:
                 self._timekprUserConfig.initUserConfiguration()
-                self._timekprUserConfig.loadUserConfiguration(True)
+                self._timekprUserConfig.loadUserConfiguration()
             # a group policy has to exist to be read
             elif self._isGroup:
                 result = -1
@@ -72,9 +86,10 @@ class timekprUserConfigurationProcessor:
     def loadAndCheckUserControl(self, pCreate=False):
         """Load the user control saved state; a missing counters file yields
         zeros in memory, or is created with pCreate (adjusting time left)"""
-        # result
-        result = 0
-        message = ""
+        # the target has to be a name before it becomes a file
+        result, message = self._requireValidTarget()
+        if result != 0:
+            return result, message
 
         # groups have no counters
         if self._isGroup:
@@ -219,11 +234,14 @@ class timekprUserConfigurationProcessor:
 
         # a group's policy is its file; a user's policy is resolved (their
         # own file, the policies of their groups, or the defaults)
+        resolution = None
         if self._isGroup:
             result, message = self.loadAndCheckUserConfiguration()
-            resolution = None
         else:
-            result, message = 0, ""
+            result, message = self._requireValidTarget()
+        if result != 0:
+            pass
+        elif not self._isGroup:
             resolution = self._policyStore.resolve(self._userName)
             self._timekprUserConfig = resolution.config
             # a name with no policy of its own that neither NSS nor the
@@ -779,8 +797,11 @@ class timekprUserConfigurationProcessor:
             if pOperation is "-" time is subtracted
             if pOperation is "=" or empty, the time is set as it is"""
 
+        # the target has to be a name before it becomes a file
+        result, message = self._requireValidTarget()
         # groups have no counters
-        result, message = self._requireUser()
+        if result == 0:
+            result, message = self._requireUser()
         # the effective policy (the limits the adjustment is measured against)
         if result == 0:
             resolution = self._policyStore.resolve(self._userName)
@@ -820,10 +841,11 @@ class timekprUserConfigurationProcessor:
                 setLimit = 0
 
                 try:
-                    # get actual time limit for this day
-                    timeLimit = self._timekprUserConfig.getUserLimitsPerWeekdays()[
-                        datetime.date(datetime.now()).isoweekday() - 1
-                    ]
+                    # get actual time limit for this day (none when the day
+                    # is not allowed)
+                    timeLimit = self._timekprUserConfig.getUserLimitForDay(
+                        str(datetime.now().isoweekday())
+                    )
                     # decode time left (operations are actually technicall reversed, + for ppl is please add more time and minus is subtract,
                     #   but actually it's reverse, because we are dealing with time spent not time left)
                     if pOperation == "+":
@@ -883,10 +905,10 @@ class timekprUserConfigurationProcessor:
 
         # if we are still fine
         if result == 0:
-            # names without the target prefix, no empty ones, not itself
+            # group names without the target prefix, not itself
             overrides = [groupName(str(rGroup)).strip() for rGroup in pOverrides]
             if any(
-                rGroup == "" or rGroup == groupName(self._userName) or ";" in rGroup
+                not isValidName(rGroup) or rGroup == groupName(self._userName)
                 for rGroup in overrides
             ):
                 result = -1
@@ -916,9 +938,10 @@ class timekprUserConfigurationProcessor:
 
     def deletePolicy(self):
         """Delete the policy of the user or group (the counters of a user stay)"""
-        # result
-        result = 0
-        message = ""
+        # the target has to be a name before it becomes a file
+        result, message = self._requireValidTarget()
+        if result != 0:
+            return result, message
 
         # the policy
         self._timekprUserConfig = timekprUserConfig(self._configDir, self._userName)

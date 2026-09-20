@@ -218,7 +218,7 @@ lists them and `timekpra --migratepolicies delete` removes them._
 ### User configuration
 
 To configure limits and restrictions for user, it has to be selected from the user list. The list contains the users of your system, the
-users with a policy (a policy is not deleted even when the user itself is deleted, so an OS user can be re-created without loosing its
+users with a policy (a policy is not deleted even when the user itself is deleted, so an OS user can be re-created without losing its
 configuration in Timekpr-nExT), and the known members of groups with a policy. A user without a policy of their own shows the settings that
 apply to them from their groups or the defaults; changing anything creates the user's own policy.
 

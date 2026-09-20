@@ -32,15 +32,37 @@ from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
 from timekpr.common.utils.config import timekprUserConfig
 
-# a group is addressed as cons.TK_GROUP_TARGET_PREFIX + name ("@kids") where
-# a user name is expected; a user name can never start with it (timekpr
-# requires [a-zA-Z0-9_.] first, see userhelper), so the two never collide
+# A group is addressed as cons.TK_GROUP_TARGET_PREFIX + name ("@kids")
+# wherever a user name is expected; a user name can never start with the
+# prefix (see _nameRegexp), so the two never collide.
+
 # the pseudo-group every tracked user belongs to
 TK_GROUP_ALL = "all"
 # where the effective policy came from
 TK_POLICY_SOURCE_USER = "user"
 TK_POLICY_SOURCE_GROUP = "group"
 TK_POLICY_SOURCE_DEFAULT = "default"
+
+
+# the names timekpr accepts for a user or a group, at most 102 characters:
+#   POSIX portable names, extended with uppercase characters, a leading digit
+#   or ".", "@" for domain users and a trailing "$" for machine accounts;
+#   nothing in it is path syntax, so a name is safe inside a file name
+_nameRegexp = re.compile(
+    r"^[a-zA-Z0-9_\.]([a-zA-Z0-9_\.@-]{0,101}|[a-zA-Z0-9_\.@-]{0,100}\$)$"
+)
+
+
+def isValidName(pName):
+    """Whether a string is a user or group name timekpr accepts"""
+    return isinstance(pName, str) and _nameRegexp.match(pName) is not None
+
+
+def isValidTarget(pTarget):
+    """Whether a policy target is a valid user name, or the prefix and a
+    valid group name; everything the admin interfaces take a target from
+    must pass here before the target reaches the file system"""
+    return isinstance(pTarget, str) and isValidName(groupName(pTarget))
 
 
 def isGroupTarget(pTarget):
@@ -289,10 +311,15 @@ class timekprPolicyStore:
 
     def resolve(self, pUserName):
         """The effective policy of a user, see the module documentation"""
-        # the user's own policy wins outright
+        # the user's own policy wins outright (the modification time is read
+        # before the file, so that an edit landing in between makes the next
+        # fingerprint check resolve again, never the other way round)
         config = timekprUserConfig(self._configDir, pUserName)
-        present = config.loadUserConfiguration()
         userMtime = _mtime(self.getUserPolicyFile(pUserName))
+        present = config.loadUserConfiguration()
+        if not present:
+            # an unreadable file was set aside, an empty one removed
+            userMtime = _mtime(self.getUserPolicyFile(pUserName))
         if present:
             return timekprPolicyResolution(
                 config,
@@ -301,15 +328,16 @@ class timekprPolicyStore:
                 (userMtime, ()),
             )
 
-        # the groups with a policy the user is in
+        # the groups with a policy the user is in (modification times before
+        # the files are read, as above)
         groups = self.getUserPolicyGroups(pUserName)
-        configs = {rGroup: self._loadGroupPolicy(rGroup) for rGroup in groups}
         fingerprint = (
             userMtime,
             tuple(
                 (rGroup, _mtime(self.getGroupPolicyFile(rGroup))) for rGroup in groups
             ),
         )
+        configs = {rGroup: self._loadGroupPolicy(rGroup) for rGroup in groups}
         applied = self._dropOverridden(groups, configs)
         if not applied:
             # defaults (config holds them, nothing was loaded)

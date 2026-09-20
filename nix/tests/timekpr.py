@@ -54,6 +54,12 @@ ALL_GROUP = "all"
 NOSUCHUSER = "nosuchuser"
 NOSUCHGROUP = "nosuchgroup"
 TIMEKPR_LOG = "/var/log/timekpr.log"
+# Where the policies live; a target that is not a user or group name must
+# never turn into a path under (or outside) it.
+CONFIG_DIR = "/var/lib/timekpr/config"
+# Targets that are not names: path syntax, an empty group, an empty name.
+BAD_TARGETS = ["../x", "a/b", "@../x", "@a/b", "@", "-x", ""]
+NOT_A_NAME = "is not a valid user or group name"
 # What timekpra prints when the daemon refuses a command.  timekpra
 # always exits 0, so this text is the only signal.
 DENIED = "access denied"
@@ -609,6 +615,68 @@ def exercise_groups():
         expect_login_survives(BOB, BOB_PASSWORD)
 
 
+def policy_files():
+    """Every path under the configuration directory, to compare before and
+    after a refused request."""
+    return machine.succeed(f"find {CONFIG_DIR} | sort")
+
+
+def exercise_invalid_targets():
+    """A target is a file name on the server, so the daemon refuses one
+    that is not a user or group name before touching the file system,
+    over D-Bus and over the web API alike."""
+    with subtest("targets that are not names are refused and create nothing"):
+        before = policy_files()
+        for target in BAD_TARGETS:
+            for command in (
+                ["--settimelimits", target, NO_TIME_ARG],
+                ["--setalloweddays", target, "1"],
+                ["--settrackinactive", target, "true"],
+                ["--settimeleft", target, "+", "60"],
+                ["--deletepolicy", target],
+                ["--userinfo", target],
+            ):
+                out = DBUS.run(*command)
+                assert NOT_A_NAME in out, f"{command} was not refused:\n{out}"
+        # a group whose overrides are not names
+        DBUS.run("--settimelimits", group_target(KIDS), NO_TIME_ARG)
+        for overrides in ("a/b", "x;../y", "kids;"):
+            out = DBUS.run("--setoverrides", group_target(KIDS), overrides)
+            assert "are invalid" in out, f"overrides {overrides!r} not refused:\n{out}"
+        assert DBUS.groupinfo_value(KIDS, "OVERRIDES") == ""
+        DBUS.delete_policy(group_target(KIDS))
+        # the web API (the daemon's message becomes a 400; a name with a
+        # slash does not even reach a route)
+        for target in ("@", "-x"):
+            status, _body = api("PATCH", user_path(target, "/config"), {})
+            assert status == 400, status
+            status, _body = api("PATCH", group_path(target, "/config"), {})
+            assert status == 400, status
+        for target in ("a/b", "../x"):
+            status, _body = api("PATCH", user_path(target, "/config"), {})
+            assert status != 200, status
+        assert policy_files() == before
+
+
+def exercise_time_left_on_restricted_days():
+    """Adjusting today's time left looks the limit up by the allowed days
+    the limits are stored against, not by the weekday's number, so it works
+    when only some days are allowed."""
+    today = machine.succeed("date +%u").strip()
+    with subtest(f"{ALICE}: time left can be adjusted when only today is allowed"):
+        DBUS.run("--setalloweddays", ALICE, today)
+        DBUS.run("--settimelimits", ALICE, "60")
+        # nothing left, then five minutes (over the limit, as extra time is)
+        for operation, amount, expected in (("=", "0", "0"), ("+", "300", "300")):
+            out = DBUS.run("--settimeleft", ALICE, operation, amount)
+            left = DBUS.userinfo_value(ALICE, "TIME_LEFT_DAY")
+            assert left == expected, f"TIME_LEFT_DAY {left} != {expected}:\n{out}"
+        # back to the defaults
+        DBUS.delete_policy(ALICE)
+        DBUS.reset_time(ALICE)
+        assert DBUS.policy_source(ALICE) == "default"
+
+
 def main():
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("timekpr.service")
@@ -633,6 +701,8 @@ def main():
 
     exercise(BOB, BOB_PASSWORD, UNIX)
     exercise_groups()
+    exercise_invalid_targets()
+    exercise_time_left_on_restricted_days()
 
 
 machine.start()

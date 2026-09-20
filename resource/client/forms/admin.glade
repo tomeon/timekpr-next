@@ -1921,7 +1921,7 @@ Please note that unchecking this will disable showing all information and notifi
 
 A user in this group and in one of the listed groups follows this policy alone; otherwise the most restrictive combination of all matching group policies applies. Separate group names with ";".</property>
                                     <property name="halign">end</property>
-                                    <property name="label" translatable="yes">Overrides groups:</property>
+                                    <property name="label" translatable="yes">Overrides:</property>
                                     <property name="justify">right</property>
                                     <property name="wrap">True</property>
                                     <property name="ellipsize">end</property>

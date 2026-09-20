@@ -66,9 +66,11 @@ def daemon_texts(keys):
                 except OSError:
                     pass
             for text in texts:
-                # "%%s" in the source is "%s" once formatted by the daemon
+                # the catalogs hold "%%s", getTranslation already turned it
+                # into "%s", and the daemon formats it into the name
+                text = text.replace("%%", "%")
                 patterns.add(
-                    "^" + ".*".join(re.escape(part) for part in text.split("%%s")) + "$"
+                    "^" + ".*".join(re.escape(part) for part in text.split("%s")) + "$"
                 )
         _daemon_texts[keys] = re.compile("|".join(patterns), re.DOTALL)
     return _daemon_texts[keys]

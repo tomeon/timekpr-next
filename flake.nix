@@ -106,7 +106,6 @@
                         dbus-python
                         fastapi
                         httpx
-                        psutil
                         pygobject3
                         pytest
                         uvicorn

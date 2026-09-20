@@ -530,7 +530,7 @@ class timekprAdminGUI:
         self._tkSavedCfg["policyGroups"] = []
         self._tkSavedCfg["timeOverrides"] = []
         self._timekprAdminFormBuilder.get_object("TimekprUserPolicySourceLB").set_text(
-            "Policy: -"
+            msg.getTranslation("TK_MSG_ADMIN_POLICY_NONE")
         )
         self._timekprAdminFormBuilder.get_object(
             "TimekprUserPolicyDeleteBT"
@@ -1067,7 +1067,9 @@ class timekprAdminGUI:
                     # add group
                     userStore.append([groupName, groupName])
                 # status
-                self.setTimekprStatus(False, "User and group list retrieved")
+                self.setTimekprStatus(
+                    False, msg.getTranslation("TK_MSG_STATUS_USERGROUPLIST_RETRIEVED")
+                )
             else:
                 # status (the users are still usable)
                 self.setTimekprStatus(False, message)
@@ -1075,16 +1077,7 @@ class timekprAdminGUI:
             self._timekprAdminFormBuilder.get_object(
                 "TimekprUserSelectionCB"
             ).set_sensitive(True)
-            for rCtrl in (
-                "TimekprUserSelectionRefreshBT",
-                "TimekprNewGroupEntry",
-                "TimekprNewGroupBT",
-            ):
-                self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(
-                    self._timekprAdminFormBuilder.get_object(
-                        "TimekprUserSelectionCB"
-                    ).get_sensitive()
-                )
+            self.enableUserListControls()
             # adjust widht
             self._timekprAdminFormBuilder.get_object(
                 "TimekprUserSelectionCBEntry"
@@ -1540,12 +1533,22 @@ class timekprAdminGUI:
         # enable / disable controls
         self.toggleTimekprConfigControls(True)
 
+    def enableUserListControls(self):
+        """Enable the controls next to the user selector (refresh, new group
+        policy): they work whenever the list is there, whether or not an
+        entry is selected, but toggleUserConfigControls disables them along
+        with the rest when the selection is cleared"""
+        for rCtrl in (
+            "TimekprUserSelectionRefreshBT",
+            "TimekprNewGroupEntry",
+            "TimekprNewGroupBT",
+        ):
+            self._timekprAdminFormBuilder.get_object(rCtrl).set_sensitive(True)
+
     def applyUserConfig(self):
         """Apply user configuration after getting it from server"""
-        # enable refresh
-        self._timekprAdminFormBuilder.get_object(
-            "TimekprUserSelectionRefreshBT"
-        ).set_sensitive(True)
+        # enable refresh and the new group policy controls
+        self.enableUserListControls()
 
         # ## allowed days ###
         for rDay in range(1, 7 + 1):
@@ -1665,24 +1668,25 @@ class timekprAdminGUI:
             # group policy, with its known members
             members = self._timekprGroupInfo.get(userName[1:], {}).get("members", [])
             policyText = (
-                f"Policy: group {userName} (members: {', '.join(members)})"
+                msg.getTranslation("TK_MSG_ADMIN_POLICY_GROUP_MEMBERS")
+                % (userName, ", ".join(members))
                 if len(members) > 0
-                else f"Policy: group {userName}"
+                else msg.getTranslation("TK_MSG_ADMIN_POLICY_GROUP") % (userName)
             )
         elif policySource == "user":
             # own policy
-            policyText = "Policy: own"
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_OWN")
         elif policySource == "group":
             # policies of the groups
-            policyText = "Policy: from groups {}".format(
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_GROUPS") % (
                 ", ".join(self._tkSavedCfg["policyGroups"])
             )
         elif policySource == "default":
             # nothing set up
-            policyText = "Policy: defaults"
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_DEFAULTS")
         else:
             # server did not say
-            policyText = "Policy: -"
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_NONE")
         self._timekprAdminFormBuilder.get_object("TimekprUserPolicySourceLB").set_text(
             policyText
         )
@@ -2455,7 +2459,10 @@ class timekprAdminGUI:
                         # set internal state
                         self._tkSavedCfg["timeOverrides"] = rVal["val"]
                         # print success message
-                        self.setTimekprStatus(False, "Overrides processed")
+                        self.setTimekprStatus(
+                            False,
+                            msg.getTranslation("TK_MSG_STATUS_OVERRIDES_PROCESSED"),
+                        )
                 # if all ok
                 if result != 0:
                     # status
@@ -2622,6 +2629,9 @@ class timekprAdminGUI:
         else:
             # disable all
             self.toggleUserConfigControls(False, True)
+            # but the list is still there to refresh and to add a group to
+            if self._isConnected:
+                self.enableUserListControls()
 
     def userConfigurationRefreshClicked(self, evt):
         """User requested config restore from server"""
@@ -2639,11 +2649,11 @@ class timekprAdminGUI:
 
         # what is going away
         isGroup = self.isGroupTarget(userName)
-        question = (
-            f"Delete the group policy {userName}?\n\nIts members will follow their remaining group policies or the defaults."
+        question = msg.getTranslation(
+            "TK_MSG_ADMIN_DELETE_GROUP_POLICY_QUESTION"
             if isGroup
-            else f'Delete the own policy of user "{userName}"?\n\nThe policies of the user\'s groups or the defaults will apply instead.'
-        )
+            else "TK_MSG_ADMIN_DELETE_USER_POLICY_QUESTION"
+        ) % (userName)
         # ask
         tkrMsg = Gtk.MessageDialog(
             parent=self._timekprAdminForm,
@@ -2669,12 +2679,15 @@ class timekprAdminGUI:
         # successful call
         if result == 0:
             # status
-            self.setTimekprStatus(False, "Policy deleted")
-            # a deleted group policy leaves the list, a user is shown with its effective policy
-            if isGroup:
-                self.getAdminUserList()
-            else:
-                self.retrieveUserInfoAndConfig(userName, cons.TK_CL_INF_FULL)
+            self.setTimekprStatus(
+                False, msg.getTranslation("TK_MSG_STATUS_POLICY_DELETED")
+            )
+            # a deleted group policy leaves the list; a user may too (one the
+            # system cannot enumerate was listed for the policy alone), and
+            # is otherwise shown again with the policy that applies now
+            self.getAdminUserList()
+            if not isGroup:
+                self.selectUserInList(userName)
         else:
             # status
             self.setTimekprStatus(False, message)
@@ -2696,7 +2709,9 @@ class timekprAdminGUI:
         )
         # nothing to do
         if groupName == "":
-            self.setTimekprStatus(False, "Please enter a group name")
+            self.setTimekprStatus(
+                False, msg.getTranslation("TK_MSG_STATUS_GROUPNAME_MISSING")
+            )
             return
         # the target
         target = f"@{groupName}"
@@ -2721,7 +2736,10 @@ class timekprAdminGUI:
                 self.checkConnection()
                 return
             # status
-            self.setTimekprStatus(False, f"Group policy {target} created")
+            self.setTimekprStatus(
+                False,
+                msg.getTranslation("TK_MSG_STATUS_GROUPPOLICY_CREATED") % (target),
+            )
 
         # forget the name
         self._timekprAdminFormBuilder.get_object("TimekprNewGroupEntry").set_text("")
@@ -2729,7 +2747,10 @@ class timekprAdminGUI:
         self.getAdminUserList()
         if not self.selectUserInList(target):
             # status
-            self.setTimekprStatus(False, f"Group policy {target} is not in the list")
+            self.setTimekprStatus(
+                False,
+                msg.getTranslation("TK_MSG_STATUS_GROUPPOLICY_NOT_LISTED") % (target),
+            )
 
     # --------------- today page GTK signal methods --------------- #
 

@@ -59,7 +59,11 @@ client proxy and the CLI argument shapes stayed unchanged. A leading
 
 The prefix is `cons.TK_GROUP_TARGET_PREFIX`; the helpers are
 `isGroupTarget`, `groupName` and `groupTarget` in
-[server/config/policy.py:46-62](../../server/config/policy.py#L46-L62).
+[server/config/policy.py](../../server/config/policy.py). A target
+names a file, so the daemon refuses one that is not a user name or the
+prefix and a group name (`isValidTarget`, the same pattern the user
+scan applies) before any configuration object is built for it; the
+overrides of a group policy are held to the same pattern.
 
 ### D2. Policies are created only by administrators
 

@@ -258,7 +258,7 @@ class timekprNotificationManager(dbus.service.Object):
             cons.TK_LOG_LEVEL_DEBUG,
             f"sending tcn: {pFinalNotificationType}, {int(pSecondsLeft)}",
         )
-        # Your time is up, you will be forcibly logged / locked / suspended / shutdown out in %i seconds!
+        # Your time is up, you will be forcibly logged out in %i seconds!
 
     @dbus.service.signal(cons.TK_DBUS_USER_NOTIF_INTERFACE, signature="s")
     def timeNoLimitNotification(self, pPriority):

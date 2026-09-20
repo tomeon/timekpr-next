@@ -916,6 +916,31 @@ class timekprConfig:
         self._timekprConfig["TIMEKPR_USERS_EXCL"] = ";".join(pUsersExcl)
 
 
+def _parseList(pValue):
+    """The items of a ";" separated value, stripped, without the empty ones"""
+    return [rVal.strip() for rVal in pValue.split(";") if rVal.strip() != ""]
+
+
+def _parseAllowedHours(pValue):
+    """The hours of an ALLOWED_HOURS value: {hour: {start, end, unaccounted}}"""
+    # this is the dict for hour config
+    allowedHours = {}
+    # minutes can be specified in brackets after hour
+    for rHour in _parseList(pValue):
+        # determine hour and minutes
+        hour, sMin, eMin, uacc = findHourStartEndMinutes(rHour)
+        # hour is correct
+        if hour is not None:
+            # get our dict done
+            allowedHours[str(hour)] = {
+                cons.TK_CTRL_SMIN: sMin,
+                cons.TK_CTRL_EMIN: eMin,
+                cons.TK_CTRL_UACC: uacc,
+            }
+    # result
+    return allowedHours
+
+
 class timekprUserConfig:
     """Class will contain and provide config related functionality"""
 
@@ -954,6 +979,10 @@ class timekprUserConfig:
     @staticmethod
     def getPolicyFile(pDirectory, pTarget):
         """The policy file of a user or a group target, whether or not it exists"""
+        # the daemon validates targets before they get here (policy.isValidTarget);
+        # this is the backstop against a name that would leave the directory
+        if os.sep in pTarget or "\0" in pTarget:
+            raise ValueError(f"not a policy target: {pTarget!r}")
         if timekprUserConfig.isGroupTarget(pTarget):
             return os.path.join(
                 pDirectory,
@@ -975,16 +1004,16 @@ class timekprUserConfig:
         """Whether the policy file exists (after loading)"""
         return self._present
 
-    def loadUserConfiguration(self, pValidateOnly=False):
-        """Read user timekpr config file"""
+    def loadUserConfiguration(self):
+        """Read the policy file; True if there is one.  A missing (or
+        unreadable, see _loadAndPrepareConfigFile) file means "no policy":
+        the defaults are used in memory and nothing is written, policies are
+        only ever created by administrators."""
         log.log(cons.TK_LOG_LEVEL_DEBUG, "start load user configuration")
 
         # user config section
         section = self._userName
-        # try to load config file; a missing (or unreadable, see
-        # _loadAndPrepareConfigFile) file means "no policy": the defaults
-        # are used in memory and nothing is written, policies are only ever
-        # created by administrators (pValidateOnly is kept for callers)
+        # try to load config file
         result = _loadAndPrepareConfigFile(
             self._timekprUserConfigParser, self._configFile
         )
@@ -992,122 +1021,113 @@ class timekprUserConfig:
         # value read result
         resultValue = True
         # read the values (the defaults, when there is no file)
-        if True:
-            # no policy
-            if not result:
-                # logging
-                log.log(
-                    cons.TK_LOG_LEVEL_DEBUG,
-                    f"no policy file ({self._configFile}), defaults apply",
-                )
+        if not result:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_DEBUG,
+                f"no policy file ({self._configFile}), defaults apply",
+            )
 
-            # read
-            param = "ALLOWED_HOURS"
-            for i in range(1, 7 + 1):
-                resultValue, self._timekprUserConfig[f"{param}_{i!s}"] = (
-                    _readAndNormalizeValue(
-                        self._timekprUserConfigParser.get,
-                        section,
-                        (f"{param}_{i!s}"),
-                        pDefaultValue=cons.TK_ALLOWED_HOURS,
-                        pCheckValue=None,
-                        pOverallSuccess=resultValue,
-                    )
-                )
-            # read
-            param = "ALLOWED_WEEKDAYS"
-            resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
-                self._timekprUserConfigParser.get,
-                section,
-                param,
-                pDefaultValue=cons.TK_ALLOWED_WEEKDAYS,
-                pCheckValue=None,
-                pOverallSuccess=resultValue,
-            )
-            self._timekprUserConfig[param] = _cleanupValue(
-                self._timekprUserConfig[param]
-            )
-            # read
-            param = "LIMITS_PER_WEEKDAYS"
-            resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
-                self._timekprUserConfigParser.get,
-                section,
-                param,
-                pDefaultValue=cons.TK_LIMITS_PER_WEEKDAYS,
-                pCheckValue=None,
-                pOverallSuccess=resultValue,
-            )
-            self._timekprUserConfig[param] = _cleanupValue(
-                self._timekprUserConfig[param]
-            )
-            # read
-            param = "LIMIT_PER_WEEK"
-            resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
-                self._timekprUserConfigParser.getint,
-                section,
-                param,
-                pDefaultValue=cons.TK_LIMIT_PER_WEEK,
-                pCheckValue=None,
-                pOverallSuccess=resultValue,
-            )
-            # read
-            param = "LIMIT_PER_MONTH"
-            resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
-                self._timekprUserConfigParser.getint,
-                section,
-                param,
-                pDefaultValue=cons.TK_LIMIT_PER_MONTH,
-                pCheckValue=None,
-                pOverallSuccess=resultValue,
-            )
-            # read
-            param = "TRACK_INACTIVE"
-            resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
-                self._timekprUserConfigParser.getboolean,
-                section,
-                param,
-                pDefaultValue=cons.TK_TRACK_INACTIVE,
-                pCheckValue=None,
-                pOverallSuccess=resultValue,
-            )
-            # read
-            param = "HIDE_TRAY_ICON"
-            resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
-                self._timekprUserConfigParser.getboolean,
-                section,
-                param,
-                pDefaultValue=cons.TK_HIDE_TRAY_ICON,
-                pCheckValue=None,
-                pOverallSuccess=resultValue,
-            )
-            # read (group policies only: the groups this one takes precedence over)
-            param = "OVERRIDES"
-            if self._isGroup:
-                resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+        # read
+        param = "ALLOWED_HOURS"
+        for i in range(1, 7 + 1):
+            resultValue, self._timekprUserConfig[f"{param}_{i!s}"] = (
+                _readAndNormalizeValue(
                     self._timekprUserConfigParser.get,
                     section,
-                    param,
-                    pDefaultValue="",
+                    (f"{param}_{i!s}"),
+                    pDefaultValue=cons.TK_ALLOWED_HOURS,
                     pCheckValue=None,
                     pOverallSuccess=resultValue,
                 )
-                self._timekprUserConfig[param] = _cleanupValue(
-                    self._timekprUserConfig[param]
-                )
-            else:
-                self._timekprUserConfig[param] = ""
-            # if we could not read some values, save what we could + defaults
-            if result and not resultValue:
-                # logging
-                log.log(
-                    cons.TK_LOG_LEVEL_INFO,
-                    f"WARNING: some values in user config file ({self._configFile}) could not be read or new configuration option was introduced, valid values and defaults are used / saved instead",
-                )
-                # init config with partial values read and save what we could
-                self.initUserConfiguration(True)
-
-            # clear parser
-            self._timekprUserConfigParser.clear()
+            )
+        # read
+        param = "ALLOWED_WEEKDAYS"
+        resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+            self._timekprUserConfigParser.get,
+            section,
+            param,
+            pDefaultValue=cons.TK_ALLOWED_WEEKDAYS,
+            pCheckValue=None,
+            pOverallSuccess=resultValue,
+        )
+        self._timekprUserConfig[param] = _cleanupValue(self._timekprUserConfig[param])
+        # read
+        param = "LIMITS_PER_WEEKDAYS"
+        resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+            self._timekprUserConfigParser.get,
+            section,
+            param,
+            pDefaultValue=cons.TK_LIMITS_PER_WEEKDAYS,
+            pCheckValue=None,
+            pOverallSuccess=resultValue,
+        )
+        self._timekprUserConfig[param] = _cleanupValue(self._timekprUserConfig[param])
+        # read
+        param = "LIMIT_PER_WEEK"
+        resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+            self._timekprUserConfigParser.getint,
+            section,
+            param,
+            pDefaultValue=cons.TK_LIMIT_PER_WEEK,
+            pCheckValue=None,
+            pOverallSuccess=resultValue,
+        )
+        # read
+        param = "LIMIT_PER_MONTH"
+        resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+            self._timekprUserConfigParser.getint,
+            section,
+            param,
+            pDefaultValue=cons.TK_LIMIT_PER_MONTH,
+            pCheckValue=None,
+            pOverallSuccess=resultValue,
+        )
+        # read
+        param = "TRACK_INACTIVE"
+        resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+            self._timekprUserConfigParser.getboolean,
+            section,
+            param,
+            pDefaultValue=cons.TK_TRACK_INACTIVE,
+            pCheckValue=None,
+            pOverallSuccess=resultValue,
+        )
+        # read
+        param = "HIDE_TRAY_ICON"
+        resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+            self._timekprUserConfigParser.getboolean,
+            section,
+            param,
+            pDefaultValue=cons.TK_HIDE_TRAY_ICON,
+            pCheckValue=None,
+            pOverallSuccess=resultValue,
+        )
+        # read (group policies only: the groups this one takes precedence over)
+        param = "OVERRIDES"
+        if self._isGroup:
+            resultValue, self._timekprUserConfig[param] = _readAndNormalizeValue(
+                self._timekprUserConfigParser.get,
+                section,
+                param,
+                pDefaultValue="",
+                pCheckValue=None,
+                pOverallSuccess=resultValue,
+            )
+            self._timekprUserConfig[param] = _cleanupValue(
+                self._timekprUserConfig[param]
+            )
+        else:
+            self._timekprUserConfig[param] = ""
+        # if we could not read some values, save what we could + defaults
+        if result and not resultValue:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"WARNING: some values in user config file ({self._configFile}) could not be read or new configuration option was introduced, valid values and defaults are used / saved instead",
+            )
+            # init config with partial values read and save what we could
+            self.initUserConfiguration(True)
 
         # clear parser
         self._timekprUserConfigParser.clear()
@@ -1373,47 +1393,20 @@ class timekprUserConfig:
 
     def getUserAllowedHours(self, pDay):
         """Get allowed hours"""
-        # this is the dict for hour config
-        allowedHours = {}
-
-        # get allowed hours for all of the week days
-        param = f"ALLOWED_HOURS_{pDay}"
-        # minutes can be specified in brackets after hour
-        if self._timekprUserConfig[param] != "":
-            for rHour in self._timekprUserConfig[param].split(";"):
-                # determine hour and minutes
-                hour, sMin, eMin, uacc = findHourStartEndMinutes(rHour)
-                # hour is correct
-                if hour is not None:
-                    # get our dict done
-                    allowedHours[str(hour)] = {
-                        cons.TK_CTRL_SMIN: sMin,
-                        cons.TK_CTRL_EMIN: eMin,
-                        cons.TK_CTRL_UACC: uacc,
-                    }
         # result
-        return allowedHours
+        return _parseAllowedHours(self._timekprUserConfig[f"ALLOWED_HOURS_{pDay}"])
 
     def getUserAllowedWeekdays(self):
         """Get allowed week days"""
-        # param
-        param = "ALLOWED_WEEKDAYS"
         # result
-        return [
-            rVal.strip()
-            for rVal in self._timekprUserConfig[param].split(";")
-            if rVal != ""
-        ]
+        return _parseList(self._timekprUserConfig["ALLOWED_WEEKDAYS"])
 
     def getUserLimitsPerWeekdays(self):
         """Get allowed limits per week day"""
-        # param
-        param = "LIMITS_PER_WEEKDAYS"
         # result
         return [
-            int(rVal.strip())
-            for rVal in self._timekprUserConfig[param].split(";")
-            if rVal != ""
+            int(rVal)
+            for rVal in _parseList(self._timekprUserConfig["LIMITS_PER_WEEKDAYS"])
         ]
 
     def getUserWeekLimit(self):
@@ -1458,32 +1451,20 @@ class timekprUserConfig:
     def isDefaultPolicy(self):
         """Whether the policy restricts nothing: every setting has its default
         value (such a file is a leftover of versions that created one per user)"""
-        defaults = timekprUserConfig.__new__(timekprUserConfig)
-        defaults._timekprUserConfig = {
-            **{
-                f"ALLOWED_HOURS_{rDay}": cons.TK_ALLOWED_HOURS
-                for rDay in range(1, 7 + 1)
-            },
-            "ALLOWED_WEEKDAYS": cons.TK_ALLOWED_WEEKDAYS,
-            "LIMITS_PER_WEEKDAYS": cons.TK_LIMITS_PER_WEEKDAYS,
-            "LIMIT_PER_WEEK": cons.TK_LIMIT_PER_WEEK,
-            "LIMIT_PER_MONTH": cons.TK_LIMIT_PER_MONTH,
-            "TRACK_INACTIVE": cons.TK_TRACK_INACTIVE,
-            "HIDE_TRAY_ICON": cons.TK_HIDE_TRAY_ICON,
-        }
         # compare the parsed values, not the strings
         return (
             all(
                 self.getUserAllowedHours(str(rDay))
-                == defaults.getUserAllowedHours(str(rDay))
+                == _parseAllowedHours(cons.TK_ALLOWED_HOURS)
                 for rDay in range(1, 7 + 1)
             )
-            and self.getUserAllowedWeekdays() == defaults.getUserAllowedWeekdays()
-            and self.getUserLimitsPerWeekdays() == defaults.getUserLimitsPerWeekdays()
-            and self.getUserWeekLimit() == defaults.getUserWeekLimit()
-            and self.getUserMonthLimit() == defaults.getUserMonthLimit()
-            and self.getUserTrackInactive() == defaults.getUserTrackInactive()
-            and self.getUserHideTrayIcon() == defaults.getUserHideTrayIcon()
+            and self.getUserAllowedWeekdays() == _parseList(cons.TK_ALLOWED_WEEKDAYS)
+            and self.getUserLimitsPerWeekdays()
+            == [int(rVal) for rVal in _parseList(cons.TK_LIMITS_PER_WEEKDAYS)]
+            and self.getUserWeekLimit() == cons.TK_LIMIT_PER_WEEK
+            and self.getUserMonthLimit() == cons.TK_LIMIT_PER_MONTH
+            and self.getUserTrackInactive() == cons.TK_TRACK_INACTIVE
+            and self.getUserHideTrayIcon() == cons.TK_HIDE_TRAY_ICON
         )
 
     def _getLimitsByDay(self):
@@ -1495,6 +1476,11 @@ class timekprUserConfig:
             rDay: (limits[rIdx] if rIdx < len(limits) else 0)
             for rIdx, rDay in enumerate(days)
         }
+
+    def getUserLimitForDay(self, pDay):
+        """The limit of one day (an ISO weekday as a string), 0 when the day
+        is not allowed"""
+        return self._getLimitsByDay().get(str(pDay), 0)
 
     def mergeMostRestrictive(self, pConfigs):
         """Replace the limit settings with the most restrictive merge of the
@@ -1672,81 +1658,79 @@ class timekprUserControl:
         # the counters are created when a user is first tracked; when only
         # checking (the administration tools), a missing file yields zeros
         # in memory and is not created
-        if True:
-            # read config failed, we need to initialize
-            if not result and not pValidateOnly:
-                # logging
-                log.log(
-                    cons.TK_LOG_LEVEL_INFO,
-                    f"ERROR: could not parse the user control file ({self._configFile}) properly, will recreate",
-                )
-                # init config
-                self.initUserControl()
-                # re-read the file
-                self._timekprUserControlParser.read(self._configFile)
-                # the file is there now
-                result = True
+        if not result and not pValidateOnly:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"ERROR: could not parse the user control file ({self._configFile}) properly, will recreate",
+            )
+            # init config
+            self.initUserControl()
+            # re-read the file
+            self._timekprUserControlParser.read(self._configFile)
+            # the file is there now
+            result = True
 
-            # read
-            param = "TIME_SPENT_BALANCE"
-            resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
-                self._timekprUserControlParser.getint,
-                section,
-                param,
-                pDefaultValue=0,
-                pCheckValue=cons.TK_LIMIT_PER_DAY,
-                pOverallSuccess=resultValue,
-            )
-            # read
-            param = "TIME_SPENT_DAY"
-            resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
-                self._timekprUserControlParser.getint,
-                section,
-                param,
-                pDefaultValue=0,
-                pCheckValue=cons.TK_LIMIT_PER_DAY,
-                pOverallSuccess=resultValue,
-            )
-            # read
-            param = "TIME_SPENT_WEEK"
-            resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
-                self._timekprUserControlParser.getint,
-                section,
-                param,
-                pDefaultValue=0,
-                pCheckValue=cons.TK_LIMIT_PER_WEEK,
-                pOverallSuccess=resultValue,
-            )
-            # read
-            param = "TIME_SPENT_MONTH"
-            resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
-                self._timekprUserControlParser.getint,
-                section,
-                param,
-                pDefaultValue=0,
-                pCheckValue=cons.TK_LIMIT_PER_MONTH,
-                pOverallSuccess=resultValue,
-            )
-            # read
-            param = "LAST_CHECKED"
-            resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
-                self._timekprUserControlParser.get,
-                section,
-                param,
-                pDefaultValue=datetime.now().replace(microsecond=0),
-                pCheckValue=None,
-                pOverallSuccess=resultValue,
-            )
+        # read
+        param = "TIME_SPENT_BALANCE"
+        resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
+            self._timekprUserControlParser.getint,
+            section,
+            param,
+            pDefaultValue=0,
+            pCheckValue=cons.TK_LIMIT_PER_DAY,
+            pOverallSuccess=resultValue,
+        )
+        # read
+        param = "TIME_SPENT_DAY"
+        resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
+            self._timekprUserControlParser.getint,
+            section,
+            param,
+            pDefaultValue=0,
+            pCheckValue=cons.TK_LIMIT_PER_DAY,
+            pOverallSuccess=resultValue,
+        )
+        # read
+        param = "TIME_SPENT_WEEK"
+        resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
+            self._timekprUserControlParser.getint,
+            section,
+            param,
+            pDefaultValue=0,
+            pCheckValue=cons.TK_LIMIT_PER_WEEK,
+            pOverallSuccess=resultValue,
+        )
+        # read
+        param = "TIME_SPENT_MONTH"
+        resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
+            self._timekprUserControlParser.getint,
+            section,
+            param,
+            pDefaultValue=0,
+            pCheckValue=cons.TK_LIMIT_PER_MONTH,
+            pOverallSuccess=resultValue,
+        )
+        # read
+        param = "LAST_CHECKED"
+        resultValue, self._timekprUserControl[param] = _readAndNormalizeValue(
+            self._timekprUserControlParser.get,
+            section,
+            param,
+            pDefaultValue=datetime.now().replace(microsecond=0),
+            pCheckValue=None,
+            pOverallSuccess=resultValue,
+        )
 
-            # if we could not read some values, save what we could + defaults
-            if result and not resultValue:
-                # logging
-                log.log(
-                    cons.TK_LOG_LEVEL_INFO,
-                    f"WARNING: some values in user control file ({self._configFile}) could not be read or new configuration option was introduced, valid values and defaults are used / saved instead",
-                )
-                # save what we could
-                self.initUserControl(True)
+        # if we could not read some values, save what we could + defaults
+        if result and not resultValue:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"WARNING: some values in user control file ({self._configFile}) could not be read or new configuration option was introduced, valid values and defaults are used / saved instead",
+            )
+            # save what we could
+            self.initUserControl(True)
 
         # clear parser
         self._timekprUserControlParser.clear()

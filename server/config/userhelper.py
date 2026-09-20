@@ -15,7 +15,11 @@ from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
 from timekpr.common.utils.config import timekprConfig, timekprUserConfig
 from timekpr.common.utils.misc import getNormalizedUserNames
-from timekpr.server.config.policy import groupTarget, timekprPolicyStore
+from timekpr.server.config.policy import (
+    groupTarget,
+    isValidName,
+    timekprPolicyStore,
+)
 
 # user limits
 _limitsConfig = {}
@@ -26,13 +30,7 @@ _loginManagers = [
 # defaults
 _limitsConfig["UID_MIN"] = 1000
 _limitsConfig["UID_MAX"] = 60000
-# username pattern:
-#   all users, max 101 chars
-#   linux users, extended with uppercase characters and first numeric or "." character
-#   domain users, extended with uppercase characters and first numeric or ".", and "@" symbol
-_userNameRegexp = re.compile(
-    r"^[a-zA-Z0-9_\.]([a-zA-Z0-9_\.@-]{0,101}|[a-zA-Z0-9_\.@-]{0,100}\$)$"
-)
+# the user name pattern is shared with the policy targets (policy.isValidName)
 
 
 # some distros are "different", login.defs may be in different dir, config reflects multiple dirs to check for the file
@@ -73,7 +71,7 @@ def isUserValid(pUserId, pUserName=None, pUserShell=None):
             isUIDOK = False
         # check if username is ok
         # uid is ok and name is passed
-        if isUIDOK and pUserName is not None and not _userNameRegexp.match(pUserName):
+        if isUIDOK and pUserName is not None and not isValidName(pUserName):
             # user is not ours
             isUIDOK = False
     # fin

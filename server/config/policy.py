@@ -243,22 +243,10 @@ class timekprPolicyStore:
         # result
         return sorted(groups)
 
-    def getGroupMembers(self, pGroup, pKnownUsers=()):
-        """Best-effort member list of a group: the explicit members NSS
-        lists, plus every known user whose groups include it.  Identity
-        providers that do not enumerate make this incomplete."""
-        members = set()
-        if pGroup == TK_GROUP_ALL:
-            return sorted(pKnownUsers)
-        try:
-            members.update(grp.getgrnam(pGroup).gr_mem)
-        except KeyError:
-            pass
-        for rUser in pKnownUsers:
-            if pGroup in getUserGroups(rUser):
-                members.add(rUser)
-        # result
-        return sorted(members)
+    def startListing(self):
+        """A listing of many users and groups at once (the admin lists), which
+        asks NSS for a user's groups once and reads every group policy once"""
+        return timekprPolicyListing(self)
 
     # ## resolution ##
 
@@ -268,16 +256,17 @@ class timekprPolicyStore:
         config.loadUserConfiguration()
         return config
 
-    def _dropOverridden(self, pGroups, pConfigs):
+    def _dropOverridden(self, pGroups, pOverrides):
         """Drop every group that another one of the groups overrides,
-        directly or transitively.  A cycle is a configuration error: it is
-        logged, and no group is dropped."""
+        directly or transitively (pOverrides gives each group's OVERRIDES
+        list).  A cycle is a configuration error: it is logged, and no group
+        is dropped."""
         groups = set(pGroups)
         # the graph, restricted to the groups at hand
         edges = {
             rGroup: {
                 rOther
-                for rOther in pConfigs[rGroup].getUserOverrides()
+                for rOther in pOverrides(rGroup)
                 if rOther in groups and rOther != rGroup
             }
             for rGroup in groups
@@ -338,7 +327,9 @@ class timekprPolicyStore:
             ),
         )
         configs = {rGroup: self._loadGroupPolicy(rGroup) for rGroup in groups}
-        applied = self._dropOverridden(groups, configs)
+        applied = self._dropOverridden(
+            groups, lambda pGroup: configs[pGroup].getUserOverrides()
+        )
         if not applied:
             # defaults (config holds them, nothing was loaded)
             return timekprPolicyResolution(
@@ -365,6 +356,76 @@ class timekprPolicyStore:
                 (rGroup, _mtime(self.getGroupPolicyFile(rGroup))) for rGroup in groups
             ),
         )
+
+
+class timekprPolicyListing:
+    """One pass over many users and groups for the admin lists: a user's
+    groups are asked from NSS once, and a group policy is read once, however
+    many users it is consulted for.  Where a user's policy comes from is
+    decided as timekprPolicyStore.resolve does, except that a user's policy
+    file counts by its presence (an unreadable one is set aside when it is
+    next read for enforcement)."""
+
+    def __init__(self, pStore):
+        self._store = pStore
+        # the groups with a policy, once
+        self._groupsWithPolicy = pStore.getGroupsWithPolicy()
+        # the loaded group policies, on demand
+        self._groupConfigs = {}
+        # the groups of every user asked about so far
+        self._userGroups = {}
+
+    def getGroupsWithPolicy(self):
+        """The groups that have a policy file, sorted"""
+        return list(self._groupsWithPolicy)
+
+    def getGroupConfig(self, pGroup):
+        """A group's loaded policy (read once)"""
+        if pGroup not in self._groupConfigs:
+            self._groupConfigs[pGroup] = self._store._loadGroupPolicy(pGroup)
+        return self._groupConfigs[pGroup]
+
+    def getUserGroups(self, pUserName):
+        """The names of a user's groups, as NSS knows them (asked once)"""
+        if pUserName not in self._userGroups:
+            self._userGroups[pUserName] = getUserGroups(pUserName)
+        return self._userGroups[pUserName]
+
+    def getGroupMembers(self, pGroup, pKnownUsers=()):
+        """Best-effort member list of a group: the explicit members NSS
+        lists, plus every known user whose groups include it.  Identity
+        providers that do not enumerate make this incomplete."""
+        if pGroup == TK_GROUP_ALL:
+            return sorted(pKnownUsers)
+        members = set()
+        try:
+            members.update(grp.getgrnam(pGroup).gr_mem)
+        except KeyError:
+            pass
+        for rUser in pKnownUsers:
+            if pGroup in self.getUserGroups(rUser):
+                members.add(rUser)
+        # result
+        return sorted(members)
+
+    def getSourceDescription(self, pUserName):
+        """Where a user's effective policy comes from, as one string (see
+        timekprPolicyResolution.getSourceDescription)"""
+        if self._store.hasUserPolicy(pUserName):
+            return TK_POLICY_SOURCE_USER
+        # the groups with a policy the user is in
+        withPolicy = set(self._groupsWithPolicy)
+        groups = self.getUserGroups(pUserName) & withPolicy
+        if TK_GROUP_ALL in withPolicy:
+            groups.add(TK_GROUP_ALL)
+        applied = self._store._dropOverridden(
+            sorted(groups),
+            lambda pGroup: self.getGroupConfig(pGroup).getUserOverrides(),
+        )
+        if not applied:
+            return TK_POLICY_SOURCE_DEFAULT
+        # result
+        return "{}:{}".format(TK_POLICY_SOURCE_GROUP, ";".join(applied))
 
 
 def _mtime(pPath):

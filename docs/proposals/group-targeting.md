@@ -90,7 +90,10 @@ present" test, and no marker key is needed.
   from `pwd.getpwall()` passing the validity check, known members of
   groups with a policy, and the users the daemon is tracking; each entry
   carries the policy's provenance
-  ([userhelper.py:134](../../server/config/userhelper.py#L134)). A
+  ([userhelper.py:134](../../server/config/userhelper.py#L134)). The
+  list is one pass (`timekprPolicyListing`): a user's groups are asked
+  from NSS once, for the member lists and the provenance alike, and each
+  group policy is read once, whatever the number of users. A
   directory user, whom the system cannot enumerate, is therefore listed
   once they have a policy or are logged in, but can be administered by
   name at any time: `getUserInformation` answers the effective policy

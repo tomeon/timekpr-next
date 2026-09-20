@@ -13,13 +13,9 @@ import re
 # timekpr imports
 from timekpr.common.constants import constants as cons
 from timekpr.common.log import log
-from timekpr.common.utils.config import timekprConfig, timekprUserConfig
+from timekpr.common.utils.config import timekprConfig
 from timekpr.common.utils.misc import getNormalizedUserNames
-from timekpr.server.config.policy import (
-    groupTarget,
-    isValidName,
-    timekprPolicyStore,
-)
+from timekpr.server.config.policy import isValidName, timekprPolicyStore
 
 # user limits
 _limitsConfig = {}
@@ -144,8 +140,9 @@ class timekprUserStore:
 
         # the users in the system
         users = self.checkAndInitUsers()
-        # the policies
+        # the policies, read once for the whole list
         policyStore = timekprPolicyStore(self._getConfigDir(pConfigDir))
+        listing = policyStore.startListing()
 
         log.log(cons.TK_LOG_LEVEL_DEBUG, "listing user policy files")
 
@@ -171,8 +168,8 @@ class timekprUserStore:
         userNames.update(users)
         userNames.update(pExtraUsers)
         # the known members of the groups with a policy (best effort)
-        for rGroup in policyStore.getGroupsWithPolicy():
-            userNames.update(policyStore.getGroupMembers(rGroup, users))
+        for rGroup in listing.getGroupsWithPolicy():
+            userNames.update(listing.getGroupMembers(rGroup, users))
 
         log.log(cons.TK_LOG_LEVEL_DEBUG, "resolving user policies")
 
@@ -183,7 +180,7 @@ class timekprUserStore:
                 [
                     rUser,
                     users[rUser][1] if rUser in users else "",
-                    policyStore.resolve(rUser).getSourceDescription(),
+                    listing.getSourceDescription(rUser),
                 ]
             )
 
@@ -200,18 +197,16 @@ class timekprUserStore:
         """
         # the users in the system
         users = self.checkAndInitUsers()
-        # the policies
-        policyStore = timekprPolicyStore(self._getConfigDir(pConfigDir))
+        # the policies, read once for the whole list
+        listing = timekprPolicyStore(self._getConfigDir(pConfigDir)).startListing()
         # the list
         groupList = []
-        for rGroup in policyStore.getGroupsWithPolicy():
-            config = timekprUserConfig(policyStore.getConfigDir(), groupTarget(rGroup))
-            config.loadUserConfiguration()
+        for rGroup in listing.getGroupsWithPolicy():
             groupList.append(
                 [
                     rGroup,
-                    ";".join(config.getUserOverrides()),
-                    ";".join(policyStore.getGroupMembers(rGroup, users)),
+                    ";".join(listing.getGroupConfig(rGroup).getUserOverrides()),
+                    ";".join(listing.getGroupMembers(rGroup, users)),
                 ]
             )
         # finish

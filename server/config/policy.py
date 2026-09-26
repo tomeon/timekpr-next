@@ -248,9 +248,16 @@ class timekprPolicyStore:
         for rUser in self.getUsersWithPolicy():
             config = timekprUserConfig(self._configDir, rUser)
             try:
-                if config.loadUserConfiguration() and (
-                    config.isLegacyPolicy() or config.isEmptyPolicy()
-                ):
+                if not config.loadUserConfiguration():
+                    continue
+                if config.getUnreadableParams():
+                    # a value the administrator has to look at: not a leftover
+                    log.log(
+                        cons.TK_LOG_LEVEL_INFO,
+                        f'WARNING: the policy of user "{rUser}" has values that cannot be read ({", ".join(config.getUnreadableParams())}); it is left alone',
+                    )
+                    continue
+                if config.isLegacyPolicy() or config.isEmptyPolicy():
                     users.append(rUser)
             except Exception as ex:
                 # the file is the administrator's to fix, it is neither

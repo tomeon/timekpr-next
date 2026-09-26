@@ -1106,6 +1106,7 @@ class timekprUserConfig:
         self._timekprUserConfig = {rParam: None for rParam in USER_CONFIG_PARAMS}
         # whether the policy file exists (set when loading)
         self._present = False
+        self._unreadable = []
 
         # parser
         self._timekprUserConfigParser = configparser.ConfigParser(allow_no_value=True)
@@ -1165,6 +1166,8 @@ class timekprUserConfig:
         section = self._userName
         # nothing set until read
         self._timekprUserConfig = {rParam: None for rParam in USER_CONFIG_PARAMS}
+        # the settings whose value could not be read (left to the administrator)
+        self._unreadable = []
         # try to load config file
         result = _loadAndPrepareConfigFile(
             self._timekprUserConfigParser, self._configFile
@@ -1199,8 +1202,27 @@ class timekprUserConfig:
                     cons.TK_LOG_LEVEL_INFO,
                     f"WARNING: {rParam} in policy file {self._configFile} cannot be read ({ex}) and is ignored",
                 )
+                self._unreadable.append(rParam)
                 continue
             self._timekprUserConfig[rParam] = value
+
+        # the allowed days and their limits go together (the limits are
+        # stored positionally against the days): a file holding one of them
+        # holds the other at its default
+        setPair = [
+            rParam
+            for rParam in _DAY_LIMIT_PARAMS
+            if self._timekprUserConfig[rParam] is not None
+        ]
+        if len(setPair) == 1:
+            missing = next(
+                rParam for rParam in _DAY_LIMIT_PARAMS if rParam not in setPair
+            )
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"WARNING: policy file {self._configFile} has {setPair[0]} but not {missing}, which is taken as its default",
+            )
+            self._timekprUserConfig[missing] = USER_CONFIG_DEFAULTS[missing]
 
         # clear parser
         self._timekprUserConfigParser.clear()
@@ -1313,6 +1335,10 @@ class timekprUserConfig:
     def isEmptyPolicy(self):
         """Whether the policy sets nothing"""
         return len(self.getSetParams()) == 0
+
+    def getUnreadableParams(self):
+        """The settings the file has but whose values could not be read"""
+        return list(self._unreadable)
 
     def unsetParam(self, pParam):
         """Take a setting out of the policy (the group policies or the

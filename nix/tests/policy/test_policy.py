@@ -196,6 +196,24 @@ def test_the_days_and_their_limits_go_together(config, store, kids_policy):
     assert policy.getSetParams() == []
 
 
+def test_a_file_holding_half_of_the_day_limits(config, store):
+    # a hand-edited file with limits but no days: the days are the default
+    with open(store.getUserPolicyFile("alice"), "w") as handle:
+        handle.write("[alice]\nLIMITS_PER_WEEKDAYS = 60;60;60;60;60;60;60\n")
+    policy = own_policy(store, "alice")
+    assert policy.getSetSettings() == ["allowed_days", "limits_per_day"]
+    effective = store.resolve("alice").config
+    assert effective.getUserAllowedWeekdays() == [str(day) for day in range(1, 8)]
+    assert day_limits(effective) == [60] * 7
+    # and the other way round: every day allowed, with the default limit
+    with open(store.getUserPolicyFile("alice"), "w") as handle:
+        handle.write("[alice]\nALLOWED_WEEKDAYS = 6;7\n")
+    effective = store.resolve("alice").config
+    assert effective.getUserAllowedWeekdays() == ["6", "7"]
+    assert effective.getUserLimitForDay(6) == DAY
+    assert effective.getUserLimitForDay(1) == 0
+
+
 def test_a_policy_file_round_trips(config, store, kids_policy):
     result, _message = processor(config, "@kids").checkAndSetAllowedHours(
         "1", {"9": {"STARTMIN": 15, "ENDMIN": 60, "UACC": False}}
@@ -228,7 +246,10 @@ def test_a_value_that_does_not_parse_is_ignored(config, store, kids_policy):
             + "LIMIT_PER_WEEK = soon\n"
         )
     policy = own_policy(store, "@kids")
-    assert policy.getSetParams() == ["ALLOWED_WEEKDAYS"]
+    assert policy.getUnreadableParams() == ["LIMITS_PER_WEEKDAYS", "LIMIT_PER_WEEK"]
+    # the days keep their (default) limits, the week limit is not set
+    assert policy.getSetParams() == ["ALLOWED_WEEKDAYS", "LIMITS_PER_WEEKDAYS"]
+    assert not policy.isSet("LIMIT_PER_WEEK")
     # the daemon resolves without the bad values, the file is left alone
     assert day_limits(store.resolve("alice").config) == [DAY] * 7
     with open(path) as handle:

@@ -55,7 +55,21 @@ def test_socket_activation_and_connector(tmp_path, token_file):
             "ALLOWED_WEEKDAYS",
             "LIMITS_PER_WEEKDAYS",
         ]
-        assert list(info)[13:15] == ["POLICY_SOURCE", "POLICY_GROUPS"]
+        assert list(info)[13:16] == [
+            "POLICY_SOURCE",
+            "POLICY_GROUPS",
+            "POLICY_SETTINGS",
+        ]
+        assert info["POLICY_SETTINGS"] == ["limit_per_week", "track_inactive"]
+        _result, _message, kids = via_unix.getUserConfigurationAndInformation(
+            "@kids", cons.TK_CL_INF_FULL
+        )
+        assert list(kids)[-2:] == ["OVERRIDES", "POLICY_SETTINGS"]
+        assert kids["POLICY_SETTINGS"] == [
+            "allowed_days",
+            "limits_per_day",
+            "overrides",
+        ]
         assert info["POLICY_SOURCE"] == "user" and info["POLICY_GROUPS"] == []
         assert info["ACTUAL_TIME_LEFT_DAY"] == 14 and info["TIME_SPENT_WEEK"] == 3
         _, _, realtime = via_unix.getUserConfigurationAndInformation(
@@ -123,6 +137,7 @@ def test_socket_activation_and_connector(tmp_path, token_file):
             "LIMIT_PER_WEEK",
             "LIMIT_PER_MONTH",
             "OVERRIDES",
+            "POLICY_SETTINGS",
         ]
         assert info["OVERRIDES"] == ["all"] and info["LIMITS_PER_WEEKDAYS"] == [0] * 7
         assert via_unix.setOverrides("@kids", ["@all", "guests"]) == (0, "")

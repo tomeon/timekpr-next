@@ -95,9 +95,10 @@
         };
 
         checks = let
-          # Tests of the web front end against a fake daemon connector (no
-          # D-Bus, no VM): the pytest suite in nix/tests/web.
-          webTests = name: extraPackages: env: files:
+          # A pytest suite run against the package source (no D-Bus daemon,
+          # no VM): the web front end against a fake daemon connector in
+          # nix/tests/web, the policy store and setters in nix/tests/policy.
+          pytestSuite = name: extraPackages: env: files:
             pkgs.runCommand name ({
                 nativeBuildInputs = [
                   (pkgs.python3.withPackages (ps:
@@ -124,11 +125,14 @@
           {
             # The API, the conversions, the listeners, socket activation and
             # timekpra's HTTP connector.
-            web = webTests "timekpr-web-tests" (_: []) {} ./nix/tests/web;
+            web = pytestSuite "timekpr-web-tests" (_: []) {} ./nix/tests/web;
+            # The policy store, the configuration setters and the daemon's
+            # policy refresh on a temporary configuration directory.
+            policy = pytestSuite "timekpr-policy-tests" (_: []) {} ./nix/tests/policy;
           }
           // pkgs.lib.optionalAttrs pkgs.stdenv.hostPlatform.isLinux {
             # The web UI in a headless Chromium driven by Playwright.
-            web-ui = webTests "timekpr-web-ui-tests" (ps: [ps.playwright]) {
+            web-ui = pytestSuite "timekpr-web-ui-tests" (ps: [ps.playwright]) {
               PLAYWRIGHT_BROWSERS_PATH = pkgs.playwright-driver.browsers-chromium;
               PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
             } "${./nix/tests/web}/test_ui.py";

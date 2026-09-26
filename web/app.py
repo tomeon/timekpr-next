@@ -234,6 +234,15 @@ def create_app(
     ):
         return bridge.set_allowed_hours(username, day, entries)
 
+    @api.delete(
+        "/users/{username}/config/allowed-hours/{day}",
+        response_model=models.UserConfig,
+        responses=user_responses,
+    )
+    def delete_allowed_hours(username: Username, day: Day):
+        """Take the day's (or every day's) hours out of the user's policy"""
+        return bridge.unset_allowed_hours(username, day)
+
     @api.post(
         "/users/{username}/time-left",
         response_model=models.UserStatus,
@@ -294,6 +303,15 @@ def create_app(
         group: GroupName, day: Day, entries: list[models.HourEntry]
     ):
         return bridge.set_group_allowed_hours(group, day, entries)
+
+    @api.delete(
+        "/groups/{group}/config/allowed-hours/{day}",
+        response_model=models.GroupConfig,
+        responses={400: {"model": models.Problem}, 404: {"model": models.Problem}},
+    )
+    def delete_group_allowed_hours(group: GroupName, day: Day):
+        """Take the day's (or every day's) hours out of the group's policy"""
+        return bridge.unset_group_allowed_hours(group, day)
 
     @api.delete(
         "/groups/{group}/policy",

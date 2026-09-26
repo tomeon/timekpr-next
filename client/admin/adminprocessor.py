@@ -416,6 +416,22 @@ class timekprAdminClient:
                 if result != 0:
                     # log error
                     log.consoleOut(message)
+        # this takes a setting out of a policy
+        elif adminCmd == "--unset":
+            # check param len
+            if paramLen != paramIdx + 3:
+                # fail
+                adminCmdIncorrect = True
+            else:
+                # unset
+                result, message = self._timekprAdminConnector.unsetSetting(
+                    args[paramIdx + 1], args[paramIdx + 2]
+                )
+
+                # process
+                if result != 0:
+                    # log error
+                    log.consoleOut(message)
         # this deletes (or lists) the user policies that restrict nothing
         elif adminCmd == "--migratepolicies":
             # check param len
@@ -491,6 +507,7 @@ class timekprAdminClient:
                 "ALLOWED_WEEKDAYS",
                 "LIMITS_PER_WEEKDAYS",
                 "POLICY_GROUPS",
+                "POLICY_SETTINGS",
                 "OVERRIDES",
             ):
                 # print join

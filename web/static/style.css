@@ -210,6 +210,20 @@ aside {
   font-size: 0.85rem;
   margin: 0 0 0.6rem;
 }
+/* a setting the shown policy holds itself, and the button that hands it
+   back to the group policies or the defaults */
+.own::after {
+  content: " \25CF";
+  color: var(--accent);
+  font-size: 0.7em;
+  vertical-align: middle;
+}
+button.unset {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.4rem;
+  margin-left: 0.4rem;
+  vertical-align: middle;
+}
 table {
   border-collapse: collapse;
 }

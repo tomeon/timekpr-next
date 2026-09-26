@@ -265,6 +265,68 @@ def test_delete_policy(client, fake):
     )
 
 
+def test_policy_settings_and_unset(client, fake):
+    # what a policy holds is reported
+    alice = client.get("/api/v1/users/alice", headers=AUTH).json()
+    assert alice["policy_settings"] == ["limit_per_week", "track_inactive"]
+    kids = client.get("/api/v1/groups/kids", headers=AUTH).json()
+    assert kids["policy_settings"] == ["allowed_days", "limits_per_day", "overrides"]
+    # a setter adds to it
+    r = client.patch(
+        "/api/v1/users/alice/config", json={"track_inactive": True}, headers=AUTH
+    )
+    assert r.status_code == 200
+    alice = client.get("/api/v1/users/alice", headers=AUTH).json()
+    assert alice["policy_settings"] == ["limit_per_week", "track_inactive"]
+    # a null field takes the setting out of the policy
+    r = client.patch(
+        "/api/v1/users/alice/config", json={"track_inactive": None}, headers=AUTH
+    )
+    assert r.status_code == 200
+    assert fake.calls[-1] == ("unsetSetting", ("alice", "track_inactive"))
+    # the same setting twice is one call; a null and a value can mix
+    r = client.patch(
+        "/api/v1/users/alice/config",
+        json={"allowed_days": None, "limits_per_day": None, "limit_per_month": 60},
+        headers=AUTH,
+    )
+    assert r.status_code == 404, r.json()
+    assert r.json()["detail"].endswith("does not set allowed_days")
+    assert fake.calls[-1] == ("unsetSetting", ("alice", "allowed_days"))
+    # hours go by day, or all at once
+    r = client.put("/api/v1/users/alice/config/allowed-hours/3", json=[], headers=AUTH)
+    assert r.status_code == 200
+    r = client.delete("/api/v1/users/alice/config/allowed-hours/3", headers=AUTH)
+    assert r.status_code == 200
+    assert fake.calls[-1] == ("unsetSetting", ("alice", "allowed_hours_3"))
+    assert r.json()["allowed_hours"]["3"][0]["hour"] == 0
+    r = client.delete("/api/v1/users/alice/config/allowed-hours/all", headers=AUTH)
+    assert r.status_code == 404
+    assert fake.calls[-1] == ("unsetSetting", ("alice", "allowed_hours"))
+    r = client.delete("/api/v1/users/alice/config/allowed-hours/8", headers=AUTH)
+    assert r.status_code == 400
+    # the tray icon is not a group's setting, overrides not a user's
+    r = client.patch(
+        "/api/v1/groups/kids/config", json={"overrides": None}, headers=AUTH
+    )
+    assert r.status_code == 200
+    assert fake.calls[-1] == ("unsetSetting", ("@kids", "overrides"))
+    assert client.get("/api/v1/groups/kids", headers=AUTH).json()[
+        "policy_settings"
+    ] == ["allowed_days", "limits_per_day"]
+    r = client.patch(
+        "/api/v1/groups/kids/config", json={"hide_tray_icon": None}, headers=AUTH
+    )
+    assert r.status_code == 400
+    # the last setting of a user policy takes the policy with it
+    r = client.patch(
+        "/api/v1/users/alice/config", json={"limit_per_week": None}, headers=AUTH
+    )
+    assert r.status_code == 200
+    alice = client.get("/api/v1/users/alice", headers=AUTH).json()
+    assert alice["policy_source"] == "default" and alice["policy_settings"] == []
+
+
 def test_migrate_policies(client, fake):
     r = client.post("/api/v1/policies/migrate", json={}, headers=AUTH)
     assert r.status_code == 200 and r.json() == {"users": ["carol"]}

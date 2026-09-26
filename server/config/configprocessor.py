@@ -12,19 +12,20 @@ import dbus
 
 from timekpr.common.constants import constants as cons
 from timekpr.common.constants import messages as msg
+from timekpr.common.log import log
 from timekpr.common.utils.config import (
+    USER_CONFIG_SETTINGS,
     timekprConfig,
     timekprUserConfig,
     timekprUserControl,
 )
 from timekpr.server.config.policy import (
-    TK_POLICY_SOURCE_USER,
     groupName,
     isGroupTarget,
     isValidName,
     isValidTarget,
+    timekprLookupError,
     timekprPolicyStore,
-    userExists,
 )
 
 
@@ -43,6 +44,9 @@ class timekprUserConfigurationProcessor:
         self._isValidTarget = isValidTarget(pUserName)
         self._policyStore = timekprPolicyStore(self._configDir)
         self._timekprUserConfig = None
+        # the configuration a setter completes its policy from (the user's
+        # effective one, or the group policy itself)
+        self._effectiveConfig = None
         self._timekprUserControl = None
 
     def _requireValidTarget(self):
@@ -54,11 +58,14 @@ class timekprUserConfigurationProcessor:
         return 0, ""
 
     def loadAndCheckUserConfiguration(self, pCreate=False):
-        """Load the policy of the user or group; with pCreate a missing policy
-        file is created with the defaults (the setters), otherwise a missing
-        group policy is an error and a missing user policy yields the
-        defaults in memory (but see getSavedUserInformation, which resolves
-        the effective policy of a user instead)"""
+        """Load the policy of the user or group: the settings its file sets,
+        nothing for a file that is not there.  With pCreate (the setters)
+        a missing policy is prepared in memory and nothing is written: the
+        setter saves it, and with it the file, once its input is valid; a
+        user's effective configuration is resolved alongside, for the
+        settings that go together (completeDayLimits).  Without pCreate a
+        missing group policy is an error (but see getSavedUserInformation,
+        which resolves the effective policy of a user instead)"""
         # the target has to be a name before it becomes a file
         result, message = self._requireValidTarget()
         if result != 0:
@@ -66,22 +73,46 @@ class timekprUserConfigurationProcessor:
 
         # user config
         self._timekprUserConfig = timekprUserConfig(self._configDir, self._userName)
+        present = self._timekprUserConfig.loadUserConfiguration()
+        # a group policy answers the defaults for what it does not set
+        self._effectiveConfig = self._timekprUserConfig
 
         # result
-        if not self._timekprUserConfig.loadUserConfiguration():
-            # a setter creates the policy
-            if pCreate:
-                self._timekprUserConfig.initUserConfiguration()
-                self._timekprUserConfig.loadUserConfiguration()
+        if pCreate and not self._isGroup:
+            # the user's effective configuration (which also tells a name
+            # nobody knows from a user)
+            result, message, resolution = self._resolveEffectivePolicy()
+            if result == 0:
+                self._effectiveConfig = resolution.config
+        elif self._isGroup and not pCreate and not present:
             # a group policy has to exist to be read
-            elif self._isGroup:
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND"
-                ) % (groupName(self._userName))
+            result = -1
+            message = msg.getTranslation(
+                "TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND"
+            ) % (groupName(self._userName))
 
         # result
         return result, message
+
+    def _resolveEffectivePolicy(self, pIsUserLoggedIn=False):
+        """Resolve the effective policy of the user: (result, message,
+        resolution), with an error when NSS cannot say which groups the
+        user is in"""
+        try:
+            resolution = self._policyStore.resolve(self._userName)
+        except timekprLookupError as ex:
+            # a name nobody knows is not a user (the defaults would apply to
+            # any string otherwise), unless the daemon has them logged in;
+            # a lookup that failed is reported as such (the daemon keeps
+            # enforcing what it had)
+            if ex.unknownUser and not pIsUserLoggedIn:
+                key = "TK_MSG_CONFIG_LOADER_USER_NOTFOUND"
+            else:
+                key = "TK_MSG_CONFIG_LOADER_USER_LOOKUP_FAILED"
+                log.log(cons.TK_LOG_LEVEL_INFO, f"WARNING: {ex}")
+            return -1, msg.getTranslation(key) % (self._userName), None
+        # result
+        return 0, "", resolution
 
     def loadAndCheckUserControl(self, pCreate=False):
         """Load the user control saved state; a missing counters file yields
@@ -242,20 +273,11 @@ class timekprUserConfigurationProcessor:
         if result != 0:
             pass
         elif not self._isGroup:
-            resolution = self._policyStore.resolve(self._userName)
-            self._timekprUserConfig = resolution.config
-            # a name with no policy of its own that neither NSS nor the
-            # daemon knows is not a user (the defaults would apply to any
-            # string otherwise)
-            if (
-                resolution.source != TK_POLICY_SOURCE_USER
-                and not pIsUserLoggedIn
-                and not userExists(self._userName)
-            ):
-                result = -1
-                message = msg.getTranslation("TK_MSG_CONFIG_LOADER_USER_NOTFOUND") % (
-                    self._userName
-                )
+            # (a name with no policy of its own that neither NSS nor the
+            # daemon knows is "not found")
+            result, message, resolution = self._resolveEffectivePolicy(pIsUserLoggedIn)
+            if result == 0:
+                self._timekprUserConfig = resolution.config
 
         # if we are still fine
         if result != 0:
@@ -338,6 +360,20 @@ class timekprUserConfigurationProcessor:
                             if len(resolution.groups) > 0
                             else dbus.Array(signature="s")
                         )
+                    # the settings the policy file itself holds (a user's
+                    # own ones; the rest of the effective values are inherited)
+                    if self._isGroup:
+                        settings = self._timekprUserConfig.getSetSettings()
+                    else:
+                        own = timekprUserConfig(self._configDir, self._userName)
+                        settings = (
+                            own.getSetSettings() if own.loadUserConfiguration() else []
+                        )
+                    userConfigurationStore["POLICY_SETTINGS"] = (
+                        list(map(dbus.String, settings))
+                        if len(settings) > 0
+                        else dbus.Array(signature="s")
+                    )
 
                 # this goes for full and saved info (users only, groups have no counters)
                 if (
@@ -384,7 +420,7 @@ class timekprUserConfigurationProcessor:
         """Validate allowed days for the user
             server expects only the days that are allowed, sorted in ascending order"""
 
-        # the policy (created with the defaults if there is none yet)
+        # the policy (prepared in memory if there is none yet, saved below)
         result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
@@ -423,9 +459,10 @@ class timekprUserConfigurationProcessor:
 
         # if all is correct, we update the configuration
         if result == 0:
-            # set up config
+            # set up config (the limits go with the days)
             try:
                 self._timekprUserConfig.setUserAllowedWeekdays(days)
+                self._timekprUserConfig.completeDayLimits(self._effectiveConfig)
             except Exception:
                 # result
                 result = -1
@@ -448,7 +485,7 @@ class timekprUserConfigurationProcessor:
             please note that this is using 24h format, no AM/PM nonsense expected
             minutes can be specified in brackets after hour, like: 16[00-45], which means until 16:45"""
 
-        # the policy (created with the defaults if there is none yet)
+        # the policy (prepared in memory if there is none yet, saved below)
         result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # pre-check day number
@@ -535,7 +572,7 @@ class timekprUserConfigurationProcessor:
         """Validate allowable time to user
             server always expects 7 limits, for each day of the week, in the list"""
 
-        # the policy (created with the defaults if there is none yet)
+        # the policy (prepared in memory if there is none yet, saved below)
         result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
@@ -569,9 +606,10 @@ class timekprUserConfigurationProcessor:
 
         # if all is correct, we update the configuration
         if result == 0:
-            # set up config
+            # set up config (the days go with the limits)
             try:
                 self._timekprUserConfig.setUserLimitsPerWeekdays(limits)
+                self._timekprUserConfig.completeDayLimits(self._effectiveConfig)
             except Exception:
                 # result
                 result = -1
@@ -593,7 +631,7 @@ class timekprUserConfigurationProcessor:
             true - logged in user is always tracked (even if switched to console or locked or ...)
             false - user time is not tracked if he locks the session, session is switched to another user, etc."""
 
-        # the policy (created with the defaults if there is none yet)
+        # the policy (prepared in memory if there is none yet, saved below)
         result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
@@ -647,7 +685,7 @@ class timekprUserConfigurationProcessor:
 
         # this is about one person's desktop, not about a group's policy
         result, message = self._requireUser()
-        # the policy (created with the defaults if there is none yet)
+        # the policy (prepared in memory if there is none yet, saved below)
         if result == 0:
             result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
@@ -696,7 +734,7 @@ class timekprUserConfigurationProcessor:
 
     def checkAndSetTimeLimitForWeek(self, pTimeLimitWeek):
         """Validate and set up new timelimit for week for the user"""
-        # the policy (created with the defaults if there is none yet)
+        # the policy (prepared in memory if there is none yet, saved below)
         result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
@@ -744,7 +782,7 @@ class timekprUserConfigurationProcessor:
 
     def checkAndSetTimeLimitForMonth(self, pTimeLimitMonth):
         """Validate and set up new timelimit for month for the user"""
-        # the policy (created with the defaults if there is none yet)
+        # the policy (prepared in memory if there is none yet, saved below)
         result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
         # if we are still fine
@@ -804,8 +842,9 @@ class timekprUserConfigurationProcessor:
             result, message = self._requireUser()
         # the effective policy (the limits the adjustment is measured against)
         if result == 0:
-            resolution = self._policyStore.resolve(self._userName)
-            self._timekprUserConfig = resolution.config
+            result, message, resolution = self._resolveEffectivePolicy()
+            if result == 0:
+                self._timekprUserConfig = resolution.config
 
         # if we are still fine
         if result == 0:
@@ -899,7 +938,7 @@ class timekprUserConfigurationProcessor:
         """Validate and set the groups a group policy takes precedence over"""
         # groups only
         result, message = self._requireGroup()
-        # the policy (created with the defaults if there is none yet)
+        # the policy (prepared in memory if there is none yet, saved below)
         if result == 0:
             result, message = self.loadAndCheckUserConfiguration(pCreate=True)
 
@@ -935,6 +974,47 @@ class timekprUserConfigurationProcessor:
 
         # result
         return result, message
+
+    def checkAndUnsetSetting(self, pSetting):
+        """Take a setting (by its outside name, USER_CONFIG_SETTINGS) out of
+        the policy of the user or group, so that the group policies or the
+        defaults decide it again; a user policy left with nothing is
+        deleted (a group policy stays until it is deleted, it is what
+        makes the group known)"""
+        # the policy (a group's has to exist)
+        result, message = self.loadAndCheckUserConfiguration()
+        if result != 0:
+            return result, message
+
+        # the setting has to be one, and one the target can have
+        if str(pSetting) not in USER_CONFIG_SETTINGS:
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_SETTING_INVALID") % (
+                str(pSetting)
+            )
+        if pSetting == "hide_tray_icon":
+            result, message = self._requireUser()
+        elif pSetting == "overrides":
+            result, message = self._requireGroup()
+        if result != 0:
+            return result, message
+
+        # the policy has to set it
+        if not self._timekprUserConfig.isPolicyPresent() or not (
+            self._timekprUserConfig.unsetSetting(pSetting)
+        ):
+            return -1, msg.getTranslation("TK_MSG_CONFIG_LOADER_SETTING_NOTSET") % (
+                self._userName,
+                pSetting,
+            )
+
+        # a user policy that sets nothing is no policy
+        if not self._isGroup and self._timekprUserConfig.isEmptyPolicy():
+            self._timekprUserConfig.deletePolicy()
+        else:
+            self._timekprUserConfig.saveUserConfiguration()
+
+        # result
+        return 0, ""
 
     def deletePolicy(self):
         """Delete the policy of the user or group (the counters of a user stay)"""

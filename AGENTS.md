@@ -223,9 +223,29 @@ Other facts about the sandbox worth knowing before trying something:
 - "Forbid login" is expressed as `timekpra --settimelimits USER
 '0;0;0;0;0;0;0'`; an exemption is `timekpra --settimeleft USER + 300`.
   Settings can be made for a user (or a `@group`) that has never logged
-  in: the setter creates the policy file; nothing is created on its own
-  any more (see `docs/proposals/group-targeting.md` and
-  `server/config/policy.py`). Kanidm does not enumerate accounts, so
+  in: the setter creates the policy file once its input is valid (a
+  refused setting creates nothing); nothing is created on its own any
+  more. Policy files are sparse: they hold only the settings made for
+  them, `timekprUserConfig` keeps an unset setting as `None` and
+  writes only the set ones, and the effective policy is resolved per
+  setting (the user's own value, else the most restrictive merge of
+  the group policies that set it, else the default;
+  `resolveLayers`). The allowed days and their limits go together
+  (`completeDayLimits`). A setting is taken out of a policy with
+  `unsetSetting` / `timekpra --unset` / a `null` field in a web
+  `PATCH` (settings are named as the web API's fields,
+  `USER_CONFIG_SETTINGS` in `common/utils/config.py`); the settings a
+  policy holds are reported as `POLICY_SETTINGS`. See
+  `docs/proposals/group-targeting.md` and `server/config/policy.py`.
+  A user NSS does not know gets no policy. When NSS cannot answer
+  which groups a user is in, `resolve()` raises `timekprLookupError`:
+  the daemon keeps the last resolved policy (or applies every group
+  policy to a user never resolved) and retries every poll, the admin
+  interfaces report an error and list the user as `unresolved`.
+  `checks.<system>.policy` runs `nix/tests/policy/` (pytest, no VM):
+  the store, the setters and the daemon's refresh on a temporary
+  configuration directory with NSS monkeypatched. Kanidm does not
+  enumerate accounts, so
   `--userlist` shows bob only once he has a policy or is logged in;
   `--userinfo bob@...` works at any time because NSS knows him by name.
 - The daemon's log is `/var/log/timekpr.log` and is flushed lazily;

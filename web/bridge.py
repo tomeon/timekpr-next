@@ -32,11 +32,15 @@ _DAEMON_FAILURES = (
     "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR",
     "TK_MSG_CONFIG_LOADER_SAVECONTROL_UNEXPECTED_ERROR",
 )
+# the daemon's reply when it cannot answer right now (NSS could not say
+# which groups the user is in)
+_DAEMON_UNAVAILABLE = ("TK_MSG_CONFIG_LOADER_USER_LOOKUP_FAILED",)
 # the daemon's replies when what the request names does not exist
 _DAEMON_NOT_FOUND = (
     "TK_MSG_CONFIG_LOADER_USER_NOTFOUND",
     "TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND",
     "TK_MSG_CONFIG_LOADER_POLICY_NOTFOUND",
+    "TK_MSG_CONFIG_LOADER_SETTING_NOTSET",
 )
 _daemon_texts = {}
 
@@ -155,6 +159,10 @@ class Bridge:
             # the daemon could not apply a valid request (its log has the reason,
             # a read-only /etc/timekpr for example)
             raise DaemonError(500, message)
+        if code != 0 and daemon_texts(_DAEMON_UNAVAILABLE).match(message):
+            # the daemon could not resolve the user's policy (the directory
+            # did not answer); try again later
+            raise DaemonError(503, message)
         if code != 0 and daemon_texts(_DAEMON_NOT_FOUND).match(message):
             # what the request names does not exist: a user nobody knows, a
             # group without a policy, a policy that is not there to delete
@@ -231,8 +239,9 @@ class Bridge:
         )
 
     def patch_user_config(self, username, patch):
-        current = self.get_user_config(username)
         steps = Steps(self, username)
+        apply_unsets(steps, "", patch)
+        current = self.get_user_config(username)
         apply_days_and_limits(
             steps, "", patch, current, "setAllowedDays", "setTimeLimitForDays"
         )
@@ -254,6 +263,13 @@ class Bridge:
             "setAllowedHours",
             "ALL" if day == "all" else str(day),
             webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
+        )
+        return self.get_user_config(username)
+
+    def unset_allowed_hours(self, username, day):
+        """Take one day's (or every day's) hours out of the user's policy"""
+        Steps(self, username).run(
+            f"allowed_hours.{day}", "unsetSetting", hours_setting(day)
         )
         return self.get_user_config(username)
 
@@ -303,7 +319,12 @@ class Bridge:
         )
 
     def get_group(self, group):
-        return models.Group(group=group, config=self.get_group_config(group))
+        info = self._group_info(group)
+        return models.Group(
+            group=group,
+            config=models.GroupConfig(**webapi.group_config_from_daemon(info)),
+            policy_settings=webapi.policy_settings_from_daemon(info),
+        )
 
     def get_group_config(self, group):
         return models.GroupConfig(
@@ -325,6 +346,7 @@ class Bridge:
             Steps(self, group_target(group)).run("overrides", "setOverrides", [])
             current = self.get_group_config(group)
         steps = Steps(self, group_target(group))
+        apply_unsets(steps, "", patch)
         apply_days_and_limits(
             steps, "", patch, current, "setAllowedDays", "setTimeLimitForDays"
         )
@@ -339,6 +361,13 @@ class Bridge:
         apply_scalars(steps, "", patch, webapi.GROUP_FIELDS)
         if patch.overrides is not None:
             steps.run("overrides", "setOverrides", list(patch.overrides))
+        return self.get_group_config(group)
+
+    def unset_group_allowed_hours(self, group, day):
+        """Take one day's (or every day's) hours out of the group's policy"""
+        Steps(self, group_target(group)).run(
+            f"allowed_hours.{day}", "unsetSetting", hours_setting(day)
+        )
         return self.get_group_config(group)
 
     def set_group_allowed_hours(self, group, day, entries):
@@ -380,6 +409,25 @@ class Steps:
         except DaemonError as ex:
             raise DaemonError(ex.status, ex.detail, field, self.applied)
         self.applied.append(field)
+
+
+def hours_setting(day):
+    """The daemon's name for one day's hours, or every day's"""
+    return "allowed_hours" if day == "all" else f"allowed_hours_{day}"
+
+
+def apply_unsets(steps, prefix, patch):
+    """The fields a PATCH sends as null are taken out of the policy (the
+    allowed days and their limits together, the hours of every day at once)"""
+    settings = []
+    for field in patch.model_fields_set:
+        if getattr(patch, field) is not None:
+            continue
+        setting = "allowed_days" if field == "limits_per_day" else field
+        if setting not in settings:
+            settings.append(setting)
+    for setting in settings:
+        steps.run(prefix + setting, "unsetSetting", setting)
 
 
 def apply_scalars(steps, prefix, patch, fields):

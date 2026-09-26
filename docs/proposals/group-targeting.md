@@ -18,17 +18,19 @@ the nearest request is [question 708545, "Admin GUI usage"](https://answers.laun
 a supervisor of many users tired of repeating the same configuration.
 
 The model now in place, in one paragraph: a _policy_ is a configuration
-file an administrator created. A user policy is `timekpr.<user>.conf`,
-a group policy is `groups/timekpr.<group>.conf`, addressed as `@<group>`
-wherever the admin API takes a user name. Nothing is created on its
-own; a setter creates the policy on demand, so limits can be set for a
-user or group nobody has logged in as. A user's effective policy is
-their own policy if the file exists, otherwise the most-restrictive
-merge of the policies of the groups they belong to, after a precedence
-relation declared in the group files has dropped overridden groups,
-otherwise the defaults (no limits). The pseudo-group `all` matches
-every user. The only enforcement action is logging the user out.
-Accounting stays per user.
+file an administrator created, holding only the settings made for it.
+A user policy is `timekpr.<user>.conf`, a group policy is
+`groups/timekpr.<group>.conf`, addressed as `@<group>` wherever the
+admin API takes a user name. Nothing is created on its own; a setter
+creates the policy on demand, holding that one setting, so limits can
+be set for a user or group nobody has logged in as. Each setting of a
+user's effective policy is their own policy's value if it holds the
+setting, otherwise the most-restrictive merge of the values of the
+group policies that hold it, among the groups they belong to, after a
+precedence relation declared in the group files has dropped overridden
+groups, otherwise the default (no limit). The pseudo-group `all`
+matches every user. The only enforcement action is logging the user
+out. Accounting stays per user.
 
 Two features were removed on the way, by decision of the project owner:
 PlayTime (limits on named processes, enforced by killing them, and
@@ -76,9 +78,28 @@ present" test, and no marker key is needed.
   ([common/utils/config.py:978](../../common/utils/config.py#L978)). An
   unreadable file is set aside as `.invalid` and counts as absent.
 - Admin setters create the file on demand
-  ([configprocessor.py:41](../../server/config/configprocessor.py#L41),
+  ([configprocessor.py:56](../../server/config/configprocessor.py#L56),
   `pCreate=True`). A policy can therefore be set for a user who has
-  never logged in, or for a group none of whose members has.
+  never logged in, or for a group none of whose members has. The
+  setter prepares a missing policy in memory, validates its input, and
+  only then saves, which writes the file: a refused setting creates
+  nothing. A policy file is _sparse_: it holds the settings made for
+  it and nothing else (`timekprUserConfig` keeps an unset setting as
+  `None`, writes only the set ones, and answers the default for an
+  unset one when asked directly), so a first setting changes only what
+  it says and the group policies keep deciding the rest. The allowed
+  days and their limits are stored positionally against each other, so
+  a setter that sets one completes the other from the effective
+  configuration (`completeDayLimits`). A name NSS does not know gets
+  no policy ("not found"). Files written by earlier versions hold
+  every setting and keep working: each of their values counts as set.
+  A setting is taken out of a policy with `unsetSetting` (D-Bus),
+  `timekpra --unset`, a `null` field in the web API's `PATCH` (a
+  `DELETE` for the hours), or the unset controls of the GTK admin and
+  the web UI; the settings a policy holds are reported as
+  `POLICY_SETTINGS` / `policy_settings`. A user policy left with
+  nothing is deleted; a group policy stays, since its file is what
+  makes the group known.
 - `deletePolicy` removes a user's or a group's policy
   ([configprocessor.py:902](../../server/config/configprocessor.py#L902),
   [daemon.py:778](../../server/interface/dbus/daemon.py#L778)); a user
@@ -101,11 +122,17 @@ present" test, and no marker key is needed.
   name without a policy (the web bridge turns that into a 404).
 
 Migration of installations that already had a file per user: those
-files count as user policies with default values and would shadow any
-group policy. `timekpra --migratepolicies dry-run|delete` lists or
-deletes the user policies whose every value is a default
-([policy.py:168-200](../../server/config/policy.py#L168-L200)), and the
-daemon warns about them at startup. Deleting such a file can only leave
+files hold every setting, at its default value, and each value counts
+as set, so they would shadow any group policy for every setting.
+`timekpra --migratepolicies dry-run|delete` lists or deletes the user
+policies that hold every setting at its default (and the ones that
+hold nothing; `isLegacyPolicy`, `getDefaultUserPolicies` in
+[policy.py](../../server/config/policy.py)), and the daemon warns
+about them at startup. A sparse policy that sets a default value on
+purpose (to loosen a group setting for one user) is not touched. A
+policy with a value that does not parse is logged and left alone by
+that scan, so it can neither be migrated by mistake nor keep the daemon
+from starting. Deleting such a file can only leave
 the user unchanged or bring them under a group policy; it never loosens
 anything. Refusing to start on unmigrated files was rejected: a
 screen-time daemon that does not start enforces nothing.
@@ -128,21 +155,35 @@ its groups under their SPN (`kids@idm.nixos.test`), so a policy on a
 domain group is addressed by that name; the NixOS test reads bob's
 group names from `id` rather than assuming them.
 
+A failed lookup is not an empty membership. `getUserGroups` raises
+`timekprLookupError` when NSS does not know the user or cannot answer
+(Python's `pwd`/`grp` report a directory that is down the same way as
+a name that does not exist), and `resolve()`/`fingerprint()` let it
+through. The daemon (`server/user/userdata.py`) then keeps the policy
+it last resolved for the user and retries at every poll, logging the
+outage once; a user it never resolved gets the most restrictive merge
+of every group policy (`resolveUnknownMembership`) until a lookup
+succeeds, since the user may be in any of them and a directory outage
+must never lift a restriction. The admin interfaces answer such a
+request with a "cannot be looked up" error (the web bridge's `503`)
+and list the user's provenance as `unresolved`.
+
 Groups carry policy only. Accounting is per user without exception:
 `setTimeLeft` and `setHideTrayIcon` refuse a group target, and there is
 no group counters file.
 
 ### D4. Effective policy
 
-For a user U ([policy.py:280](../../server/config/policy.py#L280)):
+For a user U ([policy.py](../../server/config/policy.py), `resolve`),
+let G be the groups with a policy that U belongs to (plus `all` if it
+has a policy), with every group that another group in G overrides,
+directly or transitively (D5), removed. Then for each key, the
+effective value is (`timekprUserConfig.resolveLayers`,
+[config.py](../../common/utils/config.py)):
 
-1. If `timekpr.<U>.conf` exists, it is the policy.
-2. Otherwise let G be the groups with a policy that U belongs to (plus
-   `all` if it has a policy). Remove every group that another group in
-   G overrides, directly or transitively (D5). If G is empty, the
-   defaults apply.
-3. Otherwise the per-key most-restrictive merge of the remaining files
-   ([config.py:1499](../../common/utils/config.py#L1499)):
+1. U's own value, if `timekpr.<U>.conf` exists and holds the key;
+2. otherwise the most-restrictive merge of the values of the files of
+   G that hold the key:
 
 | Key                                 | Merge                                                                                                                                   |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
@@ -153,10 +194,20 @@ For a user U ([policy.py:280](../../server/config/policy.py#L280)):
 | `TRACK_INACTIVE`                    | logical OR (a session that is logged in but not the active one on the seat still burns time if any policy says so)                      |
 | `HIDE_TRAY_ICON`                    | not merged: a user setting, ignored in group files                                                                                      |
 
-Time left is monotone in every key, so evaluating the merge once gives
-the same outcome as evaluating each policy and taking the minimum
-("logged out under any policy means logged out"), and the rest of the
-daemon sees one ordinary configuration object.
+3. otherwise the default.
+
+`ALLOWED_WEEKDAYS` and `LIMITS_PER_WEEKDAYS` count as one key (a file
+holds both or neither), and each `ALLOWED_HOURS_n` is a key of its
+own. A user's own value replaces the groups' in either direction, so
+an individual can be loosened as well as tightened; the merge among
+groups only ever tightens. Time left is monotone in every key, so
+evaluating the merge once gives the same outcome as evaluating each
+policy and taking the minimum ("logged out under any policy means
+logged out"), and the rest of the daemon sees one ordinary
+configuration object with every key filled. The provenance reported to
+the admin tools is `user` when the user's file exists (with the groups
+that supplied the rest), `group:<g1>;<g2>` when only groups did, else
+`default`.
 
 The resolution also yields a _fingerprint_ (the user file's mtime, and
 the names and mtimes of the group files considered). The user object

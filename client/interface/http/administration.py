@@ -188,13 +188,13 @@ class timekprAdminHttpConnector:
             result, message, group = self._call("GET", target_path(pUserName))
             if result != 0:
                 return result, message, {}
-            return (
-                result,
-                message,
-                webapi.group_config_to_daemon(group["config"])
-                if pInfoLvl == cons.TK_CL_INF_FULL
-                else {},
-            )
+            info = {}
+            if pInfoLvl == cons.TK_CL_INF_FULL:
+                info.update(webapi.group_config_to_daemon(group["config"]))
+                # the settings the policy holds, after the overrides as the
+                # daemon orders them
+                info["POLICY_SETTINGS"] = list(group["policy_settings"])
+            return result, message, info
         result, message, user = self._call("GET", user_path(pUserName))
         if result != 0:
             return result, message, {}
@@ -302,6 +302,18 @@ class timekprAdminHttpConnector:
         return self._patchUser(
             pUserName, {"overrides": [group_name(str(group)) for group in pOverrides]}
         )
+
+    def unsetSetting(self, pUserName, pSetting):
+        """A null field in a PATCH, or a DELETE of the allowed-hours resource"""
+        setting = str(pSetting)
+        if setting.startswith("allowed_hours"):
+            day = setting[len("allowed_hours_") :] or "all"
+            return self._call(
+                "DELETE", target_path(pUserName, f"/config/allowed-hours/{day}")
+            )[:2]
+        if setting == "overrides" and not is_group(pUserName):
+            return self._groupsOnly(pUserName)
+        return self._patchUser(pUserName, {setting: None})
 
     def deletePolicy(self, pUserName):
         return self._call("DELETE", target_path(pUserName, "/policy"))[:2]

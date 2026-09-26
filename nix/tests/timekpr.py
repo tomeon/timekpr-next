@@ -565,6 +565,34 @@ def exercise_groups():
         assert DBUS.policy_source(ALICE) == "group"
         expect_login_terminated(ALICE, ALICE_PASSWORD)
 
+    with subtest("groups: a setting can be taken out of a policy"):
+        # two settings of alice's own over the group's policy, through both
+        # transports
+        DBUS.run("--settimelimits", ALICE, PLENTY_TIME)
+        UNIX.run("--sethidetrayicon", ALICE, "true")
+        assert DBUS.policy_source(ALICE) == "user"
+        settings = "allowed_days;limits_per_day;hide_tray_icon"
+        assert DBUS.userinfo_value(ALICE, "POLICY_SETTINGS") == settings
+        assert UNIX.run("--userinfo", ALICE) == DBUS.run("--userinfo", ALICE)
+        # the web API: a null field hands the setting back to the group
+        status, config = api(
+            "PATCH", user_path(ALICE, "/config"), {"limits_per_day": None}
+        )
+        assert status == 200, config
+        assert set(config["limits_per_day"].values()) == {0}, config
+        assert DBUS.userinfo_value(ALICE, "POLICY_SETTINGS") == "hide_tray_icon"
+        expect("DELETE", user_path(ALICE, "/config/allowed-hours/all"), status=404)
+        # the last setting takes the policy with it
+        out = UNIX.run("--unset", ALICE, "hide_tray_icon")
+        assert out.strip() == "", out
+        assert DBUS.policy_source(ALICE) == "group"
+        assert "does not set" in DBUS.run("--unset", ALICE, "limit_per_week")
+        assert "not a policy setting" in DBUS.run("--unset", ALICE, "bogus")
+        assert "does not set" in DBUS.run(
+            "--unset", group_target(KIDS), "limit_per_week"
+        )
+        assert weekday_limits(ALICE) == NO_TIME_ARG
+
     with subtest("groups: matching groups merge to the most restrictive values"):
         DBUS.run("--settimelimits", all_target, PLENTY_TIME)
         assert DBUS.userinfo_value(ALICE, "POLICY_GROUPS") == f"{ALL_GROUP};{KIDS}"

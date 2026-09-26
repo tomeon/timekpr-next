@@ -118,7 +118,9 @@ module `timekprw` uses in the other direction.
   for a user the daemon does not list (see "Policies") is `404`, as is
   a read of a group that has no policy and a deletion of a policy that
   does not exist; a value the
-  daemon refuses is `400` with its message as `detail`; `500` means
+  daemon refuses is `400` with its message as `detail`; `503` is also
+  a user whose groups the daemon cannot look up right now (see
+  "Policies"); `500` means
   the daemon accepted the request but failed to apply it (its log,
   `/var/log/timekpr.log`, has the reason; on NixOS `/etc/timekpr` is
   a read-only store path, so the daemon-wide settings cannot be
@@ -138,31 +140,50 @@ module `timekprw` uses in the other direction.
 
 ## Policies
 
-A _policy_ is a configuration file an administrator made. A user
-policy (`timekpr.<user>.conf`) applies to that user alone; a group
-policy (`groups/timekpr.<group>.conf`, addressed as `@<group>` by
-`timekpra` and as `/groups/<group>` here) applies to every member of
-the group that has no policy of their own. Nothing is created on
-login: the first setting for a user or a group creates its policy,
-so limits can be made for users who never logged in. A user's
-effective configuration is, in this order: their own policy; else
-the most-restrictive merge of the policies of the groups they belong
-to (the pseudo-group `all` matches everyone), after dropping every
-group that another matching group `overrides`; else the defaults.
-`GET /api/v1/users/{username}` reports the effective configuration
-with `policy_source` (`user`, `group` or `default`) and
-`policy_groups` (the groups that were merged, in merge order). The
+A _policy_ is a configuration file an administrator made, holding
+only the settings made for it. A user policy (`timekpr.<user>.conf`)
+applies to that user alone; a group policy
+(`groups/timekpr.<group>.conf`, addressed as `@<group>` by `timekpra`
+and as `/groups/<group>` here) applies to every member of the group.
+Nothing is created on login: the first setting for a user or a group
+creates its policy, holding that setting, so limits can be made for
+users who never logged in. Each setting of a user's effective
+configuration is, in this order: the user's own policy's value, if it
+holds the setting; else the most-restrictive merge of the values of
+the group policies that hold it, among the groups the user belongs to
+(the pseudo-group `all` matches everyone), after dropping every group
+that another matching group `overrides`; else the default. The
+allowed days and their limits are one setting, as are the hours of
+one day. `GET /api/v1/users/{username}` reports the effective
+configuration with `policy_source` (`user`, `group` or `default`),
+`policy_groups` (the groups whose policies contributed, in merge
+order; with `user` these are the groups the settings the user does
+not hold come from) and `policy_settings` (the settings the user's
+own policy holds, by the field names below; `allowed_days` and
+`limits_per_day` always together, the hours as `allowed_hours_1` to
+`allowed_hours_7`). A setting is taken out of a policy by sending it
+as `null` in a `PATCH` (`timekpra --unset`), or, for the hours, by a
+`DELETE` of the allowed-hours resource; a user policy left with
+nothing is deleted, a group policy stays until it is deleted. The
 user list holds every user with a policy, every user of the system
 and every known member of a group with a policy; group membership is
 looked up through NSS, so it reaches domain users too. See
 `server/config/policy.py`.
+
+When NSS cannot say which groups a user is in (a directory that is
+down), the daemon does not guess: a request that needs the user's
+effective configuration is answered `503` and the user list shows
+the user's `policy_source` as `unresolved`. Enforcement keeps the
+policy the daemon last resolved for the user, or applies every group
+policy to a user it never resolved, until a lookup succeeds.
 
 Deleting a user's policy (`DELETE /api/v1/users/{username}/policy`)
 puts them back under their group policies or the defaults; their
 counters stay. Earlier versions created a policy for every user on
 first login, which now hides that user's group policies;
 `POST /api/v1/policies/migrate` deletes (or, with `dry_run`, only
-lists) the user policies whose every value is a default.
+lists) the user policies that hold every setting at its default value
+(and the ones that hold nothing).
 
 ## Endpoints
 
@@ -190,16 +211,17 @@ Fields of `/api/v1/config` (names follow `TIMEKPR_*` keys returned by the daemon
 
 ### Users
 
-| Method   | Path                                                  | `timekpra`                    | Purpose                                                                                                                                                                                                                                                |
-| -------- | ----------------------------------------------------- | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET`    | `/api/v1/users`                                       | `--userlist`                  | The users timekpr knows (see "Policies"). Returns `[{"username", "full_name", "policy_source"}]`; `policy_source` is `user`, `group:<g1>;<g2>` or `default`. Query `?include=status` adds each user's `status` object (one extra D-Bus call per user). |
-| `GET`    | `/api/v1/users/{username}`                            | `--userinfo` + `--userinfort` | Full view: `{"username", "config": {...}, "status": {...}, "policy_source", "policy_groups"}` (`getUserInformation(name, "F")`); `config` is the effective configuration.                                                                              |
-| `GET`    | `/api/v1/users/{username}/config`                     | `--userinfo`                  | Saved configuration only (`"S"`).                                                                                                                                                                                                                      |
-| `PATCH`  | `/api/v1/users/{username}/config`                     | all `--set*` except time left | Partial update, see field table below.                                                                                                                                                                                                                 |
-| `GET`    | `/api/v1/users/{username}/status`                     | `--userinfort`                | Realtime counters (`"R"`).                                                                                                                                                                                                                             |
-| `PUT`    | `/api/v1/users/{username}/config/allowed-hours/{day}` | `--setallowedhours`           | Replace the allowed hours for one weekday, or for every weekday when `{day}` is `all`.                                                                                                                                                                 |
-| `POST`   | `/api/v1/users/{username}/time-left`                  | `--settimeleft`               | Add, subtract or set today's remaining time.                                                                                                                                                                                                           |
-| `DELETE` | `/api/v1/users/{username}/policy`                     | `--deletepolicy`              | Delete the user's own policy (`deletePolicy`); `204`, or `404` when there is none. The user's group policies or the defaults apply again; the counters stay.                                                                                           |
+| Method   | Path                                                  | `timekpra`                    | Purpose                                                                                                                                                                                                                                                              |
+| -------- | ----------------------------------------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`    | `/api/v1/users`                                       | `--userlist`                  | The users timekpr knows (see "Policies"). Returns `[{"username", "full_name", "policy_source"}]`; `policy_source` is `user`, `group:<g1>;<g2>`, `default` or `unresolved`. Query `?include=status` adds each user's `status` object (one extra D-Bus call per user). |
+| `GET`    | `/api/v1/users/{username}`                            | `--userinfo` + `--userinfort` | Full view: `{"username", "config": {...}, "status": {...}, "policy_source", "policy_groups", "policy_settings"}` (`getUserInformation(name, "F")`); `config` is the effective configuration.                                                                         |
+| `GET`    | `/api/v1/users/{username}/config`                     | `--userinfo`                  | Saved configuration only (`"S"`).                                                                                                                                                                                                                                    |
+| `PATCH`  | `/api/v1/users/{username}/config`                     | all `--set*` except time left | Partial update, see field table below.                                                                                                                                                                                                                               |
+| `GET`    | `/api/v1/users/{username}/status`                     | `--userinfort`                | Realtime counters (`"R"`).                                                                                                                                                                                                                                           |
+| `PUT`    | `/api/v1/users/{username}/config/allowed-hours/{day}` | `--setallowedhours`           | Replace the allowed hours for one weekday, or for every weekday when `{day}` is `all`.                                                                                                                                                                               |
+| `DELETE` | `/api/v1/users/{username}/config/allowed-hours/{day}` | `--unset U allowed_hours[_N]` | Take one weekday's hours (or every weekday's, `all`) out of the user's policy; returns the effective configuration, `404` when the policy does not hold them.                                                                                                        |
+| `POST`   | `/api/v1/users/{username}/time-left`                  | `--settimeleft`               | Add, subtract or set today's remaining time.                                                                                                                                                                                                                         |
+| `DELETE` | `/api/v1/users/{username}/policy`                     | `--deletepolicy`              | Delete the user's own policy (`deletePolicy`); `204`, or `404` when there is none. The user's group policies or the defaults apply again; the counters stay.                                                                                                         |
 
 There is no `POST /users`: a user is not created, the first setting
 made for a name creates that name's policy (`PATCH .../config` on a
@@ -214,10 +236,11 @@ a username; `all` is the pseudo-group of everyone.
 | Method   | Path                                                | `timekpra`                          | Purpose                                                                                                                                                                                                |
 | -------- | --------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET`    | `/api/v1/groups`                                    | `--grouplist`                       | The groups with a policy (`getGroupList`): `[{"group", "overrides": [...], "members": [...]}]`. `members` is best effort: an identity provider need not enumerate a group.                             |
-| `GET`    | `/api/v1/groups/{group}`                            | `--groupinfo`                       | `{"group", "config": {...}}` (`getUserInformation("@group", "F")`); `404` when the group has no policy.                                                                                                |
-| `GET`    | `/api/v1/groups/{group}/config`                     | `--groupinfo`                       | The policy alone; `404` when there is none.                                                                                                                                                            |
+| `GET`    | `/api/v1/groups/{group}`                            | `--groupinfo`                       | `{"group", "config": {...}, "policy_settings": [...]}` (`getUserInformation("@group", "F")`); `404` when the group has no policy.                                                                      |
+| `GET`    | `/api/v1/groups/{group}/config`                     | `--groupinfo`                       | The policy alone, the defaults for what it does not hold; `404` when there is none.                                                                                                                    |
 | `PATCH`  | `/api/v1/groups/{group}/config`                     | the `--set*` commands with `@group` | Partial update, fields below. The first setting for a group creates its policy, so this is never `404`; `overrides` goes through `setOverrides`, the rest through the same setters as a user's config. |
 | `PUT`    | `/api/v1/groups/{group}/config/allowed-hours/{day}` | `--setallowedhours @group`          | As for users.                                                                                                                                                                                          |
+| `DELETE` | `/api/v1/groups/{group}/config/allowed-hours/{day}` | `--unset @G allowed_hours[_N]`      | As for users.                                                                                                                                                                                          |
 | `DELETE` | `/api/v1/groups/{group}/policy`                     | `--deletepolicy @group`             | `204`, or `404` when there is none.                                                                                                                                                                    |
 | `POST`   | `/api/v1/policies/migrate`                          | `--migratepolicies`                 | Body `{"dry_run": true}` (the default); returns `{"users": [...]}`, the users whose default-valued policy was (or, with `dry_run`, would be) deleted.                                                  |
 
@@ -230,9 +253,15 @@ in both. `PATCH` accepts any subset of them.
 
 `GET /api/v1/users/{username}/config` returns the user's effective
 configuration, and `PATCH` accepts any subset of the fields below;
-a `PATCH` on a user without a policy of their own creates one (from
-the defaults, not from the group policies that applied before). The
-fields are:
+the user's policy then holds the fields sent (a `PATCH` on a user
+without a policy of their own creates one holding just those), and
+the group policies keep deciding the rest. Sending `allowed_days` or
+`limits_per_day` puts both into the policy, the other one taken from
+the effective configuration. A field sent as `null` takes the setting
+out of the policy instead (`allowed_days` and `limits_per_day`
+together, `allowed_hours` for every day at once; `404` when the
+policy does not hold it); nulls are applied before values. A request
+the daemon refuses creates nothing. The fields are:
 
 | Field             | Type                                                     | D-Bus setter                          | Notes                                                                                                                                                                                                                                                                                                                        |
 | ----------------- | -------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -379,6 +408,8 @@ token is entered once per browser tab.
 | `--settrackinactive U B`              | `PATCH /users/U/config {"track_inactive": B}`      |
 | `--sethidetrayicon U B`               | `PATCH /users/U/config {"hide_tray_icon": B}`      |
 | `--settimeleft U OP N`                | `POST /users/U/time-left {"operation", "seconds"}` |
+| `--unset U limit_per_week`            | `PATCH /users/U/config {"limit_per_week": null}`   |
+| `--unset U allowed_hours_3`           | `DELETE /users/U/config/allowed-hours/3`           |
 | `--deletepolicy U`                    | `DELETE /users/U/policy`                           |
 | `--grouplist`                         | `GET /groups`                                      |
 | `--groupinfo G`                       | `GET /groups/G/config`                             |

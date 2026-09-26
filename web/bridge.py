@@ -6,7 +6,9 @@ timekpra and the GTK administration tool use, so the daemon's own
 validation applies unchanged.  The value conversions live in
 timekpr.common.utils.webapi (shared with timekpra's HTTP connector);
 this module adds the Pydantic models, the daemon's error conventions,
-and the order in which a PATCH is applied.
+and how a PATCH is applied: a policy's in one call the daemon applies
+whole or not at all (applyPolicyChanges), the daemon-wide settings one
+setter at a time.
 """
 
 import gettext
@@ -83,12 +85,14 @@ def daemon_texts(keys):
 class DaemonError(Exception):
     """A request the daemon (or the connection to it) refused"""
 
-    def __init__(self, status, detail, field=None, applied=()):
+    def __init__(self, status, detail, field=None, applied=(), payload=None):
         super().__init__(detail)
         self.status = status
         self.detail = detail
         self.field = field
         self.applied = list(applied)
+        # what the daemon returned besides its message
+        self.payload = payload
 
 
 def plain(value):
@@ -146,30 +150,12 @@ class Bridge:
             result = plain(getattr(connector, method)(*args))
             connected = connector.isConnected()[0]
         code, message = result[0], result[1]
-        if code == _RESULT_NOT_READY or (code != 0 and not connected):
-            raise DaemonError(503, message)
-        if code != 0 and message.startswith(
-            msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED")
-        ):
-            # the daemon (through polkit) refused us: timekprw's user is not in
-            # the timekpr group; the connector appends the daemon's reason to
-            # its own message, which is in our locale
-            raise DaemonError(502, message)
-        if code != 0 and daemon_texts(_DAEMON_FAILURES).match(message):
-            # the daemon could not apply a valid request (its log has the reason,
-            # a read-only /etc/timekpr for example)
-            raise DaemonError(500, message)
-        if code != 0 and daemon_texts(_DAEMON_UNAVAILABLE).match(message):
-            # the daemon could not resolve the user's policy (the directory
-            # did not answer); try again later
-            raise DaemonError(503, message)
-        if code != 0 and daemon_texts(_DAEMON_NOT_FOUND).match(message):
-            # what the request names does not exist: a user nobody knows, a
-            # group without a policy, a policy that is not there to delete
-            raise DaemonError(404, message)
+        payload = result[2] if len(result) > 2 else None
         if code != 0:
-            raise DaemonError(400, message)
-        return result[2] if len(result) > 2 else None
+            raise DaemonError(
+                _status(code, message, connected), message, payload=payload
+            )
+        return payload
 
     # ## service ##
 
@@ -238,22 +224,17 @@ class Bridge:
             )
         )
 
+    def _change_policy(self, target, patch, fields):
+        """A PATCH of a policy, as one change the daemon applies whole or
+        not at all; a refusal names the field it was about"""
+        unset, changes = policy_changes(patch, fields)
+        try:
+            self._call("applyPolicyChanges", target, unset, changes)
+        except DaemonError as ex:
+            raise DaemonError(ex.status, ex.detail, patch_field(ex.payload)) from ex
+
     def patch_user_config(self, username, patch):
-        steps = Steps(self, username)
-        apply_unsets(steps, "", patch)
-        current = self.get_user_config(username)
-        apply_days_and_limits(
-            steps, "", patch, current, "setAllowedDays", "setTimeLimitForDays"
-        )
-        if patch.allowed_hours is not None:
-            for day, entries in patch.allowed_hours.items():
-                steps.run(
-                    f"allowed_hours.{day}",
-                    "setAllowedHours",
-                    str(day),
-                    webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
-                )
-        apply_scalars(steps, "", patch, webapi.USER_FIELDS)
+        self._change_policy(username, patch, webapi.USER_FIELDS)
         return self.get_user_config(username)
 
     def set_allowed_hours(self, username, day, entries):
@@ -332,35 +313,9 @@ class Bridge:
         )
 
     def patch_group_config(self, group, patch):
-        """A group without a policy gets one from its first setter, so the
-        current values a PATCH is applied against are then the daemon's
-        defaults for a new policy"""
-        try:
-            current = self.get_group_config(group)
-        except DaemonError as ex:
-            if ex.status != 404:
-                raise
-            # no policy yet: have the daemon create one with its defaults
-            # (any setter does; an empty override list changes nothing), so
-            # that even an empty PATCH creates the policy
-            Steps(self, group_target(group)).run("overrides", "setOverrides", [])
-            current = self.get_group_config(group)
-        steps = Steps(self, group_target(group))
-        apply_unsets(steps, "", patch)
-        apply_days_and_limits(
-            steps, "", patch, current, "setAllowedDays", "setTimeLimitForDays"
-        )
-        if patch.allowed_hours is not None:
-            for day, entries in patch.allowed_hours.items():
-                steps.run(
-                    f"allowed_hours.{day}",
-                    "setAllowedHours",
-                    str(day),
-                    webapi.hours_to_daemon([entry.model_dump() for entry in entries]),
-                )
-        apply_scalars(steps, "", patch, webapi.GROUP_FIELDS)
-        if patch.overrides is not None:
-            steps.run("overrides", "setOverrides", list(patch.overrides))
+        """A group without a policy gets one, even from an empty PATCH (the
+        daemon creates it, with the defaults for what it does not set)"""
+        self._change_policy(group_target(group), patch, webapi.GROUP_FIELDS)
         return self.get_group_config(group)
 
     def unset_group_allowed_hours(self, group, day):
@@ -394,9 +349,78 @@ def split_list(value):
     return [item for item in value.split(";") if item != ""]
 
 
+def _status(code, message, connected):
+    """The HTTP status for a daemon result other than 0"""
+    if code == _RESULT_NOT_READY or not connected:
+        return 503
+    if message.startswith(
+        msg.getTranslation("TK_MSG_DBUS_COMMUNICATION_COMMAND_FAILED")
+    ):
+        # the daemon (through polkit) refused us: timekprw's user is not in
+        # the timekpr group; the connector appends the daemon's reason to
+        # its own message, which is in our locale
+        return 502
+    if daemon_texts(_DAEMON_FAILURES).match(message):
+        # the daemon could not apply a valid request (its log has the reason,
+        # a read-only /etc/timekpr for example)
+        return 500
+    if daemon_texts(_DAEMON_UNAVAILABLE).match(message):
+        # the daemon could not resolve the user's policy (the directory
+        # did not answer); try again later
+        return 503
+    if daemon_texts(_DAEMON_NOT_FOUND).match(message):
+        # what the request names does not exist: a user nobody knows, a
+        # group without a policy, a policy that is not there to delete
+        return 404
+    return 400
+
+
+def policy_changes(patch, fields):
+    """A PATCH of a policy as applyPolicyChanges takes it: the settings to
+    take out (the fields sent as null; the allowed days and their limits
+    are one setting, allowed_hours is every day's hours) and the ones to
+    set, by the daemon's setting names (which are the fields', one
+    allowed_hours_N per day).  The daemon applies the nulls first and
+    aligns the limits with the allowed days itself."""
+    unset = []
+    for field in type(patch).model_fields:
+        if field in patch.model_fields_set and getattr(patch, field) is None:
+            setting = "allowed_days" if field == "limits_per_day" else field
+            if setting not in unset:
+                unset.append(setting)
+    changes = {}
+    if patch.allowed_days is not None:
+        changes["allowed_days"] = [str(day) for day in patch.allowed_days]
+    if patch.limits_per_day is not None:
+        changes["limits_per_day"] = {
+            str(day): seconds for day, seconds in patch.limits_per_day.items()
+        }
+    for day, entries in (patch.allowed_hours or {}).items():
+        changes[f"allowed_hours_{day}"] = webapi.hours_to_daemon(
+            [entry.model_dump() for entry in entries]
+        )
+    for field in fields:
+        if getattr(patch, field) is not None:
+            changes[field] = getattr(patch, field)
+    if getattr(patch, "overrides", None) is not None:
+        changes["overrides"] = list(patch.overrides)
+    return unset, changes
+
+
+def patch_field(setting):
+    """The PATCH field a setting the daemon refused stands for (None when
+    it named none)"""
+    if not setting:
+        return None
+    if setting.startswith("allowed_hours_"):
+        return "allowed_hours." + setting[len("allowed_hours_") :]
+    return setting
+
+
 class Steps:
-    """Runs the setters of a PATCH one by one, remembering which fields
-    were written so that a failure can report them"""
+    """Runs setters one by one (a PATCH of the daemon-wide settings, the
+    single call of a sub-resource), remembering which fields were written
+    so that a failure can report them"""
 
     def __init__(self, bridge, username=None):
         self._bridge = bridge
@@ -416,40 +440,8 @@ def hours_setting(day):
     return "allowed_hours" if day == "all" else f"allowed_hours_{day}"
 
 
-def apply_unsets(steps, prefix, patch):
-    """The fields a PATCH sends as null are taken out of the policy (the
-    allowed days and their limits together, the hours of every day at once)"""
-    settings = []
-    for field in patch.model_fields_set:
-        if getattr(patch, field) is not None:
-            continue
-        setting = "allowed_days" if field == "limits_per_day" else field
-        if setting not in settings:
-            settings.append(setting)
-    for setting in settings:
-        steps.run(prefix + setting, "unsetSetting", setting)
-
-
 def apply_scalars(steps, prefix, patch, fields):
     for field, (_key, setter) in fields.items():
         value = getattr(patch, field)
         if value is not None:
             steps.run(prefix + field, setter, value)
-
-
-def apply_days_and_limits(steps, prefix, patch, current, days_setter, limits_setter):
-    """Allowed days and their limits are coupled: the daemon stores limits
-    positionally against the allowed days, so whenever either changes the
-    limits are re-sent aligned with the (new) allowed days"""
-    days = (
-        sorted(set(patch.allowed_days))
-        if patch.allowed_days is not None
-        else current.allowed_days
-    )
-    if patch.allowed_days is not None:
-        steps.run(prefix + "allowed_days", days_setter, [str(day) for day in days])
-    if patch.allowed_days is not None or patch.limits_per_day is not None:
-        limits = {**current.limits_per_day, **(patch.limits_per_day or {})}
-        steps.run(
-            prefix + "limits_per_day", limits_setter, webapi.limits_list(days, limits)
-        )

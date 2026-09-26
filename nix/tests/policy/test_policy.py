@@ -10,6 +10,8 @@ reports it)."""
 import grp
 import os
 import pwd
+import sqlite3
+import threading
 from types import SimpleNamespace
 
 import pytest
@@ -79,7 +81,7 @@ def nss(monkeypatch):
 @pytest.fixture
 def config(tmp_path):
     """What the configuration processor needs of the main configuration"""
-    (tmp_path / "config" / cons.TK_GROUP_CONFIG_DIR).mkdir(parents=True)
+    (tmp_path / "config").mkdir()
     (tmp_path / "work").mkdir()
     return SimpleNamespace(
         getTimekprConfigDir=lambda: str(tmp_path / "config"),
@@ -119,10 +121,25 @@ def kids_policy(config, store):
 
 
 def own_policy(store, target):
-    """A policy file as it is on disk (only what it sets)"""
-    policy = timekprUserConfig(store.getConfigDir(), target)
-    assert policy.loadUserConfiguration()
+    """A policy as it is stored (only what it sets)"""
+    policy = store.loadPolicy(target)
+    assert policy.isPolicyPresent()
     return policy
+
+
+def database(store):
+    """A connection to the policy database of its own, as another process
+    (sqlite3 by hand, say) has"""
+    return sqlite3.connect(store.getDatabaseFile(), isolation_level=None)
+
+
+def stored_row(store, target):
+    """The columns a policy's row sets, as the database holds them"""
+    conn = database(store)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("SELECT * FROM policy WHERE target = ?", (target,)).fetchone()
+    conn.close()
+    return {key: value for key, value in zip(row.keys(), row) if value is not None}
 
 
 def test_a_setting_creates_a_policy_holding_that_setting_alone(config, store):
@@ -134,10 +151,8 @@ def test_a_setting_creates_a_policy_holding_that_setting_alone(config, store):
     # what it does not set answers the default
     assert day_limits(policy) == [DAY] * 7
     assert policy.getUserOverrides() == []
-    # the file lists that setting and nothing else
-    with open(store.getGroupPolicyFile("staff")) as handle:
-        lines = [line for line in handle if line.strip() and line[0] not in "#["]
-    assert lines == [f"LIMIT_PER_WEEK = {HOUR}\n"]
+    # the row holds that setting and nothing else
+    assert stored_row(store, "@staff") == {"target": "@staff", "limit_per_week": HOUR}
 
 
 def test_a_first_setting_leaves_the_inherited_limits_alone(config, store, kids_policy):
@@ -167,7 +182,8 @@ def test_an_own_setting_replaces_the_group_value(config, store, kids_policy):
     processor(config, "@kids").checkAndSetTimeLimitForWeek(5 * HOUR)
     assert store.resolve("alice").config.getUserWeekLimit() == 5 * HOUR
     # deleting the policy puts her back under the group
-    timekprUserConfig(store.getConfigDir(), "alice").deletePolicy()
+    assert store.deletePolicy("alice")
+    assert not store.deletePolicy("alice")
     assert day_limits(store.resolve("alice").config) == [HOUR] * 7
 
 
@@ -196,25 +212,40 @@ def test_the_days_and_their_limits_go_together(config, store, kids_policy):
     assert policy.getSetParams() == []
 
 
+def write_policy_file(store, target, text):
+    """A policy file as an earlier version kept it"""
+    directory = store.getConfigDir()
+    if target.startswith(cons.TK_GROUP_TARGET_PREFIX):
+        directory = os.path.join(directory, cons.TK_GROUP_CONFIG_DIR)
+        os.makedirs(directory, exist_ok=True)
+    path = os.path.join(directory, cons.TK_USER_CONFIG_FILE % target.lstrip("@"))
+    with open(path, "w") as handle:
+        handle.write(text)
+    return path
+
+
 def test_a_file_holding_half_of_the_day_limits(config, store):
     # a hand-edited file with limits but no days: the days are the default
-    with open(store.getUserPolicyFile("alice"), "w") as handle:
-        handle.write("[alice]\nLIMITS_PER_WEEKDAYS = 60;60;60;60;60;60;60\n")
+    write_policy_file(
+        store, "alice", "[alice]\nLIMITS_PER_WEEKDAYS = 60;60;60;60;60;60;60\n"
+    )
+    assert store.importPolicyFiles() == ["alice"]
     policy = own_policy(store, "alice")
     assert policy.getSetSettings() == ["allowed_days", "limits_per_day"]
     effective = store.resolve("alice").config
     assert effective.getUserAllowedWeekdays() == [str(day) for day in range(1, 8)]
     assert day_limits(effective) == [60] * 7
     # and the other way round: every day allowed, with the default limit
-    with open(store.getUserPolicyFile("alice"), "w") as handle:
-        handle.write("[alice]\nALLOWED_WEEKDAYS = 6;7\n")
+    store.deletePolicy("alice")
+    write_policy_file(store, "alice", "[alice]\nALLOWED_WEEKDAYS = 6;7\n")
+    assert store.importPolicyFiles() == ["alice"]
     effective = store.resolve("alice").config
     assert effective.getUserAllowedWeekdays() == ["6", "7"]
     assert effective.getUserLimitForDay(6) == DAY
     assert effective.getUserLimitForDay(1) == 0
 
 
-def test_a_policy_file_round_trips(config, store, kids_policy):
+def test_a_policy_round_trips(config, store, kids_policy):
     result, _message = processor(config, "@kids").checkAndSetAllowedHours(
         "1", {"9": {"STARTMIN": 15, "ENDMIN": 60, "UACC": False}}
     )
@@ -232,28 +263,49 @@ def test_a_policy_file_round_trips(config, store, kids_policy):
     }
     assert policy.getUserAllowedHours("2") == policy.getUserAllowedHours("7")
     assert policy.getUserOverrides() == ["all", "teens"]
-    # the previous file is kept as the backup
-    assert os.path.isfile(store.getGroupPolicyFile("kids") + cons.TK_BACK_EXT)
+    assert stored_row(store, "@kids")["overrides"] == "all;teens"
 
 
 def test_a_value_that_does_not_parse_is_ignored(config, store, kids_policy):
-    path = store.getGroupPolicyFile("kids")
-    with open(path) as handle:
-        text = handle.read()
-    with open(path, "w") as handle:
-        handle.write(
-            text.replace("LIMITS_PER_WEEKDAYS = ", "LIMITS_PER_WEEKDAYS = abc;", 1)
-            + "LIMIT_PER_WEEK = soon\n"
-        )
+    # edited by hand
+    conn = database(store)
+    conn.execute(
+        "UPDATE policy SET limits_per_weekdays = 'abc;' || limits_per_weekdays"
+    )
+    conn.close()
     policy = own_policy(store, "@kids")
-    assert policy.getUnreadableParams() == ["LIMITS_PER_WEEKDAYS", "LIMIT_PER_WEEK"]
-    # the days keep their (default) limits, the week limit is not set
+    assert policy.getUnreadableParams() == ["LIMITS_PER_WEEKDAYS"]
+    # the days keep their (default) limits
     assert policy.getSetParams() == ["ALLOWED_WEEKDAYS", "LIMITS_PER_WEEKDAYS"]
-    assert not policy.isSet("LIMIT_PER_WEEK")
-    # the daemon resolves without the bad values, the file is left alone
+    # the daemon resolves without the bad value, the row is left alone
     assert day_limits(store.resolve("alice").config) == [DAY] * 7
-    with open(path) as handle:
-        assert "abc" in handle.read()
+    assert stored_row(store, "@kids")["limits_per_weekdays"].startswith("abc;")
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        # a number that is not one
+        "UPDATE policy SET limit_per_week = 'soon' WHERE target = '@kids'",
+        "UPDATE policy SET track_inactive = 2 WHERE target = '@kids'",
+        # the days without their limits
+        "UPDATE policy SET limits_per_weekdays = NULL WHERE target = '@kids'",
+        # overrides for a user, the tray icon for a group
+        "INSERT INTO policy (target, overrides) VALUES ('alice', 'kids')",
+        "UPDATE policy SET hide_tray_icon = 1 WHERE target = '@kids'",
+        "INSERT INTO policy (target) VALUES ('')",
+    ],
+)
+def test_the_database_refuses_what_the_daemon_never_writes(
+    store, kids_policy, statement
+):
+    conn = database(store)
+    with pytest.raises(sqlite3.IntegrityError):
+        conn.execute(statement)
+    conn.close()
+    assert stored_row(store, "@kids")["limits_per_weekdays"] == ";".join(
+        [str(HOUR)] * 7
+    )
 
 
 @pytest.mark.parametrize(
@@ -453,7 +505,7 @@ def tracked_user(store, name):
     user._timekprUserData = user._initUserLimits()
     user._timekprUserData[cons.TK_CTRL_UNAME] = name
     user._timekprPolicyStore = store
-    user._timekprUserConfig = timekprUserConfig(store.getConfigDir(), name)
+    user._timekprUserConfig = timekprUserConfig(name)
     user._timekprPolicySource = ""
     user._timekprPolicyLookupFailed = False
     # the limits are not sent anywhere here
@@ -531,8 +583,9 @@ HIDE_TRAY_ICON = False
 def write_legacy_policy(
     store, user, limits="86400;86400;86400;86400;86400;86400;86400"
 ):
-    with open(store.getUserPolicyFile(user), "w") as handle:
-        handle.write(LEGACY_POLICY.format(user=user, limits=limits))
+    """A policy file an earlier version wrote, imported as the daemon does"""
+    write_policy_file(store, user, LEGACY_POLICY.format(user=user, limits=limits))
+    assert store.importPolicyFiles() == [user]
 
 
 def test_only_legacy_policies_are_migrated(config, store, kids_policy):
@@ -541,7 +594,7 @@ def test_only_legacy_policies_are_migrated(config, store, kids_policy):
     # the group; bob's is empty
     write_legacy_policy(store, "dave")
     set_day_limits(config, "carol", DAY)
-    timekprUserConfig(store.getConfigDir(), "bob").saveUserConfiguration()
+    store.savePolicy(timekprUserConfig("bob"))
     assert store.getDefaultUserPolicies() == ["bob", "dave"]
     # what the daemon does at startup
     store.warnAboutDefaultPolicies()
@@ -561,3 +614,164 @@ def test_a_malformed_policy_does_not_stop_the_migration_scan(config, store):
     store.warnAboutDefaultPolicies()
     assert store.migrateDefaultPolicies(pDryRun=False) == ["dave"]
     assert store.hasUserPolicy("carol")
+
+
+# ## the policy files of earlier versions ##
+
+
+def test_policy_files_are_imported_once(config, store, kids_policy):
+    # a user's (with its backup, and a group-only setting), a group's (with
+    # a user-only one), one for another name, one that does not parse, one
+    # for a target the database has a policy for, and the sample
+    alice = write_policy_file(
+        store, "alice", "[alice]\nLIMIT_PER_WEEK = 3600\nHIDE_TRAY_ICON = yes\n"
+    )
+    with open(alice + cons.TK_BACK_EXT, "w") as handle:
+        handle.write("[alice]\n")
+    teens = write_policy_file(
+        store, "@teens", "[@teens]\nOVERRIDES = kids\nHIDE_TRAY_ICON = true\n"
+    )
+    bob = write_policy_file(store, "bob", "[someone]\nLIMIT_PER_WEEK = 60\n")
+    carol = write_policy_file(store, "carol", "not a policy file\n")
+    kids = write_policy_file(store, "@kids", "[@kids]\nLIMIT_PER_WEEK = 60\n")
+    sample = write_policy_file(store, "USER", "[USER]\nLIMIT_PER_WEEK = 60\n")
+    assert store.importPolicyFiles() == ["alice", "@teens"]
+    assert stored_row(store, "alice") == {
+        "target": "alice",
+        "limit_per_week": HOUR,
+        "hide_tray_icon": 1,
+    }
+    assert stored_row(store, "@teens") == {"target": "@teens", "overrides": "kids"}
+    # a file that sets nothing is no user policy, the database's policy stays
+    assert not store.hasUserPolicy("bob")
+    assert not store.hasUserPolicy("carol")
+    assert "limit_per_week" not in stored_row(store, "@kids")
+    # the files are kept under another name, the sample is left alone
+    for path in (alice, alice + cons.TK_BACK_EXT, teens, bob, kids):
+        assert not os.path.exists(path)
+        assert os.path.isfile(path + cons.TK_POLICY_IMPORTED_EXT)
+    assert os.path.isfile(carol + cons.TK_POLICY_INVALID_EXT)
+    assert os.path.isfile(sample)
+    # the next start has nothing to import
+    assert store.importPolicyFiles() == []
+
+
+# ## concurrent changes ##
+
+
+def test_a_reader_is_not_blocked_by_a_writer(config, store, kids_policy):
+    other = database(store)
+    other.execute("BEGIN IMMEDIATE")
+    other.execute("UPDATE policy SET limits_per_weekdays = '60;60;60;60;60;60;60'")
+    # the committed policies, at once
+    assert day_limits(store.resolve("alice").config) == [HOUR] * 7
+    other.execute("COMMIT")
+    other.close()
+    assert day_limits(store.resolve("alice").config) == [60] * 7
+
+
+def test_concurrent_changes_are_serialized(config, store, kids_policy):
+    # another writer is setting alice's week limit
+    other = database(store)
+    other.execute("BEGIN IMMEDIATE")
+    other.execute("INSERT INTO policy (target, limit_per_week) VALUES ('alice', 60)")
+    results = []
+    thread = threading.Thread(
+        target=lambda: results.append(
+            processor(config, "alice").checkAndSetTimeLimitForMonth(HOUR)
+        )
+    )
+    thread.start()
+    # the setter waits for the lock rather than reading the old policy
+    thread.join(0.5)
+    assert thread.is_alive()
+    other.execute("COMMIT")
+    other.close()
+    thread.join(10)
+    assert results == [(0, "")]
+    # neither change is lost
+    assert stored_row(store, "alice") == {
+        "target": "alice",
+        "limit_per_week": 60,
+        "limit_per_month": HOUR,
+    }
+
+
+def test_a_change_gives_up_on_a_lock_held_too_long(config, store, monkeypatch):
+    monkeypatch.setattr(cons, "TK_POLICY_DB_TIMEOUT", 0.2)
+    other = database(store)
+    other.execute("BEGIN IMMEDIATE")
+    with pytest.raises(sqlite3.OperationalError, match="locked"):
+        processor(config, "alice").checkAndSetTimeLimitForWeek(HOUR)
+    other.execute("ROLLBACK")
+    other.close()
+    assert not store.hasUserPolicy("alice")
+
+
+# ## several settings at once ##
+
+
+def test_changes_apply_together_or_not_at_all(config, store, kids_policy):
+    hours = {"9": {"STARTMIN": 0, "ENDMIN": 30, "UACC": False}}
+    # a refused setting takes the ones applied before it along
+    for changes, refused in (
+        ({"limit_per_week": HOUR, "allowed_days": ["9"]}, "allowed_days"),
+        ({"limit_per_week": HOUR, "track_inactive": None}, "track_inactive"),
+        ({"limit_per_week": HOUR, "limits_per_day": {"1": "x"}}, "limits_per_day"),
+        ({"limit_per_week": HOUR, "overrides": ["kids"]}, "overrides"),
+        ({"limit_per_week": HOUR, "bogus": 1}, "bogus"),
+    ):
+        result, message, name = processor(config, "alice").applyPolicyChanges(
+            [], changes
+        )
+        assert (result, name) == (-1, refused), message
+        assert not store.hasUserPolicy("alice")
+    # the days and their limits are set together: the days given, the
+    # limits given, and the other days keeping theirs (kids' hour)
+    result, message, name = processor(config, "alice").applyPolicyChanges(
+        [],
+        {
+            "allowed_days": ["4", "2", "4"],
+            "limits_per_day": {"4": 60, "6": 30},
+            "allowed_hours_2": hours,
+            "limit_per_week": HOUR,
+        },
+    )
+    assert (result, name) == (0, ""), message
+    policy = own_policy(store, "alice")
+    assert policy.getUserAllowedWeekdays() == ["2", "4"]
+    assert policy.getUserLimitsByDay() == {"2": HOUR, "4": 60}
+    assert policy.getUserAllowedHours("2") == hours
+    assert policy.getUserWeekLimit() == HOUR
+    # the settings taken out go first; the limits alone keep the days
+    result, message, name = processor(config, "alice").applyPolicyChanges(
+        ["limit_per_week"], {"limits_per_day": {"2": 30}}
+    )
+    assert (result, name) == (0, ""), message
+    policy = own_policy(store, "alice")
+    assert policy.getUserLimitsByDay() == {"2": 30, "4": 60}
+    assert not policy.isSet("LIMIT_PER_WEEK")
+    # taking out what the policy does not set refuses the whole change
+    result, message, name = processor(config, "alice").applyPolicyChanges(
+        ["limit_per_month"], {"track_inactive": True}
+    )
+    assert (result, name) == (-1, "limit_per_month")
+    assert "does not set limit_per_month" in message
+    assert not own_policy(store, "alice").isSet("TRACK_INACTIVE")
+
+
+def test_a_group_change_creates_its_policy(config, store):
+    # even an empty one: the policy is what makes the group known
+    result, message, name = processor(config, "@teens").applyPolicyChanges([], {})
+    assert (result, name) == (0, ""), message
+    assert store.hasGroupPolicy("teens")
+    assert own_policy(store, "@teens").getSetParams() == []
+    # unless it is refused
+    result, _message, name = processor(config, "@staff").applyPolicyChanges(
+        [], {"hide_tray_icon": True}
+    )
+    assert (result, name) == (-1, "hide_tray_icon")
+    assert not store.hasGroupPolicy("staff")
+    # and a target that is not a name is refused before anything else
+    result, _message, name = processor(config, "@a/b").applyPolicyChanges([], {})
+    assert (result, name) == (-1, "")

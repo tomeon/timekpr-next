@@ -970,55 +970,84 @@ USER_CONFIG_SETTINGS = {
     "hide_tray_icon": ("HIDE_TRAY_ICON",),
     "overrides": ("OVERRIDES",),
 }
+# the D-Bus type of each setting's value in applyPolicyChanges: the
+# setters' types, except that limits_per_day maps days to seconds (the
+# days not given keep their limit)
+POLICY_CHANGE_SIGNATURES = {
+    "allowed_days": "as",
+    "limits_per_day": "a{si}",
+    "allowed_hours": "a{sa{si}}",
+    **{f"allowed_hours_{rDay}": "a{sa{si}}" for rDay in range(1, 7 + 1)},
+    "limit_per_week": "i",
+    "limit_per_month": "i",
+    "track_inactive": "b",
+    "hide_tray_icon": "b",
+    "overrides": "as",
+}
 
 
-def _readHours(pParser, pSection, pParam):
+def _readText(pValue):
+    """A ";" separated value as text"""
+    if not isinstance(pValue, str):
+        raise TypeError(f"not text: {pValue!r}")
+    return _cleanupValue(pValue)
+
+
+def _readHours(pValue):
     """An ALLOWED_HOURS value, checked to parse"""
-    value = _cleanupValue(pParser.get(pSection, pParam))
+    value = _readText(pValue)
     _parseAllowedHours(value)
     return value
 
 
-def _readWeekdays(pParser, pSection, pParam):
+def _readWeekdays(pValue):
     """An ALLOWED_WEEKDAYS value: ISO weekdays"""
-    value = _cleanupValue(pParser.get(pSection, pParam))
+    value = _readText(pValue)
     for rDay in _parseList(value):
         if rDay not in cons.TK_ALLOWED_WEEKDAYS.split(";"):
             raise ValueError(f"not a weekday: {rDay!r}")
     return value
 
 
-def _readLimits(pParser, pSection, pParam):
+def _readLimits(pValue):
     """A LIMITS_PER_WEEKDAYS value: whole seconds"""
-    value = _cleanupValue(pParser.get(pSection, pParam))
+    value = _readText(pValue)
     for rLimit in _parseList(value):
         int(rLimit)
     return value
 
 
-def _readNames(pParser, pSection, pParam):
-    """An OVERRIDES value: names separated by ;"""
-    return _cleanupValue(pParser.get(pSection, pParam))
+def _readInt(pValue):
+    """A whole number (a file holds it as text)"""
+    if isinstance(pValue, bool):
+        raise TypeError(f"not a number: {pValue!r}")
+    return pValue if isinstance(pValue, int) else int(str(pValue).strip())
 
 
-# how each setting is read from a file (raising on a value that does not parse)
+def readBool(pValue):
+    """A truth value: a boolean, 0 or 1 (the database), or the words
+    configparser accepts (a file)"""
+    if isinstance(pValue, bool):
+        return pValue
+    if isinstance(pValue, int) and pValue in (0, 1):
+        return bool(pValue)
+    word = str(pValue).strip().lower()
+    if word not in configparser.ConfigParser.BOOLEAN_STATES:
+        raise ValueError(f"not a truth value: {pValue!r}")
+    return configparser.ConfigParser.BOOLEAN_STATES[word]
+
+
+# how each setting is read from its stored form (raising on a value that
+# does not parse)
 _USER_CONFIG_READERS = {
     **{f"ALLOWED_HOURS_{rDay}": _readHours for rDay in range(1, 7 + 1)},
     "ALLOWED_WEEKDAYS": _readWeekdays,
     "LIMITS_PER_WEEKDAYS": _readLimits,
-    "LIMIT_PER_WEEK": lambda pParser, pSection, pParam: pParser.getint(
-        pSection, pParam
-    ),
-    "LIMIT_PER_MONTH": lambda pParser, pSection, pParam: pParser.getint(
-        pSection, pParam
-    ),
-    "TRACK_INACTIVE": lambda pParser, pSection, pParam: pParser.getboolean(
-        pSection, pParam
-    ),
-    "HIDE_TRAY_ICON": lambda pParser, pSection, pParam: pParser.getboolean(
-        pSection, pParam
-    ),
-    "OVERRIDES": _readNames,
+    "LIMIT_PER_WEEK": _readInt,
+    "LIMIT_PER_MONTH": _readInt,
+    "TRACK_INACTIVE": readBool,
+    "HIDE_TRAY_ICON": readBool,
+    "OVERRIDES": _readText,
 }
 
 
@@ -1033,111 +1062,76 @@ def _parsedValue(pParam, pValue):
     return pValue
 
 
-# the comment lines written above each setting in a policy file
-_USER_CONFIG_COMMENTS = [
-    (
-        "ALLOWED_HOURS_1",
-        (
-            "# this defines which hours are allowed (remove or add hours to limit access), configure limits for start/end minutes for hour in brackets,",
-            "#   optionally enter ! in front of hour to mark it non-accountable, for example !22[00-15]",
-        ),
-    ),
-    *[(f"ALLOWED_HOURS_{rDay}", ()) for rDay in range(2, 7 + 1)],
-    (
-        "ALLOWED_WEEKDAYS",
-        (
-            "# this defines which days of the week a user can use computer (remove or add days to limit access)",
-        ),
-    ),
-    (
-        "LIMITS_PER_WEEKDAYS",
-        (
-            "# this defines allowed time in seconds per week day a user can use the computer (number of values must match the number of values for ALLOWED_WEEKDAYS)",
-        ),
-    ),
-    (
-        "LIMIT_PER_WEEK",
-        (
-            "# this defines allowed time per week in seconds (in addition to other limits)",
-        ),
-    ),
-    (
-        "LIMIT_PER_MONTH",
-        (
-            "# this defines allowed time per month in seconds (in addition to other limits)",
-        ),
-    ),
-    (
-        "TRACK_INACTIVE",
-        (
-            "# this defines whether to account sessions which are inactive (locked screen, user switched away from desktop, etc.)",
-        ),
-    ),
-    (
-        "HIDE_TRAY_ICON",
-        ("# this defines whether to show icon and notifications for user",),
-    ),
-    (
-        "OVERRIDES",
-        (
-            "# this defines which other groups' policies this policy takes precedence over for users in both (names separated by ;),",
-            "#   the policies of groups that are not overridden are merged, the most restrictive value of every setting wins",
-        ),
-    ),
-]
+# the settings a policy of each kind can hold: overrides are a group
+# policy's, the tray icon is a user's own
+def _paramsFor(pIsGroup):
+    """The settings a user (or with pIsGroup, a group) policy can hold"""
+    return [
+        rParam
+        for rParam in USER_CONFIG_PARAMS
+        if rParam != ("HIDE_TRAY_ICON" if pIsGroup else "OVERRIDES")
+    ]
+
+
+def readPolicyFile(pConfigFile, pTarget):
+    """The settings a policy file of an earlier version holds, {setting:
+    text}, for the import into the database; its backup (.prev) when the
+    file itself is empty or does not parse, None when neither can be read.
+    A file without the target's section sets nothing."""
+    for rFile in (pConfigFile, pConfigFile + cons.TK_BACK_EXT):
+        if not os.path.isfile(rFile) or os.path.getsize(rFile) == 0:
+            continue
+        parser = configparser.ConfigParser(allow_no_value=True)
+        parser.optionxform = str
+        try:
+            parser.read(rFile)
+        except Exception as ex:
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"WARNING: policy file {rFile} cannot be read ({ex})",
+            )
+            continue
+        if not parser.has_section(pTarget):
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f'WARNING: policy file {rFile} has no "[{pTarget}]" section, it sets nothing',
+            )
+            return {}
+        values = {}
+        for rParam in USER_CONFIG_PARAMS:
+            if not parser.has_option(pTarget, rParam):
+                continue
+            try:
+                values[rParam] = parser.get(pTarget, rParam, raw=True)
+            except Exception as ex:
+                log.log(
+                    cons.TK_LOG_LEVEL_INFO,
+                    f"WARNING: {rParam} in policy file {rFile} cannot be read ({ex})",
+                )
+        return values
+    # result
+    return None
 
 
 class timekprUserConfig:
-    """Class will contain and provide config related functionality"""
+    """A policy (the settings a user's or a group's policy sets) or an
+    effective configuration, in memory; timekprPolicyStore
+    (server/config/policy.py) loads and saves policies"""
 
-    def __init__(self, pDirectory, pUserName):
+    def __init__(self, pTarget):
         """Initialize config"""
-
-        log.log(
-            cons.TK_LOG_LEVEL_INFO, f"init user ({pUserName}) configuration manager"
-        )
-
-        # initialize class variables
-        #   a policy is a user's ("alice") or a group's ("@kids"); the group
-        #   ones live in their own subdirectory, the section is the target
-        self._configFile = self.getPolicyFile(pDirectory, pUserName)
-        self._userName = pUserName
-        self._isGroup = self.isGroupTarget(pUserName)
+        # a policy is a user's ("alice") or a group's ("@kids")
+        self._userName = pTarget
+        self._isGroup = self.isGroupTarget(pTarget)
         self._timekprUserConfig = {rParam: None for rParam in USER_CONFIG_PARAMS}
-        # whether the policy file exists (set when loading)
+        # whether the policy exists (set by the store)
         self._present = False
         self._unreadable = []
-
-        # parser
-        self._timekprUserConfigParser = configparser.ConfigParser(allow_no_value=True)
-        self._timekprUserConfigParser.optionxform = str
-
-        log.log(cons.TK_LOG_LEVEL_INFO, "finish user configuration manager")
-
-    def __del__(self):
-        """De-initialize config"""
-        log.log(cons.TK_LOG_LEVEL_INFO, "de-init user configuration manager")
 
     @staticmethod
     def isGroupTarget(pTarget):
         """Whether a policy target names a group ("@group") rather than a user"""
         return len(pTarget) > 1 and pTarget.startswith(cons.TK_GROUP_TARGET_PREFIX)
-
-    @staticmethod
-    def getPolicyFile(pDirectory, pTarget):
-        """The policy file of a user or a group target, whether or not it exists"""
-        # the daemon validates targets before they get here (policy.isValidTarget);
-        # this is the backstop against a name that would leave the directory
-        if os.sep in pTarget or "\0" in pTarget:
-            raise ValueError(f"not a policy target: {pTarget!r}")
-        if timekprUserConfig.isGroupTarget(pTarget):
-            return os.path.join(
-                pDirectory,
-                cons.TK_GROUP_CONFIG_DIR,
-                cons.TK_USER_CONFIG_FILE
-                % (pTarget[len(cons.TK_GROUP_TARGET_PREFIX) :]),
-            )
-        return os.path.join(pDirectory, cons.TK_USER_CONFIG_FILE % (pTarget))
 
     def getPolicyTarget(self):
         """The user ("alice") or group ("@kids") this policy is for"""
@@ -1148,67 +1142,44 @@ class timekprUserConfig:
         return self._isGroup
 
     def isPolicyPresent(self):
-        """Whether the policy file exists (after loading)"""
+        """Whether the policy exists (as loaded or saved)"""
         return self._present
 
-    def loadUserConfiguration(self):
-        """Read the policy file; True if there is one.  The file holds only
-        the settings it sets: every other setting is unset (None) here and
-        comes from the group policies or the defaults when the effective
-        policy is resolved (resolveLayers).  A missing (or unreadable, see
-        _loadAndPrepareConfigFile) file means "no policy": nothing is set
-        and nothing is written, policies are only ever created by
-        administrators.  A value that does not parse is logged and treated
-        as unset; the file is left for the administrator to fix."""
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "start load user configuration")
+    def setPolicyPresent(self, pPresent):
+        """Record whether the policy exists (the store, after saving or deleting)"""
+        self._present = pPresent
 
-        # user config section
-        section = self._userName
-        # nothing set until read
+    def setStoredValues(self, pValues):
+        """Fill the policy from its stored form, {setting: value} (a
+        missing or None value is unset), and mark it present.  A value
+        that does not parse is logged and treated as unset
+        (getUnreadableParams); a setting the kind of policy cannot hold is
+        logged and dropped."""
         self._timekprUserConfig = {rParam: None for rParam in USER_CONFIG_PARAMS}
-        # the settings whose value could not be read (left to the administrator)
         self._unreadable = []
-        # try to load config file
-        result = _loadAndPrepareConfigFile(
-            self._timekprUserConfigParser, self._configFile
-        )
-        self._present = result
-        if not result:
-            # logging
-            log.log(
-                cons.TK_LOG_LEVEL_DEBUG,
-                f"no policy file ({self._configFile}), nothing is set",
-            )
-        elif not self._timekprUserConfigParser.has_section(section):
-            # a file for another name (renamed by hand): it sets nothing
-            log.log(
-                cons.TK_LOG_LEVEL_INFO,
-                f'WARNING: policy file {self._configFile} has no "[{section}]" section, it sets nothing',
-            )
-
-        # read the settings the file has
-        for rParam in USER_CONFIG_PARAMS:
-            # overrides belong to group policies only
-            if rParam == "OVERRIDES" and not self._isGroup:
+        self._present = True
+        params = _paramsFor(self._isGroup)
+        for rParam, rValue in pValues.items():
+            if rValue is None:
                 continue
-            if not self._timekprUserConfigParser.has_option(section, rParam):
+            if rParam not in params:
+                log.log(
+                    cons.TK_LOG_LEVEL_INFO,
+                    f'WARNING: the policy of "{self._userName}" cannot hold {rParam}, it is ignored',
+                )
                 continue
             try:
-                value = _USER_CONFIG_READERS[rParam](
-                    self._timekprUserConfigParser, section, rParam
-                )
+                self._timekprUserConfig[rParam] = _USER_CONFIG_READERS[rParam](rValue)
             except Exception as ex:
                 log.log(
                     cons.TK_LOG_LEVEL_INFO,
-                    f"WARNING: {rParam} in policy file {self._configFile} cannot be read ({ex}) and is ignored",
+                    f'WARNING: {rParam} in the policy of "{self._userName}" cannot be read ({ex}) and is ignored',
                 )
                 self._unreadable.append(rParam)
-                continue
-            self._timekprUserConfig[rParam] = value
 
         # the allowed days and their limits go together (the limits are
-        # stored positionally against the days): a file holding one of them
-        # holds the other at its default
+        # stored positionally against the days): a policy holding one of
+        # them holds the other at its default
         setPair = [
             rParam
             for rParam in _DAY_LIMIT_PARAMS
@@ -1220,83 +1191,17 @@ class timekprUserConfig:
             )
             log.log(
                 cons.TK_LOG_LEVEL_INFO,
-                f"WARNING: policy file {self._configFile} has {setPair[0]} but not {missing}, which is taken as its default",
+                f'WARNING: the policy of "{self._userName}" has {setPair[0]} but not {missing}, which is taken as its default',
             )
             self._timekprUserConfig[missing] = USER_CONFIG_DEFAULTS[missing]
 
-        # clear parser
-        self._timekprUserConfigParser.clear()
-
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "finish load user configuration")
-
-        # result
-        return result
-
-    def saveUserConfiguration(self):
-        """Write the policy file with the settings that are set (and only
-        those), creating it if there is none yet; the previous file is kept
-        as the backup the loader falls back to"""
-        log.log(
-            cons.TK_LOG_LEVEL_DEBUG,
-            f"start saving user ({self._userName}) configuration",
-        )
-
-        # clear parser
-        self._timekprUserConfigParser.clear()
-        # group policies live in their own directory
-        os.makedirs(os.path.dirname(self._configFile), exist_ok=True)
-
-        # documentation
-        section = "DOCUMENTATION"
-        self._timekprUserConfigParser.add_section(section)
-        for rLine in (
-            "#### this is the {} policy file for timekpr-next".format(
-                "group" if self._isGroup else "user"
-            ),
-            "#### it holds only the settings it sets; a setting that is not listed here comes from "
-            + (
-                "the other policies that apply (the most restrictive value wins) or the defaults"
-                if self._isGroup
-                else "the policies of the user's groups (the most restrictive value wins) or the defaults"
-            ),
-            "#### a setting that is listed here "
-            + (
-                "is merged with the other group policies that set it, unless this policy OVERRIDES them"
-                if self._isGroup
-                else "replaces whatever the group policies say for it"
-            ),
-            "#### a value that cannot be read is ignored (see the log); a file that cannot be read at all is set aside",
-            "#### all numeric time values are specified in seconds",
-            "#### days and hours should be configured as per ISO 8601 (i.e. Monday is the first day of week (1-7) and hours are in 24h format (0-23))",
-        ):
-            self._timekprUserConfigParser.set(section, rLine)
-
-        # the policy section, with the settings that are set
-        section = self._userName
-        self._timekprUserConfigParser.add_section(section)
-        for rParam, rComments in _USER_CONFIG_COMMENTS:
-            if rParam == "OVERRIDES" and not self._isGroup:
-                continue
-            value = self._timekprUserConfig[rParam]
-            if value is None:
-                continue
-            for rLine in rComments:
-                self._timekprUserConfigParser.set(section, rLine)
-            self._timekprUserConfigParser.set(section, rParam, str(value))
-
-        # keep the previous file as the backup
-        if os.path.isfile(self._configFile):
-            shutil.copy(self._configFile, self._configFile + cons.TK_BACK_EXT)
-        # save the file
-        with open(self._configFile, "w") as fp:
-            self._timekprUserConfigParser.write(fp)
-        # the policy exists now
-        self._present = True
-
-        # clear parser
-        self._timekprUserConfigParser.clear()
-
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "finish saving user configuration")
+    def getStoredValues(self):
+        """The policy in its stored form, {setting: value}, every setting
+        the kind of policy can hold (None when unset)"""
+        return {
+            rParam: self._timekprUserConfig[rParam]
+            for rParam in _paramsFor(self._isGroup)
+        }
 
     def logUserConfiguration(self):
         """Log user timekpr config file"""
@@ -1413,14 +1318,6 @@ class timekprUserConfig:
         # result
         return _parseList(self._value("OVERRIDES"))
 
-    def getUserConfigLastModified(self):
-        """Get last file modification time for user (None without a file)"""
-        # result
-        try:
-            return datetime.fromtimestamp(os.path.getmtime(self._configFile))
-        except OSError:
-            return None
-
     def getDefaultValuedParams(self):
         """The settings the policy sets to their default value (compared as
         parsed values, not as strings)"""
@@ -1446,7 +1343,7 @@ class timekprUserConfig:
         ]
         return self.getSetParams() == params and self.getDefaultValuedParams() == params
 
-    def _getLimitsByDay(self):
+    def getUserLimitsByDay(self):
         """The per-day limits keyed by day (they are stored positionally
         against the allowed days; a day without a limit has none)"""
         days = self.getUserAllowedWeekdays()
@@ -1459,7 +1356,7 @@ class timekprUserConfig:
     def getUserLimitForDay(self, pDay):
         """The limit of one day (an ISO weekday as a string), 0 when the day
         is not allowed"""
-        return self._getLimitsByDay().get(str(pDay), 0)
+        return self.getUserLimitsByDay().get(str(pDay), 0)
 
     def completeDayLimits(self, pEffective):
         """The allowed days and the limits per day are stored positionally
@@ -1497,7 +1394,7 @@ class timekprUserConfig:
             self.setUserLimitsPerWeekdays(pOwn.getUserLimitsPerWeekdays())
         elif _setters("ALLOWED_WEEKDAYS"):
             limitsByDay = [
-                rConfig._getLimitsByDay() for rConfig in _setters("ALLOWED_WEEKDAYS")
+                rConfig.getUserLimitsByDay() for rConfig in _setters("ALLOWED_WEEKDAYS")
             ]
             days = sorted(
                 set.intersection(*[set(rLimits) for rLimits in limitsByDay]), key=int
@@ -1562,19 +1459,6 @@ class timekprUserConfig:
             self.setUserHideTrayIcon(pOwn.getUserHideTrayIcon())
         # no overrides in an effective policy
         self._timekprUserConfig["OVERRIDES"] = None
-
-    def deletePolicy(self):
-        """Remove the policy file (and its backup); True if there was one"""
-        existed = False
-        for rFile in (self._configFile, self._configFile + cons.TK_BACK_EXT):
-            try:
-                os.remove(rFile)
-                existed = existed or rFile == self._configFile
-            except FileNotFoundError:
-                pass
-        self._present = False
-        # result
-        return existed
 
     def setUserAllowedHours(self, pAllowedHours):
         """Set allowed hours"""

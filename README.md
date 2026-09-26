@@ -222,8 +222,13 @@ until the lookup works again (it is retried at every poll), and the administrati
 
 _**Upgrading** from versions that created a configuration file for every user: those files are now user policies that hold every
 setting, and one that sets everything to its default restricts nothing but keeps the group policies from applying to its user. The daemon
-warns about them in its log; `timekpra --migratepolicies dry-run` lists them and `timekpra --migratepolicies delete` removes them. A file
-that holds every setting with some of them changed is left alone: edit out the settings that should come from the groups._
+warns about them in its log; `timekpra --migratepolicies dry-run` lists them and `timekpra --migratepolicies delete` removes them. A policy
+that holds every setting with some of them changed is left alone: take out the settings that should come from the groups with
+`timekpra --unset`._
+
+_**Upgrading** from versions that kept the policies in files (`timekpr.<user>.conf`, `groups/timekpr.<group>.conf`): the daemon
+imports them into its policy database when it starts and renames each file to `*.imported` (one it cannot read to `*.invalid`). A
+setting whose value does not parse is carried over as it is, and ignored as it was; see the daemon's log for what was imported._
 
 ### User configuration
 
@@ -759,25 +764,30 @@ Timekpr-nExT Administration application in both modes apply configuration in rea
 It's possible to edit configuration files directly to achieve the same as with tools provided by Timekpr-nExT. In this case configuration will be read and
 applied at save intervals (by default, every 30 sec).
 
+The user and group policies are not files but the rows of one SQLite database (`policies.sqlite`, one column per setting, `NULL` for a
+setting the policy does not hold). Every change the tools make is one transaction, so changes from the administration application, `timekpra`
+and the web front end are applied one after another and never half: a web `PATCH` of several settings is written whole or not at all. The
+database can be read and changed with `sqlite3`; its constraints refuse the values Timekpr-nExT never writes (a number that is not one, the
+allowed days without their limits, and so on), and a change made there is applied at the save interval like any other.
+
 This method is NOT recommnended, do not edit files manually because you can, preferably use the GUI or CLI to adjust the configuration.
 
 **Note**: please be aware that configuration files are structured in particular way, have internal representation of values and one can break the configuration
 if not being careful. You have been warned!
 
 **Note**: if the main configuration file is borked, e.g. Timekpr-nExT can not interpret it properly, it will try to salvage options it can and it will recreate the
-config file with defaults for damaged options. A policy file it cannot read is set aside (renamed `.invalid`) and no longer applies.
+config file with defaults for damaged options. A policy value it cannot read is ignored (and logged); the rest of the policy applies.
 
 </br>
 
 **Configuration files (be careful editing them)**
 
-|                          The purpose of the file | File location                                   |
-| -----------------------------------------------: | :---------------------------------------------- |
-|             Timekpr-nExT main configuration file | `/etc/timekpr/timekpr.conf`                     |
-|   User policy files (one per user with a policy) | `/var/lib/timekpr/config/timekpr.*.conf`        |
-| Group policy files (one per group with a policy) | `/var/lib/timekpr/config/groups/timekpr.*.conf` |
-|                User control files (one per user) | `/var/lib/timekpr/work/*.time`                  |
-|                        Client configuration file | `$HOME/.config/timekpr/timekpr.conf`            |
+|                      The purpose of the file | File location                             |
+| -------------------------------------------: | :---------------------------------------- |
+|         Timekpr-nExT main configuration file | `/etc/timekpr/timekpr.conf`               |
+| User and group policies (an SQLite database) | `/var/lib/timekpr/config/policies.sqlite` |
+|            User control files (one per user) | `/var/lib/timekpr/work/*.time`            |
+|                    Client configuration file | `$HOME/.config/timekpr/timekpr.conf`      |
 
 </br>
 

@@ -280,18 +280,24 @@ TK_HIDE_TRAY_ICON = False
 # ## files ##
 # config
 TK_MAIN_CONFIG_FILE = "timekpr.conf"
-TK_USER_CONFIG_FILE = "timekpr.%s.conf"
-# the sample user policy file installed next to the real ones (not a policy)
-TK_USER_CONFIG_SAMPLE = "timekpr.USER.conf"
-# group policies live in this subdirectory of the configuration directory,
-# named like user policies (timekpr.<group>.conf); a group is addressed as
-# "@<group>" wherever a user name is accepted
+# the user and group policies: one SQLite database in the configuration
+# directory; a group is addressed as "@<group>" wherever a user name is
+# accepted
+TK_POLICY_DB_FILE = "policies.sqlite"
 TK_GROUP_TARGET_PREFIX = "@"
+# how long a policy database access waits for another one's lock (seconds)
+TK_POLICY_DB_TIMEOUT = 30
+# the policy files of earlier versions, imported into the database once:
+# timekpr.<user>.conf in the configuration directory, timekpr.<group>.conf
+# in its groups subdirectory (the samples were never policies); an
+# imported file is renamed with the extension below, one that cannot be
+# read with TK_POLICY_INVALID_EXT
+TK_USER_CONFIG_FILE = "timekpr.%s.conf"
+TK_USER_CONFIG_SAMPLE = "timekpr.USER.conf"
 TK_GROUP_CONFIG_DIR = "groups"
 TK_GROUP_CONFIG_SAMPLE = "timekpr.GROUP.conf"
-TK_UNAME_SRCH_LN_LMT = (
-    10  # this defines line count for verifying username in first n lines
-)
+TK_POLICY_IMPORTED_EXT = ".imported"
+TK_POLICY_INVALID_EXT = ".invalid"
 
 # ## timekpr notification config ##
 # priorites

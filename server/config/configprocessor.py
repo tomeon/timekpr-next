@@ -6,6 +6,7 @@ Created on Jan 17, 2019
 
 # timekpr imports
 # imports
+import functools
 from datetime import datetime
 
 import dbus
@@ -27,6 +28,47 @@ from timekpr.server.config.policy import (
     timekprLookupError,
     timekprPolicyStore,
 )
+
+
+class _PolicyRollback(Exception):
+    """Carries the result of a refused policy change out of its transaction"""
+
+    def __init__(self, pResult):
+        super().__init__()
+        self.result = pResult
+
+
+def _policyTransaction(pMethod):
+    """Run a method that changes a policy as one transaction of the policy
+    store: what it reads stays as read until its change is written, and
+    a change it refuses (a result other than 0) is rolled back, together
+    with everything else in the same transaction (applyPolicyChanges runs
+    several setters in one)"""
+
+    @functools.wraps(pMethod)
+    def wrapper(self, *pArgs, **pKeywords):
+        try:
+            with self._policyStore.transaction():
+                result = pMethod(self, *pArgs, **pKeywords)
+                if result[0] != 0:
+                    raise _PolicyRollback(result)
+        except _PolicyRollback as ex:
+            return ex.result
+        # result
+        return result
+
+    return wrapper
+
+
+def _policySnapshot(pMethod):
+    """Run a method that reads policies on one consistent snapshot of them"""
+
+    @functools.wraps(pMethod)
+    def wrapper(self, *pArgs, **pKeywords):
+        with self._policyStore.snapshot():
+            return pMethod(self, *pArgs, **pKeywords)
+
+    return wrapper
 
 
 class timekprUserConfigurationProcessor:
@@ -58,10 +100,10 @@ class timekprUserConfigurationProcessor:
         return 0, ""
 
     def loadAndCheckUserConfiguration(self, pCreate=False):
-        """Load the policy of the user or group: the settings its file sets,
-        nothing for a file that is not there.  With pCreate (the setters)
-        a missing policy is prepared in memory and nothing is written: the
-        setter saves it, and with it the file, once its input is valid; a
+        """Load the policy of the user or group: the settings it sets,
+        nothing when there is none.  With pCreate (the setters) a missing
+        policy is prepared in memory and nothing is written: the setter
+        saves it, and with it the policy, once its input is valid; a
         user's effective configuration is resolved alongside, for the
         settings that go together (completeDayLimits).  Without pCreate a
         missing group policy is an error (but see getSavedUserInformation,
@@ -72,8 +114,8 @@ class timekprUserConfigurationProcessor:
             return result, message
 
         # user config
-        self._timekprUserConfig = timekprUserConfig(self._configDir, self._userName)
-        present = self._timekprUserConfig.loadUserConfiguration()
+        self._timekprUserConfig = self._policyStore.loadPolicy(self._userName)
+        present = self._timekprUserConfig.isPolicyPresent()
         # a group policy answers the defaults for what it does not set
         self._effectiveConfig = self._timekprUserConfig
 
@@ -253,6 +295,7 @@ class timekprUserConfigurationProcessor:
         # available seconds
         return availableSeconds
 
+    @_policySnapshot
     def getSavedUserInformation(self, pInfoLvl, pIsUserLoggedIn):
         """Get saved user configuration"""
         """This operates on saved user configuration, it will return all config as big dict"""
@@ -263,8 +306,8 @@ class timekprUserConfigurationProcessor:
         # initialize username storage
         userConfigurationStore = {}
 
-        # a group's policy is its file; a user's policy is resolved (their
-        # own file, the policies of their groups, or the defaults)
+        # a group's policy is what it sets; a user's policy is resolved
+        # (their own, the policies of their groups, or the defaults)
         resolution = None
         if self._isGroup:
             result, message = self.loadAndCheckUserConfiguration()
@@ -360,15 +403,14 @@ class timekprUserConfigurationProcessor:
                             if len(resolution.groups) > 0
                             else dbus.Array(signature="s")
                         )
-                    # the settings the policy file itself holds (a user's
-                    # own ones; the rest of the effective values are inherited)
+                    # the settings the policy itself holds (a user's own
+                    # ones; the rest of the effective values are inherited)
                     if self._isGroup:
                         settings = self._timekprUserConfig.getSetSettings()
                     else:
-                        own = timekprUserConfig(self._configDir, self._userName)
-                        settings = (
-                            own.getSetSettings() if own.loadUserConfiguration() else []
-                        )
+                        settings = self._policyStore.loadPolicy(
+                            self._userName
+                        ).getSetSettings()
                     userConfigurationStore["POLICY_SETTINGS"] = (
                         list(map(dbus.String, settings))
                         if len(settings) > 0
@@ -415,6 +457,7 @@ class timekprUserConfigurationProcessor:
         # result
         return result, message, userConfigurationStore
 
+    @_policyTransaction
     def checkAndSetAllowedDays(self, pDayList):
         """Validate and set up allowed days for the user"""
         """Validate allowed days for the user
@@ -473,11 +516,12 @@ class timekprUserConfigurationProcessor:
             # if we are still fine
             if result == 0:
                 # save config
-                self._timekprUserConfig.saveUserConfiguration()
+                self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return result, message
 
+    @_policyTransaction
     def checkAndSetAllowedHours(self, pDayNumber, pHourList):
         """Validate set up allowed hours for the user"""
         """Validate allowed hours for user for particular day
@@ -562,11 +606,12 @@ class timekprUserConfigurationProcessor:
             # if we are still fine
             if result == 0:
                 # save config
-                self._timekprUserConfig.saveUserConfiguration()
+                self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return result, message
 
+    @_policyTransaction
     def checkAndSetTimeLimitForDays(self, pDayLimits):
         """Validate and set up new timelimits for each day for the user"""
         """Validate allowable time to user
@@ -620,11 +665,12 @@ class timekprUserConfigurationProcessor:
             # if we are still fine
             if result == 0:
                 # save config
-                self._timekprUserConfig.saveUserConfiguration()
+                self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return result, message
 
+    @_policyTransaction
     def checkAndSetTrackInactive(self, pTrackInactive):
         """Validate and set track inactive sessions for the user"""
         """Validate whether inactive user sessions are tracked
@@ -672,11 +718,12 @@ class timekprUserConfigurationProcessor:
             # if we are still fine
             if result == 0:
                 # save config
-                self._timekprUserConfig.saveUserConfiguration()
+                self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return result, message
 
+    @_policyTransaction
     def checkAndSetHideTrayIcon(self, pHideTrayIcon):
         """Validate and set hide tray icon for the user"""
         """Validate whether icon will be hidden from user
@@ -727,11 +774,12 @@ class timekprUserConfigurationProcessor:
             # if we are still fine
             if result == 0:
                 # save config
-                self._timekprUserConfig.saveUserConfiguration()
+                self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return result, message
 
+    @_policyTransaction
     def checkAndSetTimeLimitForWeek(self, pTimeLimitWeek):
         """Validate and set up new timelimit for week for the user"""
         # the policy (prepared in memory if there is none yet, saved below)
@@ -775,11 +823,12 @@ class timekprUserConfigurationProcessor:
             # if we are still fine
             if result == 0:
                 # save config
-                self._timekprUserConfig.saveUserConfiguration()
+                self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return result, message
 
+    @_policyTransaction
     def checkAndSetTimeLimitForMonth(self, pTimeLimitMonth):
         """Validate and set up new timelimit for month for the user"""
         # the policy (prepared in memory if there is none yet, saved below)
@@ -823,7 +872,7 @@ class timekprUserConfigurationProcessor:
             # if we are still fine
             if result == 0:
                 # save config
-                self._timekprUserConfig.saveUserConfiguration()
+                self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return result, message
@@ -934,6 +983,7 @@ class timekprUserConfigurationProcessor:
         # result
         return result, message
 
+    @_policyTransaction
     def checkAndSetOverrides(self, pOverrides):
         """Validate and set the groups a group policy takes precedence over"""
         # groups only
@@ -970,11 +1020,12 @@ class timekprUserConfigurationProcessor:
             # if we are still fine
             if result == 0:
                 # save config
-                self._timekprUserConfig.saveUserConfiguration()
+                self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return result, message
 
+    @_policyTransaction
     def checkAndUnsetSetting(self, pSetting):
         """Take a setting (by its outside name, USER_CONFIG_SETTINGS) out of
         the policy of the user or group, so that the group policies or the
@@ -1009,13 +1060,121 @@ class timekprUserConfigurationProcessor:
 
         # a user policy that sets nothing is no policy
         if not self._isGroup and self._timekprUserConfig.isEmptyPolicy():
-            self._timekprUserConfig.deletePolicy()
+            self._policyStore.deletePolicy(self._userName)
         else:
-            self._timekprUserConfig.saveUserConfiguration()
+            self._policyStore.savePolicy(self._timekprUserConfig)
 
         # result
         return 0, ""
 
+    def _setDaysAndLimits(self, pDays, pLimits):
+        """Set the allowed days (None: as they are) and their limits
+        ({day: seconds}, None: as they are) together: the limits are stored
+        positionally against the days, so both are written, every day
+        keeping the limit it has unless pLimits gives one (a day that was
+        not allowed has none, 0).  (result, message, the setting refused)"""
+        # the configuration as it is now: the effective one for a user,
+        # the policy itself for a group
+        result, message = self.loadAndCheckUserConfiguration(pCreate=True)
+        if result != 0:
+            return (
+                result,
+                message,
+                "allowed_days" if pDays is not None else "limits_per_day",
+            )
+        limitsByDay = self._effectiveConfig.getUserLimitsByDay()
+        if pDays is None:
+            days = self._effectiveConfig.getUserAllowedWeekdays()
+        else:
+            try:
+                days = [str(rDay) for rDay in sorted({int(rDay) for rDay in pDays})]
+            except (TypeError, ValueError):
+                # not days: the setter refuses them
+                days = list(pDays)
+            result, message = self.checkAndSetAllowedDays(days)
+            if result != 0:
+                return result, message, "allowed_days"
+        limitsByDay.update(
+            {str(rDay): rLimit for rDay, rLimit in (pLimits or {}).items()}
+        )
+        result, message = self.checkAndSetTimeLimitForDays(
+            [limitsByDay.get(rDay, 0) for rDay in days]
+        )
+        # result
+        return result, message, "" if result == 0 else "limits_per_day"
+
+    @_policyTransaction
+    def applyPolicyChanges(self, pUnset, pChanges):
+        """Change several settings of the policy of the user or group in one
+        transaction, all or nothing: take the settings named in pUnset out
+        of it, then set the ones in pChanges ({setting: value}), both named
+        as in USER_CONFIG_SETTINGS, each through its setter, in the order
+        of USER_CONFIG_SETTINGS.  allowed_days is a list of days and
+        limits_per_day a {day: seconds} map; they are set together (see
+        _setDaysAndLimits).  allowed_hours is every day's hours,
+        allowed_hours_N one day's; the other values are the setters'.  A
+        group has a policy afterwards even when nothing is set (it is what
+        makes the group known).  Returns (result, message, the setting
+        refused, "" when none was)."""
+        result, message = self._requireValidTarget()
+        if result != 0:
+            return result, message, ""
+        # the setters, by setting (the days and their limits go together)
+        setters = {
+            "allowed_hours": lambda pHours: self.checkAndSetAllowedHours("ALL", pHours),
+            **{
+                f"allowed_hours_{rDay}": (
+                    lambda pHours, pDay=str(rDay): self.checkAndSetAllowedHours(
+                        pDay, pHours
+                    )
+                )
+                for rDay in range(1, 7 + 1)
+            },
+            "limit_per_week": self.checkAndSetTimeLimitForWeek,
+            "limit_per_month": self.checkAndSetTimeLimitForMonth,
+            "track_inactive": self.checkAndSetTrackInactive,
+            "hide_tray_icon": self.checkAndSetHideTrayIcon,
+            "overrides": self.checkAndSetOverrides,
+        }
+        changes = {str(rSetting): rValue for rSetting, rValue in pChanges.items()}
+        for rSetting in changes:
+            if rSetting not in USER_CONFIG_SETTINGS:
+                return (
+                    -1,
+                    msg.getTranslation("TK_MSG_USER_ADMIN_CHK_SETTING_INVALID")
+                    % (rSetting),
+                    rSetting,
+                )
+
+        # a group's policy, even an empty one, makes the group known
+        if self._isGroup and not self._policyStore.hasGroupPolicy(
+            groupName(self._userName)
+        ):
+            self._policyStore.savePolicy(timekprUserConfig(self._userName))
+
+        # the settings taken out
+        for rSetting in pUnset:
+            result, message = self.checkAndUnsetSetting(str(rSetting))
+            if result != 0:
+                return result, message, str(rSetting)
+
+        # the settings set, in order
+        if "allowed_days" in changes or "limits_per_day" in changes:
+            result, message, refused = self._setDaysAndLimits(
+                changes.get("allowed_days"), changes.get("limits_per_day")
+            )
+            if result != 0:
+                return result, message, refused
+        for rSetting in USER_CONFIG_SETTINGS:
+            if rSetting in changes and rSetting in setters:
+                result, message = setters[rSetting](changes[rSetting])
+                if result != 0:
+                    return result, message, rSetting
+
+        # result
+        return 0, "", ""
+
+    @_policyTransaction
     def deletePolicy(self):
         """Delete the policy of the user or group (the counters of a user stay)"""
         # the target has to be a name before it becomes a file
@@ -1023,10 +1182,8 @@ class timekprUserConfigurationProcessor:
         if result != 0:
             return result, message
 
-        # the policy
-        self._timekprUserConfig = timekprUserConfig(self._configDir, self._userName)
         # delete it
-        if not self._timekprUserConfig.deletePolicy():
+        if not self._policyStore.deletePolicy(self._userName):
             # result
             result = -1
             message = msg.getTranslation("TK_MSG_CONFIG_LOADER_POLICY_NOTFOUND") % (
@@ -1036,6 +1193,7 @@ class timekprUserConfigurationProcessor:
         # result
         return result, message
 
+    @_policyTransaction
     def migratePolicies(self, pDryRun):
         """Delete (or with pDryRun only list) the user policies that restrict nothing"""
         # result

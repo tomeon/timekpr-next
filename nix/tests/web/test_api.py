@@ -59,14 +59,25 @@ def test_days_and_limits_are_positional(client, fake):
         "/api/v1/users/alice/config", json={"limits_per_day": ALL_DAYS}, headers=AUTH
     )
     assert r.status_code == 200
-    assert fake.calls[-1] == ("setTimeLimitForDays", ("alice", [0] * 7))
+    assert fake.calls[-1] == (
+        "applyPolicyChanges",
+        ("alice", [], {"limits_per_day": ALL_DAYS}),
+    )
+    assert r.json()["limits_per_day"] == ALL_DAYS
     fake.calls.clear()
+    # the daemon aligns the limits with the days: day 2 keeps its limit
     patch = {"allowed_days": [4, 2], "limits_per_day": {"4": 3600}}
     r = client.patch("/api/v1/users/alice/config", json=patch, headers=AUTH)
     assert r.status_code == 200
     assert fake.calls == [
-        ("setAllowedDays", ("alice", ["2", "4"])),
-        ("setTimeLimitForDays", ("alice", [0, 3600])),
+        (
+            "applyPolicyChanges",
+            (
+                "alice",
+                [],
+                {"allowed_days": ["4", "2"], "limits_per_day": {"4": 3600}},
+            ),
+        ),
     ]
     assert r.json()["allowed_days"] == [2, 4]
     assert r.json()["limits_per_day"] == {"2": 0, "4": 3600}
@@ -104,11 +115,12 @@ def test_allowed_hours(client, fake):
     assert r.status_code == 400 and "start_minute" in r.text
 
 
-def test_daemon_refusal_reports_applied_fields(client):
-    body = {"track_inactive": True, "limit_per_week": 13, "hide_tray_icon": True}
+def test_a_daemon_refusal_applies_nothing(client):
+    before = client.get("/api/v1/users/alice/config", headers=AUTH).json()
+    body = {"track_inactive": False, "limit_per_week": 13, "hide_tray_icon": True}
     r = client.patch("/api/v1/users/alice/config", json=body, headers=AUTH)
     assert r.status_code == 400
-    assert r.json().get("applied", []) == []
+    assert "applied" not in r.json()
     assert r.json()["errors"] == [{"field": "limit_per_week", "message": "unlucky"}]
     r = client.patch(
         "/api/v1/users/alice/config",
@@ -116,7 +128,9 @@ def test_daemon_refusal_reports_applied_fields(client):
         headers=AUTH,
     )
     assert r.status_code == 400
-    assert r.json()["applied"] == ["allowed_days", "limits_per_day"]
+    assert "applied" not in r.json()
+    # neither the days nor the settings sent along were written
+    assert client.get("/api/v1/users/alice/config", headers=AUTH).json() == before
     r = client.patch("/api/v1/users/alice/config", json={"bogus": 1}, headers=AUTH)
     assert r.status_code == 400 and r.json()["errors"][0]["field"] == "bogus"
 
@@ -192,10 +206,19 @@ def test_group_patch(client, fake):
     r = client.patch("/api/v1/groups/kids/config", json=patch, headers=AUTH)
     assert r.status_code == 200, r.text
     assert fake.calls == [
-        ("setAllowedDays", ("@kids", ["6", "7"])),
-        ("setTimeLimitForDays", ("@kids", [3600, 0])),
-        ("setTimeLimitForWeek", ("@kids", 7200)),
-        ("setOverrides", ("@kids", ["all", "guests"])),
+        (
+            "applyPolicyChanges",
+            (
+                "@kids",
+                [],
+                {
+                    "allowed_days": ["6", "7"],
+                    "limits_per_day": {"6": 3600},
+                    "limit_per_week": 7200,
+                    "overrides": ["all", "guests"],
+                },
+            ),
+        ),
     ]
     config = r.json()
     assert config["allowed_days"] == [6, 7]
@@ -216,12 +239,13 @@ def test_group_patch(client, fake):
     )
     assert r.status_code == 200, r.text
     assert fake.calls == [
-        # the daemon creates the policy on the first setter; the bridge sends
-        # a harmless one first so that it can read the defaults it patches
-        ("setOverrides", ("@teens", [])),
-        ("setTimeLimitForDays", ("@teens", [60] + [86400] * 6)),
+        ("applyPolicyChanges", ("@teens", [], {"limits_per_day": {"1": 60}})),
     ]
-    assert r.json()["limits_per_day"]["1"] == 60
+    # the other days keep the defaults of a new policy
+    assert r.json()["limits_per_day"] == {
+        "1": 60,
+        **{str(d): 86400 for d in range(2, 8)},
+    }
     assert "teens" in [
         g["group"] for g in client.get("/api/v1/groups", headers=AUTH).json()
     ]
@@ -239,7 +263,7 @@ def test_empty_patch_creates_group_policy(client, fake):
     r = client.patch("/api/v1/groups/teens/config", json={}, headers=AUTH)
     assert r.status_code == 200, r.text
     assert r.json()["overrides"] == []
-    assert ("setOverrides", ("@teens", [])) in fake.calls
+    assert ("applyPolicyChanges", ("@teens", [], {})) in fake.calls
     assert "teens" in [
         g["group"] for g in client.get("/api/v1/groups", headers=AUTH).json()
     ]
@@ -283,8 +307,9 @@ def test_policy_settings_and_unset(client, fake):
         "/api/v1/users/alice/config", json={"track_inactive": None}, headers=AUTH
     )
     assert r.status_code == 200
-    assert fake.calls[-1] == ("unsetSetting", ("alice", "track_inactive"))
-    # the same setting twice is one call; a null and a value can mix
+    assert fake.calls[-1] == ("applyPolicyChanges", ("alice", ["track_inactive"], {}))
+    # the same setting twice is one; a null and a value can mix, and the
+    # value is not written when the null is refused
     r = client.patch(
         "/api/v1/users/alice/config",
         json={"allowed_days": None, "limits_per_day": None, "limit_per_month": 60},
@@ -292,7 +317,13 @@ def test_policy_settings_and_unset(client, fake):
     )
     assert r.status_code == 404, r.json()
     assert r.json()["detail"].endswith("does not set allowed_days")
-    assert fake.calls[-1] == ("unsetSetting", ("alice", "allowed_days"))
+    assert r.json()["errors"][0]["field"] == "allowed_days"
+    assert fake.calls[-1] == (
+        "applyPolicyChanges",
+        ("alice", ["allowed_days"], {"limit_per_month": 60}),
+    )
+    config = client.get("/api/v1/users/alice/config", headers=AUTH).json()
+    assert config["limit_per_month"] == 2678400
     # hours go by day, or all at once
     r = client.put("/api/v1/users/alice/config/allowed-hours/3", json=[], headers=AUTH)
     assert r.status_code == 200
@@ -310,7 +341,7 @@ def test_policy_settings_and_unset(client, fake):
         "/api/v1/groups/kids/config", json={"overrides": None}, headers=AUTH
     )
     assert r.status_code == 200
-    assert fake.calls[-1] == ("unsetSetting", ("@kids", "overrides"))
+    assert fake.calls[-1] == ("applyPolicyChanges", ("@kids", ["overrides"], {}))
     assert client.get("/api/v1/groups/kids", headers=AUTH).json()[
         "policy_settings"
     ] == ["allowed_days", "limits_per_day"]

@@ -105,6 +105,14 @@ class timekprDaemon(dbus.service.Object):
         self._timekprPolicyStore = timekprPolicyStore(
             self._timekprConfig.getTimekprConfigDir()
         )
+        # the policy files of earlier versions go into the policy database
+        try:
+            self._timekprPolicyStore.importPolicyFiles()
+        except Exception:
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"ERROR: the policy files could not be imported into the policy database:\n{traceback.format_exc()}",
+            )
         # user policies left over from versions that created one per user
         self._timekprPolicyStore.warnAboutDefaultPolicies()
 
@@ -693,7 +701,8 @@ class timekprDaemon(dbus.service.Object):
         resolve theirs again: the one user for a user target, everyone for a
         group target (membership decides whom it touches)"""
         if isGroupTarget(pTarget):
-            for rUser in self._timekprUserList.values():
+            # (a copy: the worker thread adds and removes users)
+            for rUser in list(self._timekprUserList.values()):
                 rUser.refreshPolicyIfChanged(pSilent=False)
         elif pTarget in self._timekprUserList:
             self._timekprUserList[pTarget].adjustLimitsFromConfig(False)
@@ -805,6 +814,49 @@ class timekprDaemon(dbus.service.Object):
 
         # result
         return result, message
+
+    @timekprAuthorizedMethod(
+        cons.TK_DBUS_USER_ADMIN_INTERFACE,
+        "sasa{sv}",
+        "iss",
+        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
+        pUserNameArg="pUserName",
+    )
+    def applyPolicyChanges(self, pUserName, pUnset, pChanges):
+        """Change several settings of the policy of a user or a group at
+        once, all or nothing: the settings in pUnset are taken out, the
+        ones in pChanges set (both by the names of USER_CONFIG_SETTINGS,
+        see timekprUserConfigurationProcessor.applyPolicyChanges); the
+        third value names the setting that was refused"""
+        refused = ""
+        try:
+            # check the target and its configuration
+            userConfigProcessor = timekprUserConfigurationProcessor(
+                pUserName, self._timekprConfig
+            )
+
+            # apply
+            result, message, refused = userConfigProcessor.applyPolicyChanges(
+                pUnset, pChanges
+            )
+
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
+        except Exception as unexpectedException:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
+            )
+
+            # result
+            result = -1
+            message = msg.getTranslation(
+                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
+            )
+
+        # result
+        return result, message, refused
 
     @timekprAuthorizedMethod(
         cons.TK_DBUS_USER_ADMIN_INTERFACE,

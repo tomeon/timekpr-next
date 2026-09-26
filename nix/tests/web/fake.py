@@ -2,6 +2,8 @@
 daemon's (result, message[, payload]) convention, and just enough state
 to read back what the setters wrote."""
 
+import copy
+
 import dbus
 
 from timekpr.common.constants import constants as cons
@@ -260,6 +262,87 @@ class FakeConnector:
         else:
             self.users[target]["POLICY_SOURCE"] = "default"
         return 0, ""
+
+    def applyPolicyChanges(self, target, unset, changes):
+        """The daemon's all-or-nothing change of a policy: the settings in
+        unset taken out, then the ones in changes set in the daemon's order
+        (the limits aligned with the allowed days), everything undone when
+        one is refused; the setters it runs are not logged as calls"""
+        self.calls.append(("applyPolicyChanges", (target, list(unset), dict(changes))))
+        saved = copy.deepcopy((self.users, self.groups, self.policies))
+        logged = len(self.calls)
+        result = self._apply_policy_changes(target, unset, changes)
+        del self.calls[logged:]
+        if result[0] != 0:
+            self.users, self.groups, self.policies = saved
+        return result
+
+    def _apply_policy_changes(self, target, unset, changes):
+        if is_group(target):
+            # a group's policy, even an empty one
+            self._policy(target)
+        for setting in unset:
+            result, message = self.unsetSetting(target, setting)
+            if result != 0:
+                return result, message, setting
+        for setting in changes:
+            if setting not in SETTING_KEYS:
+                return (
+                    -1,
+                    msg.getTranslation("TK_MSG_USER_ADMIN_CHK_SETTING_INVALID")
+                    % (setting),
+                    setting,
+                )
+        steps = []
+        if "allowed_days" in changes or "limits_per_day" in changes:
+            current = (self.groups if is_group(target) else self.users).get(
+                target, default_user()
+            )
+            by_day = {
+                str(day): int(limit)
+                for day, limit in zip(
+                    current["ALLOWED_WEEKDAYS"], current["LIMITS_PER_WEEKDAYS"]
+                )
+            }
+            days = (
+                [
+                    str(day)
+                    for day in sorted({int(day) for day in changes["allowed_days"]})
+                ]
+                if "allowed_days" in changes
+                else [str(day) for day in current["ALLOWED_WEEKDAYS"]]
+            )
+            by_day.update(changes.get("limits_per_day", {}))
+            if "allowed_days" in changes:
+                steps.append(("allowed_days", "setAllowedDays", days))
+            steps.append(
+                (
+                    "limits_per_day",
+                    "setTimeLimitForDays",
+                    [by_day.get(day, 0) for day in days],
+                )
+            )
+        for setting, setter in (
+            ("allowed_hours", "setAllowedHours"),
+            *[(f"allowed_hours_{day}", "setAllowedHours") for day in range(1, 8)],
+            ("limit_per_week", "setTimeLimitForWeek"),
+            ("limit_per_month", "setTimeLimitForMonth"),
+            ("track_inactive", "setTrackInactive"),
+            ("hide_tray_icon", "setHideTrayIcon"),
+            ("overrides", "setOverrides"),
+        ):
+            if setting not in changes:
+                continue
+            if setter == "setAllowedHours":
+                day = "ALL" if setting == "allowed_hours" else setting.rsplit("_", 1)[1]
+                steps.append((setting, setter, day, changes[setting]))
+            else:
+                steps.append((setting, setter, changes[setting]))
+        for setting, setter, *args in steps:
+            result, message = getattr(self, setter)(target, *args)
+            if result != 0:
+                return result, message, setting
+        return 0, "", ""
 
     def migratePolicies(self, dry_run):
         self.calls.append(("migratePolicies", (dry_run,)))

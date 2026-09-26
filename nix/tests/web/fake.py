@@ -53,6 +53,7 @@ def default_user():
     info = default_limits()
     info["POLICY_SOURCE"] = "default"
     info["POLICY_GROUPS"] = dbus.Array(signature="s")
+    info["POLICY_SETTINGS"] = dbus.Array(signature="s")
     info.update(COUNTERS)
     return info
 
@@ -61,7 +62,22 @@ def default_group():
     """A group's policy: the limits and the groups it overrides, no counters."""
     info = default_limits()
     info["OVERRIDES"] = dbus.Array(signature="s")
+    info["POLICY_SETTINGS"] = dbus.Array(signature="s")
     return info
+
+
+# the daemon's key(s) behind each setting name, as the daemon unsets them
+SETTING_KEYS = {
+    "allowed_days": ("ALLOWED_WEEKDAYS", "LIMITS_PER_WEEKDAYS"),
+    "limits_per_day": ("ALLOWED_WEEKDAYS", "LIMITS_PER_WEEKDAYS"),
+    "allowed_hours": tuple(f"ALLOWED_HOURS_{day}" for day in range(1, 8)),
+    **{f"allowed_hours_{day}": (f"ALLOWED_HOURS_{day}",) for day in range(1, 8)},
+    "limit_per_week": ("LIMIT_PER_WEEK",),
+    "limit_per_month": ("LIMIT_PER_MONTH",),
+    "track_inactive": ("TRACK_INACTIVE",),
+    "hide_tray_icon": ("HIDE_TRAY_ICON",),
+    "overrides": ("OVERRIDES",),
+}
 
 
 def is_group(target):
@@ -87,6 +103,15 @@ class FakeConnector:
         self.groups = {"@all": default_group(), "@kids": default_group()}
         self.groups["@kids"]["OVERRIDES"] = [dbus.String("all")]
         self.groups["@kids"]["LIMITS_PER_WEEKDAYS"] = [dbus.Int32(0)] * 7
+        self.groups["@kids"]["POLICY_SETTINGS"] = [
+            dbus.String(name)
+            for name in ("allowed_days", "limits_per_day", "overrides")
+        ]
+        self.users["alice"]["POLICY_SETTINGS"] = [
+            dbus.String("limit_per_week"),
+            dbus.String("track_inactive"),
+        ]
+        self.users["alice"]["TRACK_INACTIVE"] = dbus.Boolean(True)
         self.server = {
             "TIMEKPR_LOGLEVEL": 1,
             "TIMEKPR_POLLTIME": 3,
@@ -171,9 +196,56 @@ class FakeConnector:
             return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_USER_NOT_GROUP") % (
                 target
             )
-        self._policy(target)["OVERRIDES"] = [
-            dbus.String(str(group)) for group in overrides
+        policy = self._policy(target)
+        policy["OVERRIDES"] = [dbus.String(str(group)) for group in overrides]
+        if "overrides" not in [str(name) for name in policy["POLICY_SETTINGS"]]:
+            policy["POLICY_SETTINGS"] = [
+                *policy["POLICY_SETTINGS"],
+                dbus.String("overrides"),
+            ]
+        return 0, ""
+
+    def unsetSetting(self, target, setting):
+        """The daemon's answers: an unknown setting, a setting the target
+        cannot have, a policy that does not set it; the keys go back to
+        the defaults, and a user policy left with nothing is deleted"""
+        self.calls.append(("unsetSetting", (target, setting)))
+        if setting not in SETTING_KEYS:
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_SETTING_INVALID") % (
+                setting
+            )
+        if setting == "hide_tray_icon" and is_group(target):
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_GROUP_NOT_USER") % (
+                target[1:]
+            )
+        if setting == "overrides" and not is_group(target):
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_USER_NOT_GROUP") % (
+                target
+            )
+        policy = self.groups.get(target) if is_group(target) else self.users.get(target)
+        held = (
+            [] if policy is None else [str(name) for name in policy["POLICY_SETTINGS"]]
+        )
+        names = (
+            [f"allowed_hours_{day}" for day in range(1, 8)]
+            if setting == "allowed_hours"
+            else ["allowed_days", "limits_per_day"]
+            if setting in ("allowed_days", "limits_per_day")
+            else [setting]
+        )
+        if target not in self.policies or not any(name in held for name in names):
+            return -1, msg.getTranslation("TK_MSG_CONFIG_LOADER_SETTING_NOTSET") % (
+                target,
+                setting,
+            )
+        defaults = default_group() if is_group(target) else default_user()
+        for key in SETTING_KEYS[setting]:
+            policy[key] = defaults[key]
+        policy["POLICY_SETTINGS"] = [
+            dbus.String(name) for name in held if name not in names
         ]
+        if not is_group(target) and not policy["POLICY_SETTINGS"]:
+            self.deletePolicy(target)
         return 0, ""
 
     def deletePolicy(self, target):
@@ -199,13 +271,18 @@ class FakeConnector:
 
         def setter(*args):
             self.calls.append((name, args))
+            held = None
             if name == "setAllowedDays":
+                held = ("allowed_days", "limits_per_day")
                 self._policy(args[0])["ALLOWED_WEEKDAYS"] = list(args[1])
             elif name == "setTimeLimitForDays":
                 self._policy(args[0])["LIMITS_PER_WEEKDAYS"] = list(args[1])
+                held = ("allowed_days", "limits_per_day")
             elif name == "setAllowedHours":
-                for day in range(1, 8) if args[1] == "ALL" else [int(args[1])]:
+                days = range(1, 8) if args[1] == "ALL" else [int(args[1])]
+                for day in days:
                     self._policy(args[0])[f"ALLOWED_HOURS_{day}"] = args[2]
+                held = tuple(f"allowed_hours_{day}" for day in days)
             elif name == "setTimeLimitForWeek" and args[1] == 13:
                 return -1, "unlucky"
             elif name in ("setHideTrayIcon", "setTimeLeft") and is_group(args[0]):
@@ -213,19 +290,34 @@ class FakeConnector:
                     "TK_MSG_USER_ADMIN_CHK_GROUP_NOT_USER"
                 ) % (args[0][1:])
             elif name in ("setTimeLimitForWeek", "setTimeLimitForMonth"):
+                week = name == "setTimeLimitForWeek"
                 self._policy(args[0])[
-                    "LIMIT_PER_WEEK"
-                    if name == "setTimeLimitForWeek"
-                    else "LIMIT_PER_MONTH"
+                    "LIMIT_PER_WEEK" if week else "LIMIT_PER_MONTH"
                 ] = args[1]
+                held = ("limit_per_week" if week else "limit_per_month",)
             elif name == "setTrackInactive":
                 self._policy(args[0])["TRACK_INACTIVE"] = dbus.Boolean(args[1])
+                held = ("track_inactive",)
+            elif name == "setHideTrayIcon":
+                self._policy(args[0])["HIDE_TRAY_ICON"] = dbus.Boolean(args[1])
+                held = ("hide_tray_icon",)
             elif name == "setTimekprPollTime":
                 self.server["TIMEKPR_POLLTIME"] = args[0]
             elif name == "setTimekprLogLevel":
                 return -1, msg.getTranslation(
                     "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
                 )
+            if held is not None:
+                policy = self._policy(args[0])
+                policy["POLICY_SETTINGS"] = [
+                    dbus.String(name)
+                    for name in SETTING_KEYS
+                    if name != "allowed_hours"
+                    and (
+                        name in held
+                        or name in [str(name) for name in policy["POLICY_SETTINGS"]]
+                    )
+                ]
             return 0, ""
 
         return setter

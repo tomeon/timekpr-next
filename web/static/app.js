@@ -27,12 +27,14 @@ const state = {
 
 /* The resources the limits form can be bound to.  Each target owns one
    instance of the form (`form`), the configuration it last showed
-   (`config`) and the hours being edited (`hours`). */
+   (`config`), the settings the policy holds itself (`settings`) and the
+   hours being edited (`hours`). */
 const targets = {
   user: {
     prefix: "",
     hasHideTrayIcon: true,
     hasOverrides: false,
+    settings: [],
     configPath: () => `/users/${encode(state.user)}/config`,
     reload: () => loadUser(),
     // the daemon creates the user's policy on the first save
@@ -45,9 +47,13 @@ const targets = {
     prefix: "group-",
     hasHideTrayIcon: false,
     hasOverrides: true,
+    settings: [],
     configPath: () => `/groups/${encode(state.group)}/config`,
     reload: () => loadGroup(),
-    afterSave: () => loadGroups(),
+    afterSave: async () => {
+      await loadGroup();
+      await loadGroups();
+    },
   },
 };
 
@@ -268,7 +274,7 @@ async function loadUser() {
         : `Policy: defaults${created}`;
   $("#delete-policy").disabled = user.policy_source !== "user";
   renderStatus(user.status);
-  renderConfig(targets.user, user.config);
+  renderConfig(targets.user, user.config, user.policy_settings);
 }
 
 function renderStatus(status) {
@@ -336,7 +342,7 @@ async function selectGroup(group) {
 
 async function loadGroup() {
   const group = await api("GET", `/groups/${encode(state.group)}`);
-  renderConfig(targets.group, group.config);
+  renderConfig(targets.group, group.config, group.policy_settings);
 }
 
 async function addGroup(event) {
@@ -380,6 +386,31 @@ function bindConfigForm(target, form) {
   $("[name=reload]", form).addEventListener("click", () =>
     target.reload().catch((err) => message(err.message)),
   );
+  for (const button of form.querySelectorAll("button.unset"))
+    button.addEventListener("click", () =>
+      unsetSetting(target, button.dataset.setting),
+    );
+}
+
+/* whether the policy holds a setting itself ("allowed_hours": any day) */
+function isOwn(target, setting) {
+  if (setting === "allowed_hours")
+    return DAYS.some((day) => target.settings.includes(`allowed_hours_${day}`));
+  return target.settings.includes(setting);
+}
+
+/* hand a setting back to the group policies or the defaults */
+async function unsetSetting(target, setting) {
+  try {
+    if (setting.startsWith("allowed_hours")) {
+      const day = setting === "allowed_hours" ? "all" : setting.slice(-1);
+      await api("DELETE", `${target.configPath()}/allowed-hours/${day}`);
+    } else await api("PATCH", target.configPath(), { [setting]: null });
+    message("Setting taken out of the policy", true);
+    await target.afterSave();
+  } catch (err) {
+    message(err.message);
+  }
 }
 
 function renderDayTable(form, allowedDays, limits) {
@@ -408,6 +439,18 @@ function renderHoursGrid(target) {
       const tr = document.createElement("tr");
       const th = document.createElement("th");
       th.textContent = DAY_NAMES[day - 1];
+      if (isOwn(target, `allowed_hours_${day}`)) {
+        th.classList.add("own");
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "unset";
+        button.textContent = "unset";
+        button.title = "Take this day's hours out of this policy";
+        button.addEventListener("click", () =>
+          unsetSetting(target, `allowed_hours_${day}`),
+        );
+        th.append(button);
+      }
       tr.append(th);
       const byHour = new Map(target.hours[day].map((e) => [e.hour, e]));
       for (const hour of HOURS) {
@@ -451,8 +494,9 @@ function cycleHour(target, day, hour) {
   renderHoursGrid(target);
 }
 
-function renderConfig(target, config) {
+function renderConfig(target, config, settings = target.settings) {
   target.config = config;
+  target.settings = settings;
   target.hours = Object.fromEntries(
     DAYS.map((day) => [day, config.allowed_hours[day].map((e) => ({ ...e }))]),
   );
@@ -465,6 +509,18 @@ function renderConfig(target, config) {
   if (target.hasHideTrayIcon)
     form.hide_tray_icon.checked = config.hide_tray_icon;
   if (target.hasOverrides) form.overrides.value = config.overrides.join(";");
+  // mark the settings the policy holds itself and offer to unset them
+  for (const button of form.querySelectorAll("button.unset"))
+    button.hidden = !isOwn(target, button.dataset.setting);
+  $("table.days", form).classList.toggle("own", isOwn(target, "allowed_days"));
+  for (const name of ["limit_per_week", "limit_per_month", "track_inactive"])
+    form[name].closest("label").classList.toggle("own", isOwn(target, name));
+  if (target.hasHideTrayIcon)
+    form.hide_tray_icon
+      .closest("label")
+      .classList.toggle("own", isOwn(target, "hide_tray_icon"));
+  if (target.hasOverrides)
+    form.overrides.classList.toggle("own", isOwn(target, "overrides"));
 }
 
 function readConfig(target) {

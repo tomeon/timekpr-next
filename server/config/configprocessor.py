@@ -14,6 +14,7 @@ from timekpr.common.constants import constants as cons
 from timekpr.common.constants import messages as msg
 from timekpr.common.log import log
 from timekpr.common.utils.config import (
+    USER_CONFIG_SETTINGS,
     timekprConfig,
     timekprUserConfig,
     timekprUserControl,
@@ -359,6 +360,20 @@ class timekprUserConfigurationProcessor:
                             if len(resolution.groups) > 0
                             else dbus.Array(signature="s")
                         )
+                    # the settings the policy file itself holds (a user's
+                    # own ones; the rest of the effective values are inherited)
+                    if self._isGroup:
+                        settings = self._timekprUserConfig.getSetSettings()
+                    else:
+                        own = timekprUserConfig(self._configDir, self._userName)
+                        settings = (
+                            own.getSetSettings() if own.loadUserConfiguration() else []
+                        )
+                    userConfigurationStore["POLICY_SETTINGS"] = (
+                        list(map(dbus.String, settings))
+                        if len(settings) > 0
+                        else dbus.Array(signature="s")
+                    )
 
                 # this goes for full and saved info (users only, groups have no counters)
                 if (
@@ -959,6 +974,47 @@ class timekprUserConfigurationProcessor:
 
         # result
         return result, message
+
+    def checkAndUnsetSetting(self, pSetting):
+        """Take a setting (by its outside name, USER_CONFIG_SETTINGS) out of
+        the policy of the user or group, so that the group policies or the
+        defaults decide it again; a user policy left with nothing is
+        deleted (a group policy stays until it is deleted, it is what
+        makes the group known)"""
+        # the policy (a group's has to exist)
+        result, message = self.loadAndCheckUserConfiguration()
+        if result != 0:
+            return result, message
+
+        # the setting has to be one, and one the target can have
+        if str(pSetting) not in USER_CONFIG_SETTINGS:
+            return -1, msg.getTranslation("TK_MSG_USER_ADMIN_CHK_SETTING_INVALID") % (
+                str(pSetting)
+            )
+        if pSetting == "hide_tray_icon":
+            result, message = self._requireUser()
+        elif pSetting == "overrides":
+            result, message = self._requireGroup()
+        if result != 0:
+            return result, message
+
+        # the policy has to set it
+        if not self._timekprUserConfig.isPolicyPresent() or not (
+            self._timekprUserConfig.unsetSetting(pSetting)
+        ):
+            return -1, msg.getTranslation("TK_MSG_CONFIG_LOADER_SETTING_NOTSET") % (
+                self._userName,
+                pSetting,
+            )
+
+        # a user policy that sets nothing is no policy
+        if not self._isGroup and self._timekprUserConfig.isEmptyPolicy():
+            self._timekprUserConfig.deletePolicy()
+        else:
+            self._timekprUserConfig.saveUserConfiguration()
+
+        # result
+        return 0, ""
 
     def deletePolicy(self):
         """Delete the policy of the user or group (the counters of a user stay)"""

@@ -26,7 +26,9 @@ class Model(BaseModel):
 
 
 def partial(model, name):
-    """Derive a model with every field optional (for PATCH bodies)"""
+    """Derive a model with every field optional (for PATCH bodies); a field
+    sent as null takes the setting out of the policy (model_fields_set
+    tells a null from an absent field)"""
     fields = {
         fname: (finfo.rebuild_annotation() | None, None)
         for fname, finfo in model.model_fields.items()
@@ -105,10 +107,12 @@ class User(Model):
     username: str
     config: UserConfig
     status: UserStatus
-    # where the effective config comes from: the user's own policy, the
-    # merge of the policies of these groups, or the defaults
+    # where the effective config comes from: the user's own policy (for
+    # the settings it holds, policy_settings), the merge of the policies of
+    # these groups, or the defaults
     policy_source: PolicySource
     policy_groups: list[str]
+    policy_settings: list[str]
 
 
 class TimeLeftRequest(Model):
@@ -146,6 +150,8 @@ GroupConfigPatch = partial(GroupConfig, "GroupConfigPatch")
 class Group(Model):
     group: str
     config: GroupConfig
+    # the settings the policy holds; the rest of config are the defaults
+    policy_settings: list[str]
 
 
 class MigrationRequest(Model):

@@ -93,6 +93,13 @@ present" test, and no marker key is needed.
   configuration (`completeDayLimits`). A name NSS does not know gets
   no policy ("not found"). Files written by earlier versions hold
   every setting and keep working: each of their values counts as set.
+  A setting is taken out of a policy with `unsetSetting` (D-Bus),
+  `timekpra --unset`, a `null` field in the web API's `PATCH` (a
+  `DELETE` for the hours), or the unset controls of the GTK admin and
+  the web UI; the settings a policy holds are reported as
+  `POLICY_SETTINGS` / `policy_settings`. A user policy left with
+  nothing is deleted; a group policy stays, since its file is what
+  makes the group known.
 - `deletePolicy` removes a user's or a group's policy
   ([configprocessor.py:902](../../server/config/configprocessor.py#L902),
   [daemon.py:778](../../server/interface/dbus/daemon.py#L778)); a user

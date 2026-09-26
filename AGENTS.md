@@ -231,8 +231,12 @@ Other facts about the sandbox worth knowing before trying something:
   setting (the user's own value, else the most restrictive merge of
   the group policies that set it, else the default;
   `resolveLayers`). The allowed days and their limits go together
-  (`completeDayLimits`). See `docs/proposals/group-targeting.md` and
-  `server/config/policy.py`.
+  (`completeDayLimits`). A setting is taken out of a policy with
+  `unsetSetting` / `timekpra --unset` / a `null` field in a web
+  `PATCH` (settings are named as the web API's fields,
+  `USER_CONFIG_SETTINGS` in `common/utils/config.py`); the settings a
+  policy holds are reported as `POLICY_SETTINGS`. See
+  `docs/proposals/group-targeting.md` and `server/config/policy.py`.
   A user NSS does not know gets no policy. When NSS cannot answer
   which groups a user is in, `resolve()` raises `timekprLookupError`:
   the daemon keeps the last resolved policy (or applies every group

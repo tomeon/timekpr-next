@@ -305,6 +305,64 @@ def test_a_group_is_read_as_it_is_and_answers_defaults(config, store, kids_polic
     assert result == -1
 
 
+def test_unsetting_a_setting(config, store, kids_policy):
+    # alice: her own week limit and tray icon over the group
+    processor(config, "alice").checkAndSetTimeLimitForWeek(2 * HOUR)
+    processor(config, "alice").checkAndSetHideTrayIcon(True)
+    processor(config, "alice").checkAndSetAllowedHours(
+        "2", {"9": {"STARTMIN": 0, "ENDMIN": 60, "UACC": False}}
+    )
+    result, message, info = processor(config, "alice").getSavedUserInformation(
+        cons.TK_CL_INF_FULL, False
+    )
+    assert result == 0, message
+    assert list(info["POLICY_SETTINGS"]) == [
+        "allowed_hours_2",
+        "limit_per_week",
+        "hide_tray_icon",
+    ]
+    # not a setting, not a user's setting, not set
+    for setting, text in (
+        ("limits", "not a policy setting"),
+        ("overrides", "applies to groups only"),
+        ("limit_per_month", "does not set limit_per_month"),
+    ):
+        result, message = processor(config, "alice").checkAndUnsetSetting(setting)
+        assert result == -1 and text in message, message
+    assert own_policy(store, "alice").getSetSettings() == [
+        "allowed_hours_2",
+        "limit_per_week",
+        "hide_tray_icon",
+    ]
+    # every day's hours at once
+    result, _message = processor(config, "alice").checkAndUnsetSetting("allowed_hours")
+    assert result == 0
+    assert own_policy(store, "alice").getSetSettings() == [
+        "limit_per_week",
+        "hide_tray_icon",
+    ]
+    # the group's value applies again
+    result, _message = processor(config, "alice").checkAndUnsetSetting("limit_per_week")
+    assert result == 0
+    processor(config, "@kids").checkAndSetTimeLimitForWeek(5 * HOUR)
+    assert store.resolve("alice").config.getUserWeekLimit() == 5 * HOUR
+    # the last setting takes the user's policy with it
+    result, _message = processor(config, "alice").checkAndUnsetSetting("hide_tray_icon")
+    assert result == 0
+    assert not store.hasUserPolicy("alice")
+    assert store.resolve("alice").source == TK_POLICY_SOURCE_GROUP
+    # a group keeps its (then empty) policy, and cannot lose the tray icon
+    result, message = processor(config, "@kids").checkAndUnsetSetting("hide_tray_icon")
+    assert result == -1 and "applies to users only" in message
+    for setting in ("limits_per_day", "limit_per_week"):
+        result, _message = processor(config, "@kids").checkAndUnsetSetting(setting)
+        assert result == 0
+    assert store.hasGroupPolicy("kids")
+    assert own_policy(store, "@kids").getSetSettings() == []
+    result, message = processor(config, "@staff").checkAndUnsetSetting("limit_per_week")
+    assert result == -1 and "has no policy" in message
+
+
 # ## resolution ##
 
 

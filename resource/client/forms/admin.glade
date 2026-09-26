@@ -554,6 +554,40 @@ Please configure carefully: do not lock yourself out!</property>
                         <property name="position">1</property>
                       </packing>
                     </child>
+                    <child>
+                      <object class="GtkComboBoxText" id="TimekprUserPolicyUnsetCB">
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">False</property>
+                        <property name="tooltip-text" translatable="yes">The settings this policy holds itself; the rest of what is shown comes from the group policies or the defaults</property>
+                        <property name="margin-left">5</property>
+                        <property name="margin-bottom">5</property>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkButton" id="TimekprUserPolicyUnsetBT">
+                        <property name="label" translatable="yes">Unset</property>
+                        <property name="visible">True</property>
+                        <property name="sensitive">False</property>
+                        <property name="can-focus">True</property>
+                        <property name="receives-default">True</property>
+                        <property name="tooltip-text" translatable="yes">Take the selected setting out of this policy, so that the group policies or the defaults decide it again (a user policy left with nothing is deleted)</property>
+                        <property name="margin-left">5</property>
+                        <property name="margin-right">5</property>
+                        <property name="margin-bottom">5</property>
+                        <signal name="clicked" handler="unsetSettingClicked" swapped="no"/>
+                      </object>
+                      <packing>
+                        <property name="expand">False</property>
+                        <property name="fill">True</property>
+                        <property name="position">3</property>
+                      </packing>
+                    </child>
                   </object>
                   <packing>
                     <property name="expand">False</property>

@@ -957,6 +957,19 @@ USER_CONFIG_PARAMS = list(USER_CONFIG_DEFAULTS)
 # the allowed days and their limits are stored positionally against each
 # other, so they are set and unset together
 _DAY_LIMIT_PARAMS = ("ALLOWED_WEEKDAYS", "LIMITS_PER_WEEKDAYS")
+# the names a setting goes by outside (timekpra --unset, the web API's
+# fields, POLICY_SETTINGS), each with the file keys it stands for
+USER_CONFIG_SETTINGS = {
+    "allowed_days": _DAY_LIMIT_PARAMS,
+    "limits_per_day": _DAY_LIMIT_PARAMS,
+    "allowed_hours": tuple(f"ALLOWED_HOURS_{rDay}" for rDay in range(1, 7 + 1)),
+    **{f"allowed_hours_{rDay}": (f"ALLOWED_HOURS_{rDay}",) for rDay in range(1, 7 + 1)},
+    "limit_per_week": ("LIMIT_PER_WEEK",),
+    "limit_per_month": ("LIMIT_PER_MONTH",),
+    "track_inactive": ("TRACK_INACTIVE",),
+    "hide_tray_icon": ("HIDE_TRAY_ICON",),
+    "overrides": ("OVERRIDES",),
+}
 
 
 def _readHours(pParser, pSection, pParam):
@@ -1307,6 +1320,27 @@ class timekprUserConfig:
         params = _DAY_LIMIT_PARAMS if pParam in _DAY_LIMIT_PARAMS else (pParam,)
         for rParam in params:
             self._timekprUserConfig[rParam] = None
+
+    def unsetSetting(self, pSetting):
+        """Take a setting, by its outside name (USER_CONFIG_SETTINGS), out
+        of the policy; False if the policy did not set it"""
+        params = USER_CONFIG_SETTINGS[pSetting]
+        wasSet = any(self.isSet(rParam) for rParam in params)
+        for rParam in params:
+            self.unsetParam(rParam)
+        # result
+        return wasSet
+
+    def getSetSettings(self):
+        """The settings the policy sets, by their outside names (the day
+        limits count as allowed_days and limits_per_day, each day's hours
+        as allowed_hours_N)"""
+        return [
+            rSetting
+            for rSetting, rParams in USER_CONFIG_SETTINGS.items()
+            if rSetting != "allowed_hours"
+            and all(self.isSet(rParam) for rParam in rParams)
+        ]
 
     def _value(self, pParam):
         """A setting's value, the default when unset"""

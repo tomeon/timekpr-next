@@ -457,6 +457,10 @@ TK_USER_ADMIN_COMMANDS = {
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_DELETEPOLICY"),
         "timekpra --deletepolicy 'testuser'\n    timekpra --deletepolicy '@kids'",
     ),
+    "--unset": "{}:\n    {}".format(
+        msg.getTranslation("TK_MSG_USER_ADMIN_CMD_UNSET"),
+        "timekpra --unset 'testuser' 'limit_per_week'\n    timekpra --unset '@kids' 'allowed_hours_6'",
+    ),
     "--migratepolicies": "{}:\n    {}".format(
         msg.getTranslation("TK_MSG_USER_ADMIN_CMD_MIGRATEPOLICIES"),
         "timekpra --migratepolicies 'dry-run'\n    timekpra --migratepolicies 'delete'",

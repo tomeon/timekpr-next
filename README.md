@@ -211,8 +211,10 @@ The allowed days and the limits per day are one setting (the limits are stored a
 Hiding the icon is a per-user setting and cannot be part of a group policy; adjusting the time left for today is also per user, since the
 time spent is always accounted per user.
 
-Deleting a user's policy (`timekpra --deletepolicy USER`) puts the user back under their group policies. Deleting a group policy
-(`timekpra --deletepolicy '@kids'`) does the same for its members.
+A single setting can be taken out of a policy again (`timekpra --unset USER limit_per_week`, `timekpra --unset '@kids' allowed_hours_6`;
+the administration application and the web front end mark the settings a policy holds and offer to unset them): the group policies or the
+defaults decide it again. A user policy left with nothing is deleted. Deleting a user's policy (`timekpra --deletepolicy USER`) puts the user
+back under their group policies. Deleting a group policy (`timekpra --deletepolicy '@kids'`) does the same for its members.
 
 If the system cannot say which groups a user is in (a directory such as Kanidm that is down), the daemon does not treat that as "no
 groups": a logged-in user keeps the policy that was last resolved for them, a user the daemon never resolved gets every group policy

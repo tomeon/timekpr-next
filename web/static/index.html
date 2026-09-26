@@ -23,7 +23,18 @@
     <!-- the limits form, instantiated once for users and once for groups -->
     <template id="config-template">
       <div class="card">
-        <h3>Limits</h3>
+        <h3>
+          Limits
+          <button
+            type="button"
+            class="unset"
+            data-setting="allowed_days"
+            title="Take the allowed days and their limits out of this policy; the group policies or the defaults decide them again"
+            hidden
+          >
+            unset days and limits
+          </button>
+        </h3>
         <table class="days">
           <thead>
             <tr>
@@ -38,14 +49,47 @@
           <label
             >Per week <input name="limit_per_week" type="text" size="7"
           /></label>
+          <button
+            type="button"
+            class="unset"
+            data-setting="limit_per_week"
+            title="Take the week limit out of this policy"
+            hidden
+          >
+            unset
+          </button>
           <label
             >Per month <input name="limit_per_month" type="text" size="7"
           /></label>
+          <button
+            type="button"
+            class="unset"
+            data-setting="limit_per_month"
+            title="Take the month limit out of this policy"
+            hidden
+          >
+            unset
+          </button>
+        </p>
+        <p class="hint">
+          A marked (●) setting is this policy's own; the others come from the
+          group policies or the defaults. "unset" hands a setting back to them.
         </p>
       </div>
 
       <div class="card">
-        <h3>Allowed hours</h3>
+        <h3>
+          Allowed hours
+          <button
+            type="button"
+            class="unset"
+            data-setting="allowed_hours"
+            title="Take every day's hours out of this policy"
+            hidden
+          >
+            unset all days
+          </button>
+        </h3>
         <p class="hint">
           Click an hour to cycle: allowed, unaccounted (does not count against
           the limit), forbidden. A dot marks a partial hour; edit it in the
@@ -63,10 +107,28 @@
             ><input name="track_inactive" type="checkbox" /> count inactive
             (locked / switched away) sessions</label
           >
+          <button
+            type="button"
+            class="unset"
+            data-setting="track_inactive"
+            title="Take this setting out of this policy"
+            hidden
+          >
+            unset
+          </button>
           <label
             ><input name="hide_tray_icon" type="checkbox" /> hide the tray
             icon</label
           >
+          <button
+            type="button"
+            class="unset"
+            data-setting="hide_tray_icon"
+            title="Take this setting out of this policy"
+            hidden
+          >
+            unset
+          </button>
         </p>
       </div>
 
@@ -78,6 +140,15 @@
         </p>
         <p class="inline">
           <input name="overrides" type="text" size="40" />
+          <button
+            type="button"
+            class="unset"
+            data-setting="overrides"
+            title="Take the overrides out of this policy"
+            hidden
+          >
+            unset
+          </button>
         </p>
       </div>
 

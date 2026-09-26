@@ -120,6 +120,20 @@ def test_user_policy_sources(page, server):
         "document.querySelector('#user-policy').textContent === 'Policy: own'"
     )
     assert page.locator("#delete-policy").is_enabled()
+    # alice's policy holds the week limit and the idle-time setting: they
+    # are marked and can be unset; the week limit stays for the later tests
+    page.wait_for_selector("#config-form button.unset[data-setting=track_inactive]")
+    assert page.locator("#config-form button.unset:visible").count() == 2
+    assert page.locator("#config-form label.own").count() == 2
+    page.click("#config-form button.unset[data-setting=track_inactive]")
+    page.wait_for_function(
+        "document.querySelector('#message').textContent === 'Setting taken out of the policy'"
+    )
+    page.wait_for_function(
+        "document.querySelectorAll('#config-form label.own').length === 1"
+    )
+    assert page.locator("#config-form button.unset:visible").count() == 1
+    assert page.inner_text("#user-policy") == "Policy: own"
 
 
 def test_user_page_and_config_save(page, server):

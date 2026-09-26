@@ -444,9 +444,11 @@ class timekprAdminGUI:
         self._tkSavedCfg = {}
         self._tkSavedCfg["timeTrackInactive"] = False
         self._tkSavedCfg["timeHideTrayIcon"] = False
-        # policies: where a user's effective policy comes from, a group policy's overrides
+        # policies: where a user's effective policy comes from, the settings
+        # the policy holds itself, a group policy's overrides
         self._tkSavedCfg["policySource"] = ""
         self._tkSavedCfg["policyGroups"] = []
+        self._tkSavedCfg["policySettings"] = []
         self._tkSavedCfg["timeOverrides"] = []
         self._tkSavedCfg["timeLimitWeek"] = 0
         self._tkSavedCfg["timeLimitMonth"] = 0
@@ -525,9 +527,10 @@ class timekprAdminGUI:
         # clear day config
         self._tkSavedCfg["timeLimitWeek"] = 0
         self._tkSavedCfg["timeLimitMonth"] = 0
-        # policy information (source label, deletion, group overrides)
+        # policy information (source label, deletion, unsetting, group overrides)
         self._tkSavedCfg["policySource"] = ""
         self._tkSavedCfg["policyGroups"] = []
+        self._tkSavedCfg["policySettings"] = []
         self._tkSavedCfg["timeOverrides"] = []
         self._timekprAdminFormBuilder.get_object("TimekprUserPolicySourceLB").set_text(
             msg.getTranslation("TK_MSG_ADMIN_POLICY_NONE")
@@ -535,6 +538,7 @@ class timekprAdminGUI:
         self._timekprAdminFormBuilder.get_object(
             "TimekprUserPolicyDeleteBT"
         ).set_sensitive(False)
+        self.fillUnsetControls([])
         self._timekprAdminFormBuilder.get_object(
             "TimekprUserConfAddOptsOverridesEntry"
         ).set_text("")
@@ -1208,6 +1212,7 @@ class timekprAdminGUI:
                 if pInfoLvl == cons.TK_CL_INF_FULL:
                     self._tkSavedCfg["policySource"] = ""
                     self._tkSavedCfg["policyGroups"] = []
+                    self._tkSavedCfg["policySettings"] = []
                     self._tkSavedCfg["timeOverrides"] = []
                     self._tkSavedCfg["timeHideTrayIcon"] = False
 
@@ -1354,6 +1359,11 @@ class timekprAdminGUI:
                             # the groups whose policies are merged for the user
                             self._tkSavedCfg["policyGroups"] = [
                                 str(rGroup) for rGroup in rValue
+                            ]
+                        elif rKey == "POLICY_SETTINGS":
+                            # the settings the policy holds itself
+                            self._tkSavedCfg["policySettings"] = [
+                                str(rSetting) for rSetting in rValue
                             ]
                         elif rKey == "OVERRIDES":
                             # the groups a group policy takes precedence over
@@ -1676,11 +1686,14 @@ class timekprAdminGUI:
         elif policySource == "user" and len(self._tkSavedCfg["policyGroups"]) > 0:
             # own settings, the rest from the groups
             policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_OWN_GROUPS") % (
-                ", ".join(self._tkSavedCfg["policyGroups"])
+                ", ".join(self._tkSavedCfg["policySettings"]),
+                ", ".join(self._tkSavedCfg["policyGroups"]),
             )
         elif policySource == "user":
             # own policy
-            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_OWN")
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_OWN") % (
+                ", ".join(self._tkSavedCfg["policySettings"])
+            )
         elif policySource == "group":
             # policies of the groups
             policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_GROUPS") % (
@@ -1704,6 +1717,10 @@ class timekprAdminGUI:
         self._timekprAdminFormBuilder.get_object(
             "TimekprUserPolicyDeleteBT"
         ).set_sensitive(isGroup or policySource == "user")
+
+        # ## unset a setting ##
+        # the settings the policy holds itself can be handed back
+        self.fillUnsetControls(self._tkSavedCfg["policySettings"])
 
         # ## info & today page ##
         # groups have no counters and no time for today
@@ -2646,6 +2663,48 @@ class timekprAdminGUI:
         self._timekprAdminFormBuilder.get_object("TimekprUserSelectionCB").emit(
             "changed"
         )
+
+    def fillUnsetControls(self, pSettings):
+        """Offer the settings the shown policy holds itself for unsetting"""
+        combo = self._timekprAdminFormBuilder.get_object("TimekprUserPolicyUnsetCB")
+        combo.remove_all()
+        for rSetting in pSettings:
+            combo.append_text(rSetting)
+        combo.set_active(0 if len(pSettings) > 0 else -1)
+        combo.set_sensitive(len(pSettings) > 0)
+        self._timekprAdminFormBuilder.get_object(
+            "TimekprUserPolicyUnsetBT"
+        ).set_sensitive(len(pSettings) > 0)
+
+    def unsetSettingClicked(self, evt):
+        """Take the selected setting out of the selected user's or group's policy"""
+        # get username
+        userName = self.getSelectedUserName()
+        setting = self._timekprAdminFormBuilder.get_object(
+            "TimekprUserPolicyUnsetCB"
+        ).get_active_text()
+        # nothing selected
+        if userName is None or userName == "" or setting is None:
+            return
+
+        # call server
+        result, message = self._timekprAdminConnector.unsetSetting(userName, setting)
+
+        # successful call
+        if result == 0:
+            # status
+            self.setTimekprStatus(
+                False, msg.getTranslation("TK_MSG_STATUS_SETTING_UNSET") % (setting)
+            )
+            # a user policy left with nothing is gone, and the list shows
+            # what applies now; the selection stays
+            self.getAdminUserList()
+            self.selectUserInList(userName)
+        else:
+            # status
+            self.setTimekprStatus(False, message)
+            # check the connection
+            self.checkConnection()
 
     def deletePolicyClicked(self, evt):
         """Delete the selected user's own policy or the selected group policy, after confirmation"""

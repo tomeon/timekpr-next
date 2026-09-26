@@ -23,12 +23,18 @@ def test_user_config_round_trip():
 
 def test_user_policy_round_trip():
     info = plain(default_user())
-    info["POLICY_SOURCE"], info["POLICY_GROUPS"] = "group", ["all", "kids"]
+    info["POLICY_SOURCE"], info["POLICY_GROUPS"] = "user", ["all", "kids"]
+    info["POLICY_SETTINGS"] = ["limit_per_week"]
     policy = webapi.user_policy_from_daemon(info)
-    assert policy == {"policy_source": "group", "policy_groups": ["all", "kids"]}
+    assert policy == {
+        "policy_source": "user",
+        "policy_groups": ["all", "kids"],
+        "policy_settings": ["limit_per_week"],
+    }
     assert webapi.user_policy_to_daemon(policy) == {
-        "POLICY_SOURCE": "group",
+        "POLICY_SOURCE": "user",
         "POLICY_GROUPS": ["all", "kids"],
+        "POLICY_SETTINGS": ["limit_per_week"],
     }
 
 
@@ -43,10 +49,16 @@ def test_group_config_round_trip():
         "track_inactive",
     ]
     back = webapi.group_config_to_daemon(config)
-    # the daemon returns HIDE_TRAY_ICON for a group too, but it means nothing there
-    expected = {key: value for key, value in info.items() if key != "HIDE_TRAY_ICON"}
+    # the daemon returns HIDE_TRAY_ICON for a group too, but it means nothing
+    # there, and the settings the policy holds are not part of the config
+    expected = {
+        key: value
+        for key, value in info.items()
+        if key not in ("HIDE_TRAY_ICON", "POLICY_SETTINGS")
+    }
     assert back == expected
     assert list(back) == list(expected)
+    assert webapi.policy_settings_from_daemon(info) == []
 
 
 def test_status_round_trip():

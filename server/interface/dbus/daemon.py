@@ -771,6 +771,43 @@ class timekprDaemon(dbus.service.Object):
 
     @timekprAuthorizedMethod(
         cons.TK_DBUS_USER_ADMIN_INTERFACE,
+        "ss",
+        "is",
+        cons.TK_POLKIT_ACTION_USER_CONFIGURE,
+        pUserNameArg="pUserName",
+    )
+    def unsetSetting(self, pUserName, pSetting):
+        """Take a setting out of the policy of a user or a group (the group
+        policies or the defaults decide it again)"""
+        try:
+            # check the target and its configuration
+            userConfigProcessor = timekprUserConfigurationProcessor(
+                pUserName, self._timekprConfig
+            )
+
+            # unset
+            result, message = userConfigProcessor.checkAndUnsetSetting(pSetting)
+
+            # inform the users concerned immediately
+            self._refreshPolicies(pUserName)
+        except Exception as unexpectedException:
+            # logging
+            log.log(
+                cons.TK_LOG_LEVEL_INFO,
+                f"Unexpected ERROR ({misc.whoami()}): {unexpectedException!s}",
+            )
+
+            # result
+            result = -1
+            message = msg.getTranslation(
+                "TK_MSG_CONFIG_LOADER_SAVECONFIG_UNEXPECTED_ERROR"
+            )
+
+        # result
+        return result, message
+
+    @timekprAuthorizedMethod(
+        cons.TK_DBUS_USER_ADMIN_INTERFACE,
         "s",
         "is",
         cons.TK_POLKIT_ACTION_USER_CONFIGURE,

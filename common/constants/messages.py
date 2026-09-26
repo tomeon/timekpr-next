@@ -83,6 +83,11 @@ def initMessages():
             "==> delete the policy of a user (group policies apply again) or of a group, examples"
         )
     }
+    _messages["TK_MSG_USER_ADMIN_CMD_UNSET"] = {
+        "s": _(
+            "==> take a setting out of the policy of a user or a group (the group policies or the defaults decide it again; a user policy left with nothing is deleted), examples"
+        )
+    }
     _messages["TK_MSG_USER_ADMIN_CMD_MIGRATEPOLICIES"] = {
         "s": _(
             '==> delete user policies that set every setting to its default (left over from versions that created one per user), "dry-run" only lists them, examples'
@@ -311,6 +316,14 @@ def initMessages():
             'Overrides for group "%%s" are invalid (names must be groups other than itself)'
         )
     }
+    _messages["TK_MSG_USER_ADMIN_CHK_SETTING_INVALID"] = {
+        "s": _(
+            '"%%s" is not a policy setting (allowed_days, limits_per_day, allowed_hours, allowed_hours_1 .. allowed_hours_7, limit_per_week, limit_per_month, track_inactive, hide_tray_icon, overrides)'
+        )
+    }
+    _messages["TK_MSG_CONFIG_LOADER_SETTING_NOTSET"] = {
+        "s": _('The policy of "%%s" does not set %%s')
+    }
     _messages["TK_MSG_USER_ADMIN_CHK_TARGET_INVALID"] = {
         "s": _('"%%s" is not a valid user or group name')
     }
@@ -352,6 +365,9 @@ def initMessages():
         "s": _("User and group list retrieved")
     }
     _messages["TK_MSG_STATUS_POLICY_DELETED"] = {"s": _("Policy deleted")}
+    _messages["TK_MSG_STATUS_SETTING_UNSET"] = {
+        "s": _("Setting %%s taken out of the policy")
+    }
     _messages["TK_MSG_STATUS_GROUPNAME_MISSING"] = {"s": _("Please enter a group name")}
     _messages["TK_MSG_STATUS_GROUPPOLICY_CREATED"] = {
         "s": _("Group policy %%s created")
@@ -361,9 +377,9 @@ def initMessages():
     }
     # where the selected user's or group's policy comes from
     _messages["TK_MSG_ADMIN_POLICY_NONE"] = {"s": _("Policy: -")}
-    _messages["TK_MSG_ADMIN_POLICY_OWN"] = {"s": _("Policy: own")}
+    _messages["TK_MSG_ADMIN_POLICY_OWN"] = {"s": _("Policy: own (%%s)")}
     _messages["TK_MSG_ADMIN_POLICY_OWN_GROUPS"] = {
-        "s": _("Policy: own settings, the rest from groups %%s")
+        "s": _("Policy: own (%%s), the rest from groups %%s")
     }
     _messages["TK_MSG_ADMIN_POLICY_GROUPS"] = {
         "s": _(

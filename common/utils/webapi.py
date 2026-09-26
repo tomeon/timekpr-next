@@ -43,7 +43,11 @@ GROUP_FIELDS = {
 }
 
 # where a user's effective policy comes from, API field -> daemon key
-POLICY_FIELDS = {"policy_source": "POLICY_SOURCE", "policy_groups": "POLICY_GROUPS"}
+POLICY_FIELDS = {
+    "policy_source": "POLICY_SOURCE",
+    "policy_groups": "POLICY_GROUPS",
+    "policy_settings": "POLICY_SETTINGS",
+}
 
 # saved counters (always present) and live counters (present while the
 # daemon tracks a session of the user), API field -> daemon key
@@ -151,6 +155,7 @@ def user_policy_from_daemon(info):
     return {
         "policy_source": info["POLICY_SOURCE"],
         "policy_groups": [str(group) for group in info["POLICY_GROUPS"]],
+        "policy_settings": [str(setting) for setting in info["POLICY_SETTINGS"]],
     }
 
 
@@ -158,7 +163,14 @@ def user_policy_to_daemon(user):
     return {
         "POLICY_SOURCE": user["policy_source"],
         "POLICY_GROUPS": list(user["policy_groups"]),
+        "POLICY_SETTINGS": list(user["policy_settings"]),
     }
+
+
+def policy_settings_from_daemon(info):
+    """The settings a policy file itself holds (the daemon adds the key to
+    a user's and a group's full information)"""
+    return [str(setting) for setting in info["POLICY_SETTINGS"]]
 
 
 def group_config_from_daemon(info):

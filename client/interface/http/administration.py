@@ -303,6 +303,18 @@ class timekprAdminHttpConnector:
             pUserName, {"overrides": [group_name(str(group)) for group in pOverrides]}
         )
 
+    def unsetSetting(self, pUserName, pSetting):
+        """A null field in a PATCH, or a DELETE of the allowed-hours resource"""
+        setting = str(pSetting)
+        if setting.startswith("allowed_hours"):
+            day = setting[len("allowed_hours_") :] or "all"
+            return self._call(
+                "DELETE", target_path(pUserName, f"/config/allowed-hours/{day}")
+            )[:2]
+        if setting == "overrides" and not is_group(pUserName):
+            return self._groupsOnly(pUserName)
+        return self._patchUser(pUserName, {setting: None})
+
     def deletePolicy(self, pUserName):
         return self._call("DELETE", target_path(pUserName, "/policy"))[:2]
 

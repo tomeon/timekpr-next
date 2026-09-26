@@ -43,6 +43,9 @@ class timekprUserConfigurationProcessor:
         self._isValidTarget = isValidTarget(pUserName)
         self._policyStore = timekprPolicyStore(self._configDir)
         self._timekprUserConfig = None
+        # the configuration a setter completes its policy from (the user's
+        # effective one, or the group policy itself)
+        self._effectiveConfig = None
         self._timekprUserControl = None
 
     def _requireValidTarget(self):
@@ -54,16 +57,14 @@ class timekprUserConfigurationProcessor:
         return 0, ""
 
     def loadAndCheckUserConfiguration(self, pCreate=False):
-        """Load the policy of the user or group.  With pCreate (the setters)
+        """Load the policy of the user or group: the settings its file sets,
+        nothing for a file that is not there.  With pCreate (the setters)
         a missing policy is prepared in memory and nothing is written: the
-        setter saves it, and with it the file, once its input is valid.  A
-        user's new policy starts as a copy of the configuration that
-        applied to them (their groups' or the defaults), so that a first
-        setting changes only what it says; a group's starts as the
-        defaults.  Without pCreate a missing group policy is an error and a
-        missing user policy yields the defaults in memory (but see
-        getSavedUserInformation, which resolves the effective policy of a
-        user instead)"""
+        setter saves it, and with it the file, once its input is valid; a
+        user's effective configuration is resolved alongside, for the
+        settings that go together (completeDayLimits).  Without pCreate a
+        missing group policy is an error (but see getSavedUserInformation,
+        which resolves the effective policy of a user instead)"""
         # the target has to be a name before it becomes a file
         result, message = self._requireValidTarget()
         if result != 0:
@@ -71,27 +72,31 @@ class timekprUserConfigurationProcessor:
 
         # user config
         self._timekprUserConfig = timekprUserConfig(self._configDir, self._userName)
+        present = self._timekprUserConfig.loadUserConfiguration()
+        # a group policy answers the defaults for what it does not set
+        self._effectiveConfig = self._timekprUserConfig
 
         # result
-        if not self._timekprUserConfig.loadUserConfiguration():
-            # a user's new policy is a copy of the effective one (the object
-            # is not yet a file, saving it makes it one)
-            if pCreate and not self._isGroup:
-                result, message, _resolution = self._resolveEffectivePolicy()
+        if pCreate and not self._isGroup:
+            # the user's effective configuration (which also tells a name
+            # nobody knows from a user)
+            result, message, resolution = self._resolveEffectivePolicy()
+            if result == 0:
+                self._effectiveConfig = resolution.config
+        elif self._isGroup and not pCreate and not present:
             # a group policy has to exist to be read
-            elif self._isGroup and not pCreate:
-                result = -1
-                message = msg.getTranslation(
-                    "TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND"
-                ) % (groupName(self._userName))
+            result = -1
+            message = msg.getTranslation(
+                "TK_MSG_CONFIG_LOADER_GROUPCONFIG_NOTFOUND"
+            ) % (groupName(self._userName))
 
         # result
         return result, message
 
     def _resolveEffectivePolicy(self, pIsUserLoggedIn=False):
-        """Resolve the effective policy of the user into
-        self._timekprUserConfig; (result, message, resolution), with an
-        error when NSS cannot say which groups the user is in"""
+        """Resolve the effective policy of the user: (result, message,
+        resolution), with an error when NSS cannot say which groups the
+        user is in"""
         try:
             resolution = self._policyStore.resolve(self._userName)
         except timekprLookupError as ex:
@@ -105,7 +110,6 @@ class timekprUserConfigurationProcessor:
                 key = "TK_MSG_CONFIG_LOADER_USER_LOOKUP_FAILED"
                 log.log(cons.TK_LOG_LEVEL_INFO, f"WARNING: {ex}")
             return -1, msg.getTranslation(key) % (self._userName), None
-        self._timekprUserConfig = resolution.config
         # result
         return 0, "", resolution
 
@@ -271,6 +275,8 @@ class timekprUserConfigurationProcessor:
             # (a name with no policy of its own that neither NSS nor the
             # daemon knows is "not found")
             result, message, resolution = self._resolveEffectivePolicy(pIsUserLoggedIn)
+            if result == 0:
+                self._timekprUserConfig = resolution.config
 
         # if we are still fine
         if result != 0:
@@ -438,9 +444,10 @@ class timekprUserConfigurationProcessor:
 
         # if all is correct, we update the configuration
         if result == 0:
-            # set up config
+            # set up config (the limits go with the days)
             try:
                 self._timekprUserConfig.setUserAllowedWeekdays(days)
+                self._timekprUserConfig.completeDayLimits(self._effectiveConfig)
             except Exception:
                 # result
                 result = -1
@@ -584,9 +591,10 @@ class timekprUserConfigurationProcessor:
 
         # if all is correct, we update the configuration
         if result == 0:
-            # set up config
+            # set up config (the days go with the limits)
             try:
                 self._timekprUserConfig.setUserLimitsPerWeekdays(limits)
+                self._timekprUserConfig.completeDayLimits(self._effectiveConfig)
             except Exception:
                 # result
                 result = -1
@@ -819,7 +827,9 @@ class timekprUserConfigurationProcessor:
             result, message = self._requireUser()
         # the effective policy (the limits the adjustment is measured against)
         if result == 0:
-            result, message, _resolution = self._resolveEffectivePolicy()
+            result, message, resolution = self._resolveEffectivePolicy()
+            if result == 0:
+                self._timekprUserConfig = resolution.config
 
         # if we are still fine
         if result == 0:

@@ -188,25 +188,26 @@ configuration and should be used very seldom in very special cases, however runn
 
 ### Policies: users and groups
 
-Limits are kept in _policies_. A policy is a file an administrator created, nothing is created on its own:
+Limits are kept in _policies_. A policy is a file an administrator created, nothing is created on its own, and a policy holds only the
+settings that were made for it (a setting it does not hold is simply not its business):
 
 - a **user policy** applies to one user and is created the first time any setting is made for that user (in the administration application,
-  with `timekpra`, or through the web front end), whether or not the user has ever logged in. It starts as a copy of what applied to the
-  user at that moment (their group policies or the defaults), so the setting is the only thing that changes; from then on the group
-  policies no longer apply to that user. A setting the daemon refuses creates nothing;
+  with `timekpra`, or through the web front end), whether or not the user has ever logged in. It holds that setting and nothing else;
+  every other setting keeps coming from the user's group policies or the defaults. A setting the daemon refuses creates nothing;
 - a **group policy** applies to every member of a system group (local or from a directory such as Kanidm, whatever `id` reports for the user).
   It is addressed as `@group` wherever a user name is expected, for example `timekpra --settimelimits '@kids' '3600;3600;3600;3600;3600;7200;7200'`.
-  The pseudo-group `all` matches every user.
+  The pseudo-group `all` matches every user, so a policy for `@all` is the place for site-wide settings.
 
-The policy that applies to a user is decided in this order:
+Each setting that applies to a user is decided in this order:
 
-1. the user's own policy, if there is one (group policies are not consulted then);
-2. otherwise the policies of the groups the user is in, merged so that the **most restrictive** value of every setting wins:
+1. the user's own policy, if it holds the setting (it replaces whatever the groups say for that setting, in either direction);
+2. otherwise the policies of the groups the user is in that hold the setting, merged so that the **most restrictive** value wins:
    fewer allowed days and hours, the smaller limits, and idle time counted if any of the policies counts it.
    A group policy may declare that it **overrides** other groups (`timekpra --setoverrides '@teens' 'kids;all'`): for a user in both, the
    overridden policy is dropped instead of merged;
-3. otherwise the defaults, which impose no limits.
+3. otherwise the default, which imposes no limit.
 
+The allowed days and the limits per day are one setting (the limits are stored against the days), as are the hours of one day.
 Hiding the icon is a per-user setting and cannot be part of a group policy; adjusting the time left for today is also per user, since the
 time spent is always accounted per user.
 
@@ -217,9 +218,10 @@ If the system cannot say which groups a user is in (a directory such as Kanidm t
 groups": a logged-in user keeps the policy that was last resolved for them, a user the daemon never resolved gets every group policy
 until the lookup works again (it is retried at every poll), and the administration tools report the user's policy as unresolved.
 
-_**Upgrading** from versions that created a configuration file for every user: those files are now user policies, and one that restricts
-nothing keeps the group policies from applying to its user. The daemon warns about them in its log; `timekpra --migratepolicies dry-run`
-lists them and `timekpra --migratepolicies delete` removes them._
+_**Upgrading** from versions that created a configuration file for every user: those files are now user policies that hold every
+setting, and one that sets everything to its default restricts nothing but keeps the group policies from applying to its user. The daemon
+warns about them in its log; `timekpra --migratepolicies dry-run` lists them and `timekpra --migratepolicies delete` removes them. A file
+that holds every setting with some of them changed is left alone: edit out the settings that should come from the groups._
 
 ### User configuration
 

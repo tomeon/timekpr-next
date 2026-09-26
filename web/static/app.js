@@ -253,15 +253,19 @@ async function selectUser(username) {
 
 async function loadUser() {
   const user = await api("GET", `/users/${encode(state.user)}`);
-  // a user without a policy of their own gets one, copied from the
-  // effective values, the first time a setting is saved
-  const copied = " (a change creates the user's own policy from these values)";
+  // a user without a policy of their own gets one, holding only the
+  // settings that are changed, the first time a setting is saved
+  const created =
+    " (a change creates the user's own policy, holding only what is changed)";
+  const groups = user.policy_groups.join(", ");
   $("#user-policy").textContent =
     user.policy_source === "user"
-      ? "Policy: own"
+      ? groups
+        ? `Policy: own settings, the rest from groups ${groups}`
+        : "Policy: own"
       : user.policy_source === "group"
-        ? `Policy: from groups ${user.policy_groups.join(", ")}${copied}`
-        : `Policy: defaults${copied}`;
+        ? `Policy: from groups ${groups}${created}`
+        : `Policy: defaults${created}`;
   $("#delete-policy").disabled = user.policy_source !== "user";
   renderStatus(user.status);
   renderConfig(targets.user, user.config);

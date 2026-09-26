@@ -224,10 +224,15 @@ Other facts about the sandbox worth knowing before trying something:
 '0;0;0;0;0;0;0'`; an exemption is `timekpra --settimeleft USER + 300`.
   Settings can be made for a user (or a `@group`) that has never logged
   in: the setter creates the policy file once its input is valid (a
-  user's as a copy of the effective configuration, so a first setting
-  does not drop inherited group limits; a refused setting creates
-  nothing); nothing is created on its own any more (see
-  `docs/proposals/group-targeting.md` and `server/config/policy.py`).
+  refused setting creates nothing); nothing is created on its own any
+  more. Policy files are sparse: they hold only the settings made for
+  them, `timekprUserConfig` keeps an unset setting as `None` and
+  writes only the set ones, and the effective policy is resolved per
+  setting (the user's own value, else the most restrictive merge of
+  the group policies that set it, else the default;
+  `resolveLayers`). The allowed days and their limits go together
+  (`completeDayLimits`). See `docs/proposals/group-targeting.md` and
+  `server/config/policy.py`.
   A user NSS does not know gets no policy. When NSS cannot answer
   which groups a user is in, `resolve()` raises `timekprLookupError`:
   the daemon keeps the last resolved policy (or applies every group

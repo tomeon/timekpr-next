@@ -1673,6 +1673,11 @@ class timekprAdminGUI:
                 if len(members) > 0
                 else msg.getTranslation("TK_MSG_ADMIN_POLICY_GROUP") % (userName)
             )
+        elif policySource == "user" and len(self._tkSavedCfg["policyGroups"]) > 0:
+            # own settings, the rest from the groups
+            policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_OWN_GROUPS") % (
+                ", ".join(self._tkSavedCfg["policyGroups"])
+            )
         elif policySource == "user":
             # own policy
             policyText = msg.getTranslation("TK_MSG_ADMIN_POLICY_OWN")
@@ -2725,7 +2730,7 @@ class timekprAdminGUI:
                 target, cons.TK_CL_INF_FULL
             )
         )
-        # no policy yet: any setter creates one with the defaults
+        # no policy yet: any setter creates one (holding that setting alone)
         if result != 0:
             # call server
             result, message = self._timekprAdminConnector.setTrackInactive(

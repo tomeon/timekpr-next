@@ -85,7 +85,7 @@ def initMessages():
     }
     _messages["TK_MSG_USER_ADMIN_CMD_MIGRATEPOLICIES"] = {
         "s": _(
-            '==> delete user policies that restrict nothing (left over from versions that created one per user), "dry-run" only lists them, examples'
+            '==> delete user policies that set every setting to its default (left over from versions that created one per user), "dry-run" only lists them, examples'
         )
     }
     _messages["TK_MSG_USER_ADMIN_CMD_SETTIMELEFT"] = {
@@ -362,14 +362,17 @@ def initMessages():
     # where the selected user's or group's policy comes from
     _messages["TK_MSG_ADMIN_POLICY_NONE"] = {"s": _("Policy: -")}
     _messages["TK_MSG_ADMIN_POLICY_OWN"] = {"s": _("Policy: own")}
+    _messages["TK_MSG_ADMIN_POLICY_OWN_GROUPS"] = {
+        "s": _("Policy: own settings, the rest from groups %%s")
+    }
     _messages["TK_MSG_ADMIN_POLICY_GROUPS"] = {
         "s": _(
-            "Policy: from groups %%s (a change creates the user's own policy from these values)"
+            "Policy: from groups %%s (a change creates the user's own policy, holding only what is changed)"
         )
     }
     _messages["TK_MSG_ADMIN_POLICY_DEFAULTS"] = {
         "s": _(
-            "Policy: defaults (a change creates the user's own policy from these values)"
+            "Policy: defaults (a change creates the user's own policy, holding only what is changed)"
         )
     }
     _messages["TK_MSG_ADMIN_POLICY_UNRESOLVED"] = {

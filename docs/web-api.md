@@ -140,20 +140,25 @@ module `timekprw` uses in the other direction.
 
 ## Policies
 
-A _policy_ is a configuration file an administrator made. A user
-policy (`timekpr.<user>.conf`) applies to that user alone; a group
-policy (`groups/timekpr.<group>.conf`, addressed as `@<group>` by
-`timekpra` and as `/groups/<group>` here) applies to every member of
-the group that has no policy of their own. Nothing is created on
-login: the first setting for a user or a group creates its policy,
-so limits can be made for users who never logged in. A user's
-effective configuration is, in this order: their own policy; else
-the most-restrictive merge of the policies of the groups they belong
-to (the pseudo-group `all` matches everyone), after dropping every
-group that another matching group `overrides`; else the defaults.
-`GET /api/v1/users/{username}` reports the effective configuration
-with `policy_source` (`user`, `group` or `default`) and
-`policy_groups` (the groups that were merged, in merge order). The
+A _policy_ is a configuration file an administrator made, holding
+only the settings made for it. A user policy (`timekpr.<user>.conf`)
+applies to that user alone; a group policy
+(`groups/timekpr.<group>.conf`, addressed as `@<group>` by `timekpra`
+and as `/groups/<group>` here) applies to every member of the group.
+Nothing is created on login: the first setting for a user or a group
+creates its policy, holding that setting, so limits can be made for
+users who never logged in. Each setting of a user's effective
+configuration is, in this order: the user's own policy's value, if it
+holds the setting; else the most-restrictive merge of the values of
+the group policies that hold it, among the groups the user belongs to
+(the pseudo-group `all` matches everyone), after dropping every group
+that another matching group `overrides`; else the default. The
+allowed days and their limits are one setting, as are the hours of
+one day. `GET /api/v1/users/{username}` reports the effective
+configuration with `policy_source` (`user`, `group` or `default`) and
+`policy_groups` (the groups whose policies contributed, in merge
+order; with `user` these are the groups the settings the user does
+not hold come from). The
 user list holds every user with a policy, every user of the system
 and every known member of a group with a policy; group membership is
 looked up through NSS, so it reaches domain users too. See
@@ -171,7 +176,8 @@ puts them back under their group policies or the defaults; their
 counters stay. Earlier versions created a policy for every user on
 first login, which now hides that user's group policies;
 `POST /api/v1/policies/migrate` deletes (or, with `dry_run`, only
-lists) the user policies whose every value is a default.
+lists) the user policies that hold every setting at its default value
+(and the ones that hold nothing).
 
 ## Endpoints
 
@@ -224,7 +230,7 @@ a username; `all` is the pseudo-group of everyone.
 | -------- | --------------------------------------------------- | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `GET`    | `/api/v1/groups`                                    | `--grouplist`                       | The groups with a policy (`getGroupList`): `[{"group", "overrides": [...], "members": [...]}]`. `members` is best effort: an identity provider need not enumerate a group.                             |
 | `GET`    | `/api/v1/groups/{group}`                            | `--groupinfo`                       | `{"group", "config": {...}}` (`getUserInformation("@group", "F")`); `404` when the group has no policy.                                                                                                |
-| `GET`    | `/api/v1/groups/{group}/config`                     | `--groupinfo`                       | The policy alone; `404` when there is none.                                                                                                                                                            |
+| `GET`    | `/api/v1/groups/{group}/config`                     | `--groupinfo`                       | The policy alone, the defaults for what it does not hold; `404` when there is none.                                                                                                                    |
 | `PATCH`  | `/api/v1/groups/{group}/config`                     | the `--set*` commands with `@group` | Partial update, fields below. The first setting for a group creates its policy, so this is never `404`; `overrides` goes through `setOverrides`, the rest through the same setters as a user's config. |
 | `PUT`    | `/api/v1/groups/{group}/config/allowed-hours/{day}` | `--setallowedhours @group`          | As for users.                                                                                                                                                                                          |
 | `DELETE` | `/api/v1/groups/{group}/policy`                     | `--deletepolicy @group`             | `204`, or `404` when there is none.                                                                                                                                                                    |
@@ -239,12 +245,12 @@ in both. `PATCH` accepts any subset of them.
 
 `GET /api/v1/users/{username}/config` returns the user's effective
 configuration, and `PATCH` accepts any subset of the fields below;
-a `PATCH` on a user without a policy of their own creates one as a
-copy of the effective configuration that applied before (their group
-policies or the defaults), so the request changes only what it says;
-from then on the copy is the user's policy and the group policies no
-longer apply to them. A request the daemon refuses creates nothing.
-The fields are:
+the user's policy then holds the fields sent (a `PATCH` on a user
+without a policy of their own creates one holding just those), and
+the group policies keep deciding the rest. Sending `allowed_days` or
+`limits_per_day` puts both into the policy, the other one taken from
+the effective configuration. A request the daemon refuses creates
+nothing. The fields are:
 
 | Field             | Type                                                     | D-Bus setter                          | Notes                                                                                                                                                                                                                                                                                                                        |
 | ----------------- | -------------------------------------------------------- | ------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

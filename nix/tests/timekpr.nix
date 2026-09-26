@@ -40,6 +40,9 @@
   machine = {
     imports = [demoModule];
 
+    # to compare the policy database before and after refused requests
+    environment.systemPackages = [pkgs.sqlite];
+
     virtualisation =
       {
         # Everything the test talks to lives on this one machine, so it

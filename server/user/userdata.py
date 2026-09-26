@@ -62,8 +62,7 @@ class timekprUser:
         )
         # the effective policy (resolved in adjustLimitsFromConfig, defaults until then)
         self._timekprUserConfig = timekprUserConfig(
-            self._timekprConfig.getTimekprConfigDir(),
-            self._timekprUserData[cons.TK_CTRL_UNAME],
+            self._timekprUserData[cons.TK_CTRL_UNAME]
         )
         self._timekprPolicySource = ""
         # whether the last membership lookup failed (logged once per outage)
@@ -844,8 +843,8 @@ class timekprUser:
         # initial config loaded
         userControlLastModified = self._timekprUserControl.getUserControlLastModified()
 
-        # check whether the policy needs to be resolved again (a policy file
-        # was written, created or deleted, or the user's groups changed)
+        # check whether the policy needs to be resolved again (a policy
+        # was changed, created or deleted, or the user's groups changed)
         policyChanged = self.refreshPolicyIfChanged(pSilent=False)
 
         # check whether we need to reload file (if externally modified)

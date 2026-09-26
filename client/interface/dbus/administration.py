@@ -14,9 +14,37 @@ from timekpr.common.constants import constants as cons
 from timekpr.common.constants import messages as msg
 from timekpr.common.log import log
 from timekpr.common.utils import misc
+from timekpr.common.utils.config import POLICY_CHANGE_SIGNATURES
 
 # default loop
 DBusGMainLoop(set_as_default=True)
+
+
+def _dbusValue(pSignature, pValue):
+    """A value as the D-Bus type the signature names (strings, 32-bit
+    integers, booleans, and arrays and dictionaries of them), so that an
+    empty list or map still has a type"""
+    if pSignature == "s":
+        return dbus.String(str(pValue))
+    if pSignature == "i":
+        return dbus.Int32(pValue)
+    if pSignature == "b":
+        return dbus.Boolean(pValue)
+    if pSignature.startswith("a{"):
+        keyType, valueType = pSignature[2], pSignature[3:-1]
+        return dbus.Dictionary(
+            {
+                _dbusValue(keyType, rKey): _dbusValue(valueType, rValue)
+                for rKey, rValue in pValue.items()
+            },
+            signature=pSignature[2:-1],
+        )
+    if pSignature.startswith("a"):
+        return dbus.Array(
+            [_dbusValue(pSignature[1:], rValue) for rValue in pValue],
+            signature=pSignature[1:],
+        )
+    raise ValueError(f"unsupported D-Bus signature {pSignature!r}")
 
 
 class timekprAdminConnector:
@@ -561,6 +589,59 @@ class timekprAdminConnector:
 
         # result
         return result, message
+
+    def applyPolicyChanges(self, pUserName, pUnset, pChanges):
+        """Change several settings of the policy of a user or a group
+        (@group) at once, all or nothing: take the settings named in pUnset
+        out, set the ones in pChanges ({setting: value}), named as in
+        USER_CONFIG_SETTINGS with values as in POLICY_CHANGE_SIGNATURES;
+        the third value names the setting the daemon refused"""
+        # initial values
+        result, message = self.initReturnCodes(pInit=True, pCall=False)
+        refused = ""
+
+        # if we have end-point
+        if self._timekprUserAdminDbusInterface is not None:
+            # defaults
+            result, message = self.initReturnCodes(pInit=False, pCall=True)
+
+            # notify through dbus
+            try:
+                # the values with their D-Bus types (the daemon refuses a
+                # setting it does not know, whatever its type)
+                changes = dbus.Dictionary(
+                    {
+                        str(rSetting): (
+                            _dbusValue(POLICY_CHANGE_SIGNATURES[str(rSetting)], rValue)
+                            if str(rSetting) in POLICY_CHANGE_SIGNATURES
+                            else rValue
+                        )
+                        for rSetting, rValue in pChanges.items()
+                    },
+                    signature="sv",
+                )
+                # call dbus method
+                result, message, refused = (
+                    self._timekprUserAdminDbusInterface.applyPolicyChanges(
+                        pUserName,
+                        dbus.Array(
+                            [str(rSetting) for rSetting in pUnset], signature="s"
+                        ),
+                        changes,
+                        timeout=cons.TK_DBUS_ADMIN_TIMEOUT,
+                    )
+                )
+            except Exception as ex:
+                # exception
+                result, message = self.formatException(
+                    str(ex), __name__, self.applyPolicyChanges.__name__
+                )
+
+                # we cannot send notif through dbus, we need to reschedule connecton
+                self.initTimekprConnection(False, True)
+
+        # result
+        return result, message, refused
 
     def deletePolicy(self, pUserName):
         """Delete the policy of a user or a group (@group)"""

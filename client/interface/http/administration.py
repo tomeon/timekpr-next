@@ -188,13 +188,13 @@ class timekprAdminHttpConnector:
             result, message, group = self._call("GET", target_path(pUserName))
             if result != 0:
                 return result, message, {}
-            return (
-                result,
-                message,
-                webapi.group_config_to_daemon(group["config"])
-                if pInfoLvl == cons.TK_CL_INF_FULL
-                else {},
-            )
+            info = {}
+            if pInfoLvl == cons.TK_CL_INF_FULL:
+                info.update(webapi.group_config_to_daemon(group["config"]))
+                # the settings the policy holds, after the overrides as the
+                # daemon orders them
+                info["POLICY_SETTINGS"] = list(group["policy_settings"])
+            return result, message, info
         result, message, user = self._call("GET", user_path(pUserName))
         if result != 0:
             return result, message, {}

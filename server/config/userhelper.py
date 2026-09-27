@@ -127,7 +127,7 @@ class timekprUserStore:
 
     def getSavedUserList(self, pConfigDir=None, pExtraUsers=()):
         """
-        Get the user list: the users with a policy file (which may name
+        Get the user list: the users with a policy (which may name
         users that do not exist any more), the users present in the
         system, the known members of the groups with a policy, and the
         given extra users (the daemon passes the ones it is tracking, so
@@ -141,29 +141,12 @@ class timekprUserStore:
         # the users in the system
         users = self.checkAndInitUsers()
         # the policies, read once for the whole list
-        policyStore = timekprPolicyStore(self._getConfigDir(pConfigDir))
-        listing = policyStore.startListing()
+        listing = timekprPolicyStore(self._getConfigDir(pConfigDir)).startListing()
 
-        log.log(cons.TK_LOG_LEVEL_DEBUG, "listing user policy files")
+        log.log(cons.TK_LOG_LEVEL_DEBUG, "listing user policies")
 
         # the users with a policy of their own
-        userNames = set()
-        for rUser in policyStore.getUsersWithPolicy():
-            # whether user is valid in config file
-            userNameValidated = False
-            # try to read the first line with username
-            with open(policyStore.getUserPolicyFile(rUser), "r") as confFile:
-                # read first (x) lines and try to get username
-                for _i in range(cons.TK_UNAME_SRCH_LN_LMT):
-                    # check whether we have correct username
-                    if f"[{rUser}]" in confFile.readline():
-                        # user validated
-                        userNameValidated = True
-                        # found
-                        break
-            # keep the validated ones
-            if userNameValidated:
-                userNames.add(rUser)
+        userNames = set(listing.getUsersWithPolicy())
         # the users in the system, and the ones given
         userNames.update(users)
         userNames.update(pExtraUsers)

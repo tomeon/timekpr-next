@@ -54,9 +54,11 @@ ALL_GROUP = "all"
 NOSUCHUSER = "nosuchuser"
 NOSUCHGROUP = "nosuchgroup"
 TIMEKPR_LOG = "/var/log/timekpr.log"
-# Where the policies live; a target that is not a user or group name must
-# never turn into a path under (or outside) it.
+# Where the policies live: a database in the configuration directory; a
+# target that is not a user or group name must never turn into a path
+# under (or outside) it.
 CONFIG_DIR = "/var/lib/timekpr/config"
+POLICY_DB = f"{CONFIG_DIR}/policies.sqlite"
 # Targets that are not names: path syntax, an empty group, an empty name.
 BAD_TARGETS = ["../x", "a/b", "@../x", "@a/b", "@", "-x", ""]
 NOT_A_NAME = "is not a valid user or group name"
@@ -644,9 +646,13 @@ def exercise_groups():
 
 
 def policy_files():
-    """Every path under the configuration directory, to compare before and
-    after a refused request."""
-    return machine.succeed(f"find {CONFIG_DIR} | sort")
+    """The policies (the database's rows) and every other path under the
+    configuration directory, to compare before and after a refused
+    request."""
+    return machine.succeed(
+        f"sqlite3 {POLICY_DB} 'SELECT * FROM policy ORDER BY target'"
+        f" && find {CONFIG_DIR} -not -name 'policies.sqlite*' | sort"
+    )
 
 
 def exercise_invalid_targets():
@@ -705,6 +711,24 @@ def exercise_time_left_on_restricted_days():
         assert DBUS.policy_source(ALICE) == "default"
 
 
+def exercise_policy_import():
+    """The policy files of earlier versions go into the policy database
+    when the daemon starts; the files stay, renamed."""
+    policy_file = f"{CONFIG_DIR}/groups/timekpr.{KIDS}.conf"
+    with subtest("policy files of earlier versions are imported at start"):
+        machine.succeed(
+            f"mkdir -p {CONFIG_DIR}/groups"
+            f" && printf '[@{KIDS}]\\nLIMIT_PER_WEEK = 3600\\n' > {policy_file}"
+        )
+        machine.succeed("systemctl restart timekpr.service")
+        machine.wait_until_succeeds(f"test -f {policy_file}.imported")
+        machine.fail(f"test -e {policy_file}")
+        machine.wait_until_succeeds(
+            f"timekpra --groupinfo {KIDS} | grep -Fx 'LIMIT_PER_WEEK: 3600'"
+        )
+        DBUS.delete_policy(group_target(KIDS))
+
+
 def main():
     machine.wait_for_unit("multi-user.target")
     machine.wait_for_unit("timekpr.service")
@@ -731,6 +755,7 @@ def main():
     exercise_groups()
     exercise_invalid_targets()
     exercise_time_left_on_restricted_days()
+    exercise_policy_import()
 
 
 machine.start()

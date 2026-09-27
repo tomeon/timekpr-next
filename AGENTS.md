@@ -223,11 +223,11 @@ Other facts about the sandbox worth knowing before trying something:
 - "Forbid login" is expressed as `timekpra --settimelimits USER
 '0;0;0;0;0;0;0'`; an exemption is `timekpra --settimeleft USER + 300`.
   Settings can be made for a user (or a `@group`) that has never logged
-  in: the setter creates the policy file once its input is valid (a
+  in: the setter creates the policy once its input is valid (a
   refused setting creates nothing); nothing is created on its own any
-  more. Policy files are sparse: they hold only the settings made for
-  them, `timekprUserConfig` keeps an unset setting as `None` and
-  writes only the set ones, and the effective policy is resolved per
+  more. Policies are sparse: they hold only the settings made for
+  them, `timekprUserConfig` keeps an unset setting as `None` (a `NULL`
+  column), and the effective policy is resolved per
   setting (the user's own value, else the most restrictive merge of
   the group policies that set it, else the default;
   `resolveLayers`). The allowed days and their limits go together
@@ -237,6 +237,24 @@ Other facts about the sandbox worth knowing before trying something:
   `USER_CONFIG_SETTINGS` in `common/utils/config.py`); the settings a
   policy holds are reported as `POLICY_SETTINGS`. See
   `docs/proposals/group-targeting.md` and `server/config/policy.py`.
+- Policies are the rows of one SQLite database,
+  `/var/lib/timekpr/config/policies.sqlite` (`timekprPolicyStore` in
+  `server/config/policy.py`; WAL mode, a column per setting, `CHECK`
+  constraints for the invariants the daemon keeps).
+  `timekprUserConfig` is only the in-memory model; the store loads and
+  saves it. Every setter in `configprocessor.py` is one write
+  transaction (`_policyTransaction`, `BEGIN IMMEDIATE`, so its
+  read-modify-write is serialized with every other writer and rolled
+  back when the setter refuses), and `applyPolicyChanges` (D-Bus
+  `sasa{sv}` -> `iss`) runs several setters in one, which is how a web
+  `PATCH` of a policy is applied; it also aligns the day limits with
+  the allowed days, so the bridge sends only what the request holds.
+  Reads are snapshots, and the transaction in progress is per thread,
+  so the worker thread and the D-Bus main loop can share a store.
+  The daemon notices changes by comparing the stored rows its
+  resolution was made of (`fingerprint`), not modification times.
+  The policy files of earlier versions are imported once when the
+  daemon starts (`importPolicyFiles`) and renamed `*.imported`.
   A user NSS does not know gets no policy. When NSS cannot answer
   which groups a user is in, `resolve()` raises `timekprLookupError`:
   the daemon keeps the last resolved policy (or applies every group

@@ -18,8 +18,6 @@ resource/server/sysusers.d/timekprw.conf lib/sysusers.d/
 resource/server/timekpr.conf etc/timekpr/
 
 # sample runtime files
-resource/server/timekpr.USER.conf var/lib/timekpr/config/
-resource/server/timekpr.GROUP.conf var/lib/timekpr/config/groups/
 resource/server/USER.time var/lib/timekpr/work/
 
 # icons
